@@ -4,6 +4,7 @@ import { api, ApiError } from './lib/api';
 import type { User, VaultFile } from './lib/api';
 import { applyEntryEdits, clearVaultCredentials, createEntry, entryMatches, listEntries, loadVault, saveVault } from './lib/kdbx';
 import type { EntryEdits, EntryView } from './lib/kdbx';
+import { parseOtpSecret, totpCode } from './lib/totp';
 import { toggleTheme } from './theme';
 
 type Message = { kind: 'notice' | 'error'; text: string } | null;
@@ -37,6 +38,30 @@ export default function App() {
   const [query, setQuery] = useState('');
   const [selectedEntry, setSelectedEntry] = useState<EntryView | null>(null);
   const [edits, setEdits] = useState<EntryEdits | null>(null);
+  const [totp, setTotp] = useState<{ code: string; secondsLeft: number } | null>(null);
+
+  useEffect(() => {
+    const config = edits?.otp ? parseOtpSecret(edits.otp) : null;
+    if (!config) {
+      setTotp(null);
+      return;
+    }
+    let cancelled = false;
+    const update = async () => {
+      try {
+        const result = await totpCode(config);
+        if (!cancelled) setTotp(result);
+      } catch {
+        if (!cancelled) setTotp(null);
+      }
+    };
+    void update();
+    const timer = window.setInterval(() => void update(), 1000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [edits?.otp]);
   const [password, setPassword] = useState('');
   const [keyFile, setKeyFile] = useState<File | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -104,7 +129,7 @@ export default function App() {
 
   function startNewEntry() {
     setSelectedEntry(null);
-    setEdits({ title: '', username: '', password: '', url: '', notes: '' });
+    setEdits({ title: '', username: '', password: '', url: '', notes: '', otp: '' });
     setMessage(null);
   }
 
@@ -133,7 +158,7 @@ export default function App() {
       setEtag(updated.etag);
       setEntries(nextEntries);
       setSelectedEntry(refreshed);
-      setEdits(refreshed ? { title: refreshed.title, username: refreshed.username, password: refreshed.password, url: refreshed.url, notes: refreshed.notes } : null);
+      setEdits(refreshed ? { title: refreshed.title, username: refreshed.username, password: refreshed.password, url: refreshed.url, notes: refreshed.notes, otp: refreshed.otp } : null);
       setMessage({ kind: 'notice', text: 'Vault saved.' });
     } catch (error) {
       if (error instanceof ApiError && error.status === 409) {
@@ -302,7 +327,7 @@ export default function App() {
               <div className="entries">
                 {visibleEntries.length === 0 ? <div className="card empty">No entries match your search.</div> : null}
                 {visibleEntries.map((entry) => (
-                  <button key={entry.id} className="entry-row card" onClick={() => { setSelectedEntry(entry); setEdits({ title: entry.title, username: entry.username, password: entry.password, url: entry.url, notes: entry.notes }); }}>
+                  <button key={entry.id} className="entry-row card" onClick={() => { setSelectedEntry(entry); setEdits({ title: entry.title, username: entry.username, password: entry.password, url: entry.url, notes: entry.notes, otp: entry.otp }); }}>
                     <span className="entry-main">
                       <span className="entry-title">{entry.title}</span>
                       <span className="entry-sub">{entry.groupPath}</span>
@@ -322,12 +347,20 @@ export default function App() {
                     <button className="button ghost small" type="button" onClick={() => { setSelectedEntry(null); setEdits(null); }}>Close</button>
                   </div>
                   {!canWrite ? <div className="notice">Read-only access: you can view this entry but cannot save changes.</div> : null}
+                  {totp ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
+                      <span style={{ fontSize: '1.25rem', fontFamily: 'monospace', letterSpacing: '0.15em' }}>{totp.code}</span>
+                      <span style={{ opacity: 0.7 }}>{totp.secondsLeft}s</span>
+                      <button className="button ghost small" type="button" onClick={() => navigator.clipboard?.writeText(totp.code).then(() => setMessage({ kind: 'notice', text: 'TOTP code copied.' })).catch(() => undefined)}>Copy code</button>
+                    </div>
+                  ) : null}
                   <div className="form-grid">
                     <div className="field"><label>Title</label><input value={edits.title} disabled={!canWrite} onChange={(event) => setEdits({ ...edits, title: event.target.value })} /></div>
                     <div className="field"><label>Username</label><input value={edits.username} disabled={!canWrite} onChange={(event) => setEdits({ ...edits, username: event.target.value })} /></div>
                     <div className="field"><label>Password</label><input type="password" value={edits.password} disabled={!canWrite} onChange={(event) => setEdits({ ...edits, password: event.target.value })} /></div>
                     <div className="field"><label>URL</label><input value={edits.url} disabled={!canWrite} onChange={(event) => setEdits({ ...edits, url: event.target.value })} /></div>
                     <div className="field full"><label>Notes</label><textarea value={edits.notes} disabled={!canWrite} onChange={(event) => setEdits({ ...edits, notes: event.target.value })} /></div>
+                    <div className="field full"><label>TOTP (otpauth URI or base32 secret)</label><input value={edits.otp} disabled={!canWrite} onChange={(event) => setEdits({ ...edits, otp: event.target.value })} placeholder="otpauth://totp/…" /></div>
                   </div>
                   <div className="row">
                     {canWrite ? <button className="button primary" disabled={busy === 'save'}>{busy === 'save' ? 'Saving…' : selectedEntry ? 'Save entry' : 'Create entry'}</button> : null}

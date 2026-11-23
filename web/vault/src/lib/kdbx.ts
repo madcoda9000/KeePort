@@ -29,6 +29,7 @@ export interface EntryEdits {
   password: string;
   url: string;
   notes: string;
+  otp: string;
 }
 
 export interface EntryView {
@@ -38,6 +39,7 @@ export interface EntryView {
   password: string;
   url: string;
   notes: string;
+  otp: string;
   tags: string[];
   groupPath: string;
   entry: kdbxweb.KdbxEntry;
@@ -60,6 +62,7 @@ function walkGroup(group: kdbxweb.KdbxGroup, path: string, out: EntryView[]) {
       password: fieldText(entry.fields.get('Password')),
       url: fieldText(entry.fields.get('URL')),
       notes: fieldText(entry.fields.get('Notes')),
+      otp: fieldText(entry.fields.get('otp')),
       tags: [...entry.tags],
       groupPath,
       entry
@@ -104,6 +107,7 @@ export function applyEntryEdits(entry: kdbxweb.KdbxEntry, edits: EntryEdits) {
   entry.fields.set('Password', kdbxweb.ProtectedValue.fromString(edits.password));
   entry.fields.set('URL', edits.url);
   entry.fields.set('Notes', kdbxweb.ProtectedValue.fromString(edits.notes));
+  entry.fields.set('otp', edits.otp);
   entry.times.update();
 }
 
@@ -120,6 +124,7 @@ export function createEntry(db: kdbxweb.Kdbx, edits: EntryEdits): kdbxweb.KdbxEn
   entry.fields.set('Password', kdbxweb.ProtectedValue.fromString(edits.password));
   entry.fields.set('URL', edits.url);
   entry.fields.set('Notes', kdbxweb.ProtectedValue.fromString(edits.notes));
+  entry.fields.set('otp', edits.otp);
   entry.times.update();
   return entry;
 }
