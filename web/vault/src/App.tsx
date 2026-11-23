@@ -23,7 +23,6 @@ import {
   LogOutIcon,
   MoonIcon,
   PlusIcon,
-  SearchIcon,
   ShieldCheckIcon,
   SunIcon,
   UserRoundIcon
@@ -61,12 +60,20 @@ import {
   SidebarTrigger,
   useSidebar
 } from '@/components/ui/sidebar';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { TableCell, TableRow } from '@/components/ui/table';
+import { DataTable, type TableColumn } from '@shared/data-table';
 import { Textarea } from '@/components/ui/textarea';
 
 type Message = { kind: 'notice' | 'error'; text: string } | null;
 
 const DEFAULT_AUTO_LOCK_MINUTES = 5;
+
+const ENTRY_COLUMNS: readonly TableColumn<EntryView>[] = [
+  { id: 'title', label: 'Title', sortValue: (entry) => entry.title },
+  { id: 'username', label: 'Username', sortValue: (entry) => entry.username || null },
+  { id: 'password', label: 'Password', sortValue: (entry) => Number(Boolean(entry.password)), className: 'hidden sm:table-cell' },
+  { id: 'website', label: 'Website', sortValue: (entry) => entry.url || null, className: 'hidden md:table-cell' }
+];
 
 function formatBytes(size: number) {
   if (size < 1024) return `${size} B`;
@@ -94,7 +101,6 @@ export default function App() {
   const [entries, setEntries] = useState<EntryView[]>([]);
   const [etag, setEtag] = useState('');
   const [permission, setPermission] = useState<'read' | 'read-write'>('read');
-  const [query, setQuery] = useState('');
   const [selectedEntry, setSelectedEntry] = useState<EntryView | null>(null);
   const [edits, setEdits] = useState<EntryEdits | null>(null);
   const [totp, setTotp] = useState<{ code: string; secondsLeft: number } | null>(null);
@@ -133,7 +139,6 @@ export default function App() {
   const selectedFile = useMemo(() => files.find((file) => file.id === selectedId) ?? null, [files, selectedId]);
   const canWrite = permission === 'read-write';
   const unlocked = Boolean(db && selectedFile);
-  const visibleEntries = useMemo(() => entries.filter((entry) => entryMatches(entry, query)), [entries, query]);
 
   async function refreshFiles() {
     const list = await api.listVaultFiles();
@@ -146,7 +151,6 @@ export default function App() {
     setEntries([]);
     setSelectedEntry(null);
     setEdits(null);
-    setQuery('');
     setTotp(null);
     setPassword('');
     setKeyFile(null);
@@ -379,7 +383,6 @@ export default function App() {
       setEntries([]);
       setSelectedEntry(null);
       setEdits(null);
-      setQuery('');
       setTotp(null);
       setPassword('');
       setKeyFile(null);
@@ -721,7 +724,7 @@ export default function App() {
                     <div className="space-y-1">
                       <CardTitle>Vault entries</CardTitle>
                       <CardDescription>
-                        {visibleEntries.length} of {entries.length} entries
+                        {entries.length} {entries.length === 1 ? 'entry' : 'entries'}
                       </CardDescription>
                     </div>
                     <div className="flex flex-wrap gap-2">
@@ -735,79 +738,55 @@ export default function App() {
                       )}
                     </div>
                   </div>
-                  <div className="relative w-full sm:max-w-sm">
-                    <SearchIcon
-                      aria-hidden="true"
-                      className="pointer-events-none absolute start-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
-                    />
-                    <Input
-                      className="ps-9"
-                      type="search"
-                      aria-label="Search entries"
-                      value={query}
-                      onChange={(event) => setQuery(event.target.value)}
-                      placeholder="Search vault entries…"
-                    />
-                  </div>
                 </CardHeader>
-                <Table>
-                  <TableHeader className="bg-muted/45">
-                    <TableRow>
-                      <TableHead className="ps-6">Title</TableHead>
-                      <TableHead>Username</TableHead>
-                      <TableHead className="hidden sm:table-cell">Password</TableHead>
-                      <TableHead className="hidden md:table-cell">Website</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {!visibleEntries.length && (
-                      <TableRow>
-                        <TableCell colSpan={4} className="h-28 text-center text-muted-foreground">
-                          {query.trim() ? 'No entries match your search.' : 'This vault has no entries yet.'}
-                        </TableCell>
-                      </TableRow>
-                    )}
-                    {visibleEntries.map((entry) => (
-                      <TableRow key={entry.id}>
-                        <TableCell className="py-2 ps-3">
-                          <Button
-                            variant="ghost"
-                            className="h-auto max-w-44 items-start gap-2 px-3 py-1.5 text-start sm:max-w-72"
-                            onClick={() => {
-                              setMessage(null);
-                              setSelectedEntry(entry);
-                              setEdits({
-                                title: entry.title,
-                                username: entry.username,
-                                password: entry.password,
-                                url: entry.url,
-                                notes: entry.notes,
-                                otp: entry.otp
-                              });
-                            }}
-                          >
-                            <KeyRoundIcon className="mt-0.5 shrink-0 text-muted-foreground" />
-                            <span className="min-w-0">
-                              <span className="block truncate font-medium">{entry.title}</span>
-                              <span className="block truncate text-xs font-normal text-muted-foreground">
-                                {entry.groupPath}
-                              </span>
+                <DataTable
+                  key={selectedFile.id}
+                  label="Vault entries"
+                  rows={entries}
+                  columns={ENTRY_COLUMNS}
+                  searchLabel="Search vault entries"
+                  matches={entryMatches}
+                  emptyMessage="This vault has no entries yet."
+                  renderRow={(entry) => (
+                    <TableRow key={entry.id}>
+                      <TableCell className="py-2 ps-3">
+                        <Button
+                          variant="ghost"
+                          className="h-auto max-w-44 items-start gap-2 px-3 py-1.5 text-start sm:max-w-72"
+                          onClick={() => {
+                            setMessage(null);
+                            setSelectedEntry(entry);
+                            setEdits({
+                              title: entry.title,
+                              username: entry.username,
+                              password: entry.password,
+                              url: entry.url,
+                              notes: entry.notes,
+                              otp: entry.otp
+                            });
+                          }}
+                        >
+                          <KeyRoundIcon className="mt-0.5 shrink-0 text-muted-foreground" />
+                          <span className="min-w-0">
+                            <span className="block truncate font-medium">{entry.title}</span>
+                            <span className="block truncate text-xs font-normal text-muted-foreground">
+                              {entry.groupPath}
                             </span>
-                          </Button>
-                        </TableCell>
-                        <TableCell className="max-w-32 truncate text-muted-foreground sm:max-w-52">
-                          {entry.username || '—'}
-                        </TableCell>
-                        <TableCell className="hidden font-mono tracking-wider text-muted-foreground sm:table-cell">
-                          {entry.password ? '••••••••' : '—'}
-                        </TableCell>
-                        <TableCell className="hidden max-w-56 truncate text-muted-foreground md:table-cell">
-                          {entry.url || '—'}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                          </span>
+                        </Button>
+                      </TableCell>
+                      <TableCell className="max-w-32 truncate text-muted-foreground sm:max-w-52">
+                        {entry.username || '—'}
+                      </TableCell>
+                      <TableCell className="hidden font-mono tracking-wider text-muted-foreground sm:table-cell">
+                        {entry.password ? '••••••••' : '—'}
+                      </TableCell>
+                      <TableCell className="hidden max-w-56 truncate text-muted-foreground md:table-cell">
+                        {entry.url || '—'}
+                      </TableCell>
+                    </TableRow>
+                  )}
+                />
               </Card>
 
               <Sheet

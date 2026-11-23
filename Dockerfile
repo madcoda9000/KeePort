@@ -9,6 +9,7 @@ RUN cd web/vault && npm ci && cd ../admin && npm ci
 
 COPY web/vault ./web/vault
 COPY web/admin ./web/admin
+COPY web/shared ./web/shared
 RUN cd web/vault && npm run build && cd ../admin && npm run build
 RUN mkdir -p /out/vault /out/admin \
     && cp -r web/vault/dist/. /out/vault/ \

@@ -7,5 +7,12 @@ import { defineConfig } from 'vite'
 export default defineConfig({
   base: '/admin/',
   plugins: [react(), tailwindcss()],
-  resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
+  resolve: {
+    alias: {
+      '@': fileURLToPath(new URL('./src', import.meta.url)),
+      '@shared': fileURLToPath(new URL('../shared', import.meta.url))
+    },
+    dedupe: ['react', 'react-dom', 'lucide-react']
+  },
+  server: { fs: { allow: [fileURLToPath(new URL('.', import.meta.url)), fileURLToPath(new URL('../shared', import.meta.url))] } },
 })

@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Live search, column-header sorting, and pagination in the Admin vault files, accounts, and WebDAV credentials tables and the Vault entries table. Choose 10 (default), 20, or 50 rows per page.
 - Stale REST and WebDAV writes preserve the submitted encrypted KDBX as an admin-only conflict copy without overwriting the original.
 - Admin sidebar profile with initials, username, email and controls to change the signed-in administrator's email and password.
 - User creation in the Admin console requires a valid email address. Users can add or change their email in their Vault profile; existing accounts without an email are not affected.

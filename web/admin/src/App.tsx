@@ -63,7 +63,9 @@ import {
   SidebarTrigger,
   useSidebar
 } from '@/components/ui/sidebar';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { TableCell, TableRow } from '@/components/ui/table';
+import { DataTable, type TableColumn } from '@shared/data-table';
+import { matchesTableSearch, timestampSortValue } from '@shared/table-data';
 
 type Message = { kind: 'notice' | 'error'; text: string } | null;
 type Tab = 'vaults' | 'users' | 'webdav' | 'settings';
@@ -87,6 +89,24 @@ const ADMIN_SECTIONS = {
     icon: SettingsIcon
   }
 } as const;
+
+const VAULT_COLUMNS: readonly TableColumn<AdminFile>[] = [
+  { id: 'name', label: 'Name', sortValue: (file) => file.name },
+  { id: 'size', label: 'Size', sortValue: (file) => file.size },
+  { id: 'revision', label: 'Rev', sortValue: (file) => file.revision },
+  { id: 'updated', label: 'Updated', sortValue: (file) => timestampSortValue(file.updatedAt) },
+  { id: 'status', label: 'Status', sortValue: (file) => file.deletedAt ? 'Deleted' : 'Active' },
+  { id: 'actions', label: 'Actions' }
+];
+
+const ACCOUNT_COLUMNS: readonly TableColumn<User>[] = [
+  { id: 'user', label: 'User', sortValue: (account) => account.username },
+  { id: 'role', label: 'Role', sortValue: (account) => account.role },
+  { id: 'disabled', label: 'Disabled', sortValue: (account) => Number(account.disabled) },
+  { id: 'newPassword', label: 'New password' },
+  { id: 'lastLogin', label: 'Last login', sortValue: (account) => timestampSortValue(account.lastLoginAt) },
+  { id: 'actions', label: 'Actions' }
+];
 
 /** Prompts for confirmation before running a destructive admin action. */
 function ConfirmAction({
@@ -525,6 +545,7 @@ export default function App() {
   const [files, setFiles] = useState<AdminFile[]>([]);
   const [includeDeleted, setIncludeDeleted] = useState(false);
   const [credentials, setCredentials] = useState<WebDavCredential[]>([]);
+  const usernamesById = useMemo(() => new Map(users.map((item) => [item.id, item.username])), [users]);
   const [permFile, setPermFile] = useState<AdminFile | null>(null);
   const [message, setMessage] = useState<Message>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -986,36 +1007,25 @@ export default function App() {
                     <FieldLabel htmlFor="show-deleted">Show deleted</FieldLabel>
                   </Field>
                 </CardHeader>
-                <Table>
-                  <TableHeader className="bg-muted/45">
-                    <TableRow>
-                      <TableHead className="ps-6">Name</TableHead>
-                      <TableHead>Size</TableHead>
-                      <TableHead>Rev</TableHead>
-                      <TableHead>Updated</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {!files.length && (
-                      <TableRow>
-                        <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
-                          No vault files yet.
-                        </TableCell>
-                      </TableRow>
-                    )}
-                    {files.map((file) => (
-                      <FileRow
-                        key={file.id}
-                        file={file}
-                        onChanged={refreshFiles}
-                        setMessage={setMessage}
-                        onOpenPermissions={setPermFile}
-                      />
-                    ))}
-                  </TableBody>
-                </Table>
+                <DataTable
+                  label="Stored vaults"
+                  rows={files}
+                  columns={VAULT_COLUMNS}
+                  searchLabel="Search vault files"
+                  emptyMessage="No vault files yet."
+                  matches={(file, query) => matchesTableSearch(
+                    query, file.name, formatBytes(file.size), file.revision, formatDate(file.updatedAt), file.deletedAt ? 'Deleted' : 'Active'
+                  )}
+                  renderRow={(file) => (
+                    <FileRow
+                      key={file.id}
+                      file={file}
+                      onChanged={refreshFiles}
+                      setMessage={setMessage}
+                      onOpenPermissions={setPermFile}
+                    />
+                  )}
+                />
               </Card>
               {permFile && (
                 <PermissionPanel
@@ -1097,29 +1107,25 @@ export default function App() {
                     {users.length} {users.length === 1 ? 'account' : 'accounts'}
                   </CardDescription>
                 </CardHeader>
-                <Table>
-                  <TableHeader className="bg-muted/45">
-                    <TableRow>
-                      <TableHead className="ps-6">User</TableHead>
-                      <TableHead>Role</TableHead>
-                      <TableHead>Disabled</TableHead>
-                      <TableHead>New password</TableHead>
-                      <TableHead>Last login</TableHead>
-                      <TableHead>Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {users.map((item) => (
-                      <UserRow
-                        key={item.id}
-                        user={item}
-                        currentUserId={user.id}
-                        onChanged={refreshUsers}
-                        setMessage={setMessage}
-                      />
-                    ))}
-                  </TableBody>
-                </Table>
+                <DataTable
+                  label="Accounts"
+                  rows={users}
+                  columns={ACCOUNT_COLUMNS}
+                  searchLabel="Search accounts"
+                  emptyMessage="No accounts yet."
+                  matches={(account, query) => matchesTableSearch(
+                    query, account.username, account.email, account.role, account.disabled ? 'Disabled' : 'Enabled', formatDate(account.lastLoginAt)
+                  )}
+                  renderRow={(account) => (
+                    <UserRow
+                      key={account.id}
+                      user={account}
+                      currentUserId={user.id}
+                      onChanged={refreshUsers}
+                      setMessage={setMessage}
+                    />
+                  )}
+                />
               </Card>
             </>
           )}
@@ -1187,58 +1193,52 @@ export default function App() {
                   <CardTitle>App credentials</CardTitle>
                   <CardDescription>Revoke credentials independently from the web login.</CardDescription>
                 </CardHeader>
-                <Table>
-                  <TableHeader className="bg-muted/45">
-                    <TableRow>
-                      <TableHead className="ps-6">Username</TableHead>
-                      <TableHead>Label</TableHead>
-                      <TableHead>User</TableHead>
-                      <TableHead>Created</TableHead>
-                      <TableHead>Last used</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Actions</TableHead>
+                <DataTable
+                  label="App credentials"
+                  rows={credentials}
+                  columns={[
+                    { id: 'username', label: 'Username', sortValue: (item) => item.username },
+                    { id: 'label', label: 'Label', sortValue: (item) => item.label },
+                    { id: 'user', label: 'User', sortValue: (item) => usernamesById.get(item.userId) ?? item.userId },
+                    { id: 'created', label: 'Created', sortValue: (item) => timestampSortValue(item.createdAt) },
+                    { id: 'lastUsed', label: 'Last used', sortValue: (item) => timestampSortValue(item.lastUsedAt) },
+                    { id: 'status', label: 'Status', sortValue: (item) => item.revokedAt ? 'Revoked' : 'Active' },
+                    { id: 'actions', label: 'Actions' }
+                  ]}
+                  searchLabel="Search WebDAV credentials"
+                  emptyMessage="No WebDAV credentials yet."
+                  matches={(item, query) => matchesTableSearch(
+                    query, item.username, item.label, usernamesById.get(item.userId) ?? item.userId,
+                    formatDate(item.createdAt), formatDate(item.lastUsedAt), item.revokedAt ? 'Revoked' : 'Active'
+                  )}
+                  renderRow={(credential) => (
+                    <TableRow key={credential.id}>
+                      <TableCell className="ps-6 font-medium">{credential.username}</TableCell>
+                      <TableCell>{credential.label}</TableCell>
+                      <TableCell>{usernamesById.get(credential.userId) ?? credential.userId}</TableCell>
+                      <TableCell className="text-muted-foreground">{formatDate(credential.createdAt)}</TableCell>
+                      <TableCell className="text-muted-foreground">{formatDate(credential.lastUsedAt)}</TableCell>
+                      <TableCell>
+                        <Badge variant={credential.revokedAt ? 'outline' : 'secondary'}>
+                          {credential.revokedAt ? 'Revoked' : 'Active'}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        {!credential.revokedAt && (
+                          <ConfirmAction
+                            label="Revoke"
+                            title="Revoke WebDAV access?"
+                            description={`The client using ${credential.username} will no longer be able to connect.`}
+                            disabled={busy === 'revoke-webdav'}
+                            onConfirm={() => {
+                              void revokeWebDav(credential.id);
+                            }}
+                          />
+                        )}
+                      </TableCell>
                     </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {!credentials.length && (
-                      <TableRow>
-                        <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
-                          No WebDAV credentials yet.
-                        </TableCell>
-                      </TableRow>
-                    )}
-                    {credentials.map((credential) => {
-                      const owner = users.find((item) => item.id === credential.userId);
-                      return (
-                        <TableRow key={credential.id}>
-                          <TableCell className="ps-6 font-medium">{credential.username}</TableCell>
-                          <TableCell>{credential.label}</TableCell>
-                          <TableCell>{owner?.username ?? credential.userId}</TableCell>
-                          <TableCell className="text-muted-foreground">{formatDate(credential.createdAt)}</TableCell>
-                          <TableCell className="text-muted-foreground">{formatDate(credential.lastUsedAt)}</TableCell>
-                          <TableCell>
-                            <Badge variant={credential.revokedAt ? 'outline' : 'secondary'}>
-                              {credential.revokedAt ? 'Revoked' : 'Active'}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>
-                            {!credential.revokedAt && (
-                              <ConfirmAction
-                                label="Revoke"
-                                title="Revoke WebDAV access?"
-                                description={`The client using ${credential.username} will no longer be able to connect.`}
-                                disabled={busy === 'revoke-webdav'}
-                                onConfirm={() => {
-                                  void revokeWebDav(credential.id);
-                                }}
-                              />
-                            )}
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
+                  )}
+                />
               </Card>
             </>
           )}
