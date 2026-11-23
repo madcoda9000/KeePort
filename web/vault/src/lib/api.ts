@@ -124,9 +124,6 @@ export const api = {
   async listVaultFiles() {
     return request<VaultFile[]>('/api/vault/files');
   },
-  async getFile(fileId: string) {
-    return request<VaultFile>(`/api/vault/files/${encodeURIComponent(fileId)}`);
-  },
   async getFileBytes(fileId: string): Promise<{ bytes: ArrayBuffer; etag: string; lastModified: string | null }> {
     const response = await fetch(`/api/vault/files/${encodeURIComponent(fileId)}/content`, { credentials: 'include' });
     if (!response.ok) {

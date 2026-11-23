@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Vault webclient: "Add entry" button and create-entry flow for read-write vaults (entries are added to the first KDBX group and saved with the usual ETag precondition).
 
+### Removed
+
+- Dead `getFile()` client method in the vault webclient (called a non-existent backend endpoint).
+
 ## [0.1.0] - 2026-11-23
 
 ### Added
