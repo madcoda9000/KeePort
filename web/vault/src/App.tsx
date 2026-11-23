@@ -9,6 +9,8 @@ import { toggleTheme } from './theme';
 
 type Message = { kind: 'notice' | 'error'; text: string } | null;
 
+const VAULT_HIDDEN_LOCK_MS = 5 * 60 * 1000;
+
 function formatBytes(size: number) {
   if (size < 1024) return `${size} B`;
   if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
@@ -223,19 +225,29 @@ export default function App() {
 
   useEffect(() => {
     if (!db) return;
+    let lockTimer: number | undefined;
+    const lock = () => {
+      clearVaultCredentials(db);
+      setDb(null);
+      setEntries([]);
+      setSelectedEntry(null);
+      setEdits(null);
+      setPassword('');
+      setKeyFile(null);
+    };
     const onVisibility = () => {
       if (document.hidden) {
-        clearVaultCredentials(db);
-        setDb(null);
-        setEntries([]);
-        setSelectedEntry(null);
-        setEdits(null);
-        setPassword('');
-        setKeyFile(null);
+        lockTimer = window.setTimeout(lock, VAULT_HIDDEN_LOCK_MS);
+      } else if (lockTimer !== undefined) {
+        window.clearTimeout(lockTimer);
+        lockTimer = undefined;
       }
     };
     document.addEventListener('visibilitychange', onVisibility);
-    return () => document.removeEventListener('visibilitychange', onVisibility);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility);
+      if (lockTimer !== undefined) window.clearTimeout(lockTimer);
+    };
   }, [db]);
 
   if (!authChecked) {
