@@ -58,7 +58,6 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarProvider,
-  SidebarSeparator,
   SidebarTrigger,
   useSidebar
 } from '@/components/ui/sidebar';
@@ -589,9 +588,9 @@ export default function App() {
         }
       />
       <SidebarInset className="min-w-0">
-        <header className="sticky top-0 z-10 flex min-h-14 items-center gap-3 border-b bg-background/95 px-4 backdrop-blur sm:px-6">
+        <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center gap-3 border-b bg-background/95 px-4 backdrop-blur sm:px-6">
           <SidebarTrigger />
-          <Separator orientation="vertical" className="data-[orientation=vertical]:h-4" />
+          <Separator orientation="vertical" className="data-vertical:h-4 data-vertical:self-center" />
           <span className="min-w-0 flex-1 truncate text-sm font-medium">Vault workspace</span>
           {themeAction}
           <Button
@@ -972,8 +971,8 @@ function VaultNavigation({
   const { setOpenMobile } = useSidebar();
   return (
     <Sidebar variant="inset">
-      <SidebarHeader className="p-3">
-        <div className="flex items-center gap-3 px-2 py-1.5">
+      <SidebarHeader className="h-14 shrink-0 justify-center border-b px-5 py-0">
+        <div className="flex items-center gap-3">
           <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-primary text-primary-foreground">
             <KeyRoundIcon className="size-4" />
           </span>
@@ -983,7 +982,6 @@ function VaultNavigation({
           </div>
         </div>
       </SidebarHeader>
-      <SidebarSeparator />
       <SidebarContent>
         <SidebarGroup>
           <SidebarGroupLabel>Shared vaults</SidebarGroupLabel>

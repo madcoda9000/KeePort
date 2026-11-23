@@ -27,6 +27,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Dead `getFile()` client method in the vault webclient (called a non-existent backend endpoint).
 
+### Fixed
+
+- The Vault sidebar and workspace headers now share the same height and align along their bottom border.
+
 ## [0.1.0] - 2026-11-23
 
 ### Added
