@@ -43,9 +43,9 @@ Die Analyse vom 2026-11-23 hat ergeben, dass alle Kernanforderungen des Ursprung
 
 **Befund:** Bei ETag-Konflikt wird der Schreibzugriff korrekt abgelehnt (409/412), aber verworfene Client-Daten gehen verloren. Der Prompt erlaubte „ablehnen **und/oder** Konfliktkopie“ – eine Kopie ist der sicherere Default.
 
-**Änderung:** Bei Konflikt (nicht bei fehlendem ETag) speichert der Server die eingehende Version als `<name>.conflict-<UTC-Timestamp>-<client>.kdbx` im Vault-Verzeichnis (gleiches atomisches Schreibmuster, als Konflikt markiert, nicht in normalen ACL-Listen sichtbar). Response enthält Hinweis auf die Kopie. WebDAV analog.
+**Änderung:** Bei Konflikt (nicht bei fehlendem ETag) speichert der Server die eingehende Version als `<name>.conflict-<UTC-Timestamp>-<client>.kdbx` im Vault-Verzeichnis (gleiches atomisches Schreibmuster). **Entscheidung (2026-11-23, Sascha):** Die Konfliktkopie erscheint als normale Datei in der Admin-Liste – kein extra Datenmodell, kein separater Status; sie erhält keine ACL-Einträge, ist also für normale User unsichtbar und für Admins (implizites read-write) sichtbar und löschbar. Response enthält Hinweis auf die Kopie. WebDAV analog.
 
-**Betroffene Dateien:** `VaultService.cs`, `KeePortDb.cs` (Status/Spalte oder separates Flag), `VaultEndpoints.cs`, `WebDavEndpoints.cs`, Admin-UI (Anzeige/Löschen von Konfliktkopien), Tests.
+**Betroffene Dateien:** `VaultService.cs`, `VaultEndpoints.cs`, `WebDavEndpoints.cs`, Tests. Kein Schema-Change nötig (normale `vault_files`-Zeile ohne `vault_permissions`-Einträge).
 
 **Akzeptanz:** Stale-PUT erzeugt Konfliktkopie bei unverändertem ETag der Originaldatei; Original bleibt auf altem Stand; Tests prüfen Kopie-Erzeugung und atomaren Rename.
 
@@ -61,14 +61,15 @@ Die Analyse vom 2026-11-23 hat ergeben, dass alle Kernanforderungen des Ursprung
 
 ---
 
-## AP5 – LOCK/UNLOCK sauber definieren (S–M)
+## AP5 – LOCK/UNLOCK: dokumentierte No-Locks-Entscheidung (S)
 
 **Befund:** `LOCK` gibt einen Token zurück, ohne ihn zu persistieren; `UNLOCK` ist immer 204. Das ist ein Stub, der „sauberes Handling“ nur minimal erfüllt.
 
-**Änderung (Option A, bevorzugt):** Minimal-invasiv: LOCK/UNLOCK mit korrektem Protokollverhalten (Lock-Token persistieren, Refresh/Timeout, `423 Locked` wo nötig) oder
-**Option B:** Explizit dokumentieren, dass KeePort absichtlich keine Server-Locks führt (WebDAV-Locks sind optional), und Clients darauf verweisen. Entscheidung in AP5-Umsetzung festhalten.
+**Entscheidung (2026-11-23, Sascha): Option B** – KeePort führt absichtlich keine serverseitigen WebDAV-Locks. Begründung: KeePass-Clients (KeePassXC, KeePassium, KeePassDX, Strongbox) brauchen echte Locks praktisch nie; ETag/`If-Match` ist das wirksame Konfliktschutzmittel.
 
-**Akzeptanz:** Entweder persistierte Locks mit Test oder klare Doku-Entscheidung im `docs/DEPLOYMENT.md`/README.
+**Änderung:** Doku in `docs/DEPLOYMENT.md` und README: LOCK/UNLOCK-Verhalten dokumentieren (Token ohne Persistierung, UNLOCK immer 204) und Clients darauf verweisen, dass serverseitige Locks nicht garantiert sind.
+
+**Akzeptanz:** Doku-Abschnitt vorhanden; `CHANGELOG.md`-Eintrag; kein Code-Umbau.
 
 ---
 
@@ -88,7 +89,9 @@ Die Analyse vom 2026-11-23 hat ergeben, dass alle Kernanforderungen des Ursprung
 
 **Befund:** Prompt verlangt ein GitHub-Repository; aktuell nur lokaler `main` ohne Remote.
 
-**Änderung:** Repo auf GitHub anlegen (Owner/Name klären, Vorschlag: `KeePort`), `git remote add origin …`, pushen; README-Platzhalter `YOUR-ORG` durch echten Org-Namen ersetzen; ggf. Tag `v0.1.0`.
+**Entscheidung (2026-11-23, Sascha):** Repo wird **https://github.com/madcoda9000/KeePort**, **öffentlich**, angelegt **zum ersten Release** (nicht vorher). AP7 bleibt bis dahin offen.
+
+**Änderung:** Repo anlegen (public), `git remote add origin …`, pushen; README-Platzhalter `YOUR-ORG` durch `madcoda9000` ersetzen; Tag `v0.1.0` (bzw. erste Release-Version).
 
 **Akzeptanz:** `git ls-remote origin` erfolgreich; README-Links funktionsfähig; LICENSE/CHANGELOG auf GitHub sichtbar.
 
@@ -98,7 +101,7 @@ Die Analyse vom 2026-11-23 hat ergeben, dass alle Kernanforderungen des Ursprung
 
 - 6× CS1998-Warnings (`AuthEndpoints`, `VaultEndpoints`, `WebDavEndpoints`) durch Entfernen unnötiger `async`/`await` beseitigen.
 - README: `YOUR-ORG`-Platzhalter entfernen (abhängig von AP7).
-- Optional: Dokumentation der Browser-Erweiterungs-Basis (`KeePort:CorsOrigins` + Token-Ansatz) als kurzer Abschnitt in README oder `docs/` – nur Doku, kein Code.
+- Browser-Erweiterungs-Basis (`KeePort:CorsOrigins` + Token-Ansatz) als kurzer Abschnitt in README oder `docs/` dokumentieren – **Entscheidung (2026-11-23, Sascha): nur Doku, keine substanzielle Token-/CORS-Vorbereitung.**
 
 **Akzeptanz:** `dotnet build` ohne CS1998-Warnings; README ohne Platzhalter.
 
@@ -110,24 +113,61 @@ Nach jedem Paket: `CHANGELOG.md`-Eintrag unter `## [Unreleased]` (Sektionen `Add
 
 ---
 
+## AP10 – TOTP-Unterstützung im Vault-Client (M, Muss laut Sascha 2026-11-23)
+
+**Befund:** KeePort ist ein Passwortmanager – TOTP (2FA) ist ein Kernfeature von KeePass. Aktuell werden nur Title/UserName/Password/URL/Notes gelesen und bearbeitet; das KeePass-`otp`-Feld (otpauth://-URL, KeePassXC-Konvention) wird weder angezeigt noch gepflegt.
+
+**Änderung:**
+- **Anzeigen:** `otp`-Feld im Entry-Detail auswerten; aktuellen 6-stelligen Code mit Countdown rendern; Copy-Buttons (Code, otpauth-URL).
+- **Pflegen:** Im Bearbeiten-Formular ein TOTP-Feld (Secret oder otpauth://-URL) pflegen; wird als `otp`-Custom-Field gespeichert.
+- **Krypto:** TOTP-Berechnung ausschließlich im Browser (zero-knowledge: Secret verlässt den Browser nie). Etablierte Bibliothek (z. B. `otpauth`) oder kleine WebCrypto-Implementierung (HMAC-SHA1, Base32) – Entscheidung in der Umsetzung, kein eigenes Crypto-Raten.
+- Optional: Badge „hat TOTP" in der Entry-Liste (rein clientseitig).
+
+**Betroffene Dateien:** `web/vault/src/lib/kdbx.ts`, `web/vault/src/lib/totp.ts` (neu), `web/vault/src/App.tsx`, ggf. `web/vault/package.json`, `CHANGELOG.md`.
+
+**Akzeptanz:** Code aus Test-Eintrag stimmt mit KeePassXC bzw. unabhängiger TOTP-App überein; Bearbeiten/Speichern erhält das `otp`-Feld; `npm run build` grün.
+
+---
+
+## AP11 – Attachments-Verwaltung im Vault-Client (M, Vorschlag – Bestätigung offen)
+
+**Befund:** Attachments bleiben beim Speichern erhalten (`entry.binaries` wird von kdbxweb mitgeschrieben), aber es gibt keine UI: Weder Ansehen/Download noch Hinzufügen/Löschen. Nutzerfrage (2026-11-23): „Wie kann der User Attachments bearbeiten (löschen oder neue hinzufügen)?“
+
+**Antwort:** Mit kdbxweb ist das sauber machbar – `entry.binaries` (Map Name → Binary/Ref), `db.createBinary()` für neue Anhänge, `entry.binaries.delete(name)` zum Entfernen. Alles clientseitig, zero-knowledge bleibt gewahrt.
+
+**Änderung (Vorschlag):** Im Entry-Detail eine Attachment-Sektion: Liste (Name, Größe), Download (Blob-URL), Hinzufügen (File-Picker → `db.createBinary`), Löschen (mit Bestätigung). Größenlimit (z. B. 10 MB/Anhang) und Hinweis auf KDBX-Größenwachstum. Read-only-Modus: nur Download.
+
+**Betroffene Dateien:** `web/vault/src/lib/kdbx.ts`, `web/vault/src/App.tsx` (+ CSS), `CHANGELOG.md`.
+
+**Akzeptanz:** Anhang in Test-Tresor hinzufügen → in KeePassXC sichtbar; Download/Öffnen im Browser; Löschen funktioniert; Speichern mit ETag-Precondition; Read-only-User kann nur herunterladen.
+
+---
+
 ## Vorschlag Reihenfolge
 
 1. **AP1, AP2, AP8** (klein, risikoarm, sofort umsetzbar)
-2. **AP6** (Rate-Limiting, klein, sicherheitsrelevant)
-3. **AP7** (Repo anlegen – braucht deine Entscheidung zu Owner/Name)
-4. **AP3, AP5** (mittelaufwändig, Design-Entscheidungen nötig)
-5. **AP4** (externer Client-Test, nach AP3 sinnvoll)
+2. **AP10** (TOTP – Muss-Feature, nur Frontend)
+3. **AP6** (Rate-Limiting, klein, sicherheitsrelevant)
+4. **AP3, AP5** (Konfliktkopie + No-Locks-Doku; Entscheidungen getroffen)
+5. **AP11** (Attachments-UI, nach Bestätigung des Umfangs)
+6. **AP7** (GitHub-Repo – erst zum ersten Release, geo. `madcoda9000/KeePort` public)
+7. **AP4** (externer Client-Test, nach AP3 sinnvoll)
 
-## Offene Fragen
+## Entscheidungen (2026-11-23, Sascha)
 
-1. **GitHub-Owner/Repo-Name** für AP7? (privat oder public?)
-2. **Konfliktkopie (AP3):** Soll die Kopie als normale Datei in der Admin-Liste auftauchen, oder als separater, gekennzeichneter Status?
-3. **LOCK/UNLOCK (AP5):** Option A (echte Locks) oder Option B (dokumentiert keine Locks)?
-4. **Attachments-UI:** Attachments bleiben beim Speichern erhalten, aber es gibt keine Verwaltungs-UI – jetzt Theme oder bewusst weglassen?
-5. **Browser-Erweiterung:** Nur Doku (AP8) oder soll die Token-/CORS-Basis jetzt schon substantiell vorbereitet werden?
+1. **GitHub (AP7):** Wird zum ersten Release angelegt als **https://github.com/madcoda9000/KeePort**, **öffentlich**.
+2. **Konfliktkopie (AP3):** Normale Datei in der Admin-Liste (kein extra Datenmodell/Status).
+3. **LOCK/UNLOCK (AP5):** Option B – dokumentiert keine serverseitigen Locks.
+4. **Attachments-UI (AP11):** User muss Attachments bearbeiten können (löschen/neue hinzufügen) – Umfang in AP11 vorgeschlagen, Bestätigung offen.
+5. **Browser-Erweiterung:** Nur Doku (AP8), keine substanzielle Token-/CORS-Vorbereitung.
+6. **Neu (Muss):** TOTP-Unterstützung im Vault-Client → AP10.
+
+## Noch offen
+
+- **AP11-Umfang bestätigen** (Attachments: Download/Hinzufügen/Löschen wie vorgeschlagen?).
 
 ## Risiken
 
-- **AP3** berührt das Datenmodell (SQLite) – Migration muss abwärtskompatibel sein, bestehende `/data`-Volumes dürfen nicht brechen.
+- **AP3** berührt die Dateiverwaltung (neue `vault_files`-Zeilen für Konfliktkopien) – bestehende `/data`-Volumes dürfen nicht brechen.
 - **AP4** kann nicht rein code-seitig abgeschlossen werden (braucht reale Geräte).
-- **AP5** Option A erhöht Komplexität im WebDAV-Pfad; Option B ist der pragmatische Default für KeePass-Clients.
+- **AP5** ist mit Option B nur noch Doku-Aufwand; kein Lock-Komplexität im WebDAV-Pfad.
