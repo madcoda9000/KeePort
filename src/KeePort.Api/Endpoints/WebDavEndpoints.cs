@@ -27,7 +27,7 @@ public static class WebDavEndpoints
                 return;
             }
 
-            var auth = await AuthenticateAsync(context, db, hasher);
+            var auth = Authenticate(context, db, hasher);
             if (auth is null)
             {
                 context.Response.StatusCode = StatusCodes.Status401Unauthorized;
@@ -70,9 +70,9 @@ public static class WebDavEndpoints
         return method switch
         {
             "OPTIONS" => HandleOptions(context),
-            "PROPFIND" => await HandlePropFindAsync(context, vault, auth.User, isCollection, file),
-            "GET" => isCollection ? MethodNotAllowed(context, "PROPFIND") : await HandleGetAsync(context, vault, auth.User, file!, includeBody: true, cancellationToken),
-            "HEAD" => isCollection ? MethodNotAllowed(context, "PROPFIND") : await HandleGetAsync(context, vault, auth.User, file!, includeBody: false, cancellationToken),
+            "PROPFIND" => HandlePropFind(context, vault, auth.User, isCollection, file),
+            "GET" => isCollection ? MethodNotAllowed(context, "PROPFIND") : HandleGet(context, vault, auth.User, file!, includeBody: true, cancellationToken),
+            "HEAD" => isCollection ? MethodNotAllowed(context, "PROPFIND") : HandleGet(context, vault, auth.User, file!, includeBody: false, cancellationToken),
             "PUT" => isCollection ? MethodNotAllowed(context, "GET, HEAD, PROPFIND") : await HandlePutAsync(context, vault, auth.User, file!, cancellationToken),
             "DELETE" => Results.Text("Deleting .kdbx files via WebDAV is disabled. Use the admin UI.", statusCode: StatusCodes.Status403Forbidden),
             "LOCK" => HandleLock(context),
@@ -115,7 +115,7 @@ public static class WebDavEndpoints
         return Results.StatusCode(StatusCodes.Status405MethodNotAllowed);
     }
 
-    private static async Task<IResult> HandleGetAsync(HttpContext context, VaultService vault, UserRecord user, VaultFileRecord file, bool includeBody, CancellationToken cancellationToken)
+    private static IResult HandleGet(HttpContext context, VaultService vault, UserRecord user, VaultFileRecord file, bool includeBody, CancellationToken cancellationToken)
     {
         if (!vault.CanRead(user, file))
         {
@@ -212,7 +212,7 @@ public static class WebDavEndpoints
         return Results.StatusCode(StatusCodes.Status200OK);
     }
 
-    private static async Task<IResult> HandlePropFindAsync(HttpContext context, VaultService vault, UserRecord user, bool isCollection, VaultFileRecord? file)
+    private static IResult HandlePropFind(HttpContext context, VaultService vault, UserRecord user, bool isCollection, VaultFileRecord? file)
     {
         var depth = context.Request.Headers["Depth"].ToString();
         var includeChildren = isCollection && !string.Equals(depth, "0", StringComparison.OrdinalIgnoreCase);
@@ -276,7 +276,7 @@ public static class WebDavEndpoints
             .Replace("'", "&apos;", StringComparison.Ordinal);
     }
 
-    private static async Task<WebDavAuthResult?> AuthenticateAsync(HttpContext context, KeePortDb db, PasswordHasher hasher)
+    private static WebDavAuthResult? Authenticate(HttpContext context, KeePortDb db, PasswordHasher hasher)
     {
         var header = context.Request.Headers.Authorization.ToString();
         const string prefix = "Basic ";

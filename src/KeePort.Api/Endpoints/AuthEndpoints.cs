@@ -21,7 +21,7 @@ public static class AuthEndpoints
             return Results.Ok(new SetupStatusResponse(RequiresSetup: !hasAdmin && setupToken is not null, HasUsers: hasUsers));
         });
 
-        group.MapPost("/setup", async (SetupRequest request, KeePortDb db, PasswordHasher hasher, SessionService sessions, IConfiguration configuration, HttpContext context) =>
+        group.MapPost("/setup", (SetupRequest request, KeePortDb db, PasswordHasher hasher, SessionService sessions, IConfiguration configuration, HttpContext context) =>
         {
             if (db.HasAdmin())
             {
@@ -67,7 +67,7 @@ public static class AuthEndpoints
             return Results.Ok(new AuthResponse(ToDto(user), csrfToken));
         });
 
-        group.MapPost("/login", async (LoginRequest request, KeePortDb db, PasswordHasher hasher, SessionService sessions, IConfiguration configuration, HttpContext context) =>
+        group.MapPost("/login", (LoginRequest request, KeePortDb db, PasswordHasher hasher, SessionService sessions, IConfiguration configuration, HttpContext context) =>
         {
             var user = db.GetUserByUsername(request.Username ?? string.Empty);
             if (user is null || user.Disabled || !hasher.Verify(request.Password ?? string.Empty, user.PasswordHash))

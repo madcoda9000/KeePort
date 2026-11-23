@@ -23,7 +23,7 @@ The server stores vault **files** and **metadata**, but never vault secrets. KDB
 Prerequisites: Docker with Compose v2.
 
 ```bash
-git clone https://github.com/YOUR-ORG/keeport.git
+git clone https://github.com/madcoda9000/KeePort.git
 cd keeport
 cp .env.example .env
 docker compose up -d --build
@@ -76,6 +76,15 @@ The Vault UI is served at `/`, the Admin UI at `/admin`, and WebDAV at `/webdav`
 - Admin endpoints are hidden unless the request arrives on an admin port when `KeePort:AdminPorts` is configured.
 
 Do not expose the admin port to the public internet. Use HTTPS for any public exposure of the vault client and WebDAV.
+
+## Browser extension (planned)
+
+A browser extension is not part of the initial release, but the backend is already prepared for it:
+
+- `KeePort:CorsOrigins` allows configuring additional CORS origins for extension contexts without code changes.
+- Authentication uses session cookies plus CSRF tokens; a token-based flow for extensions is planned on top of the existing session infrastructure.
+
+No extension code ships yet – this section documents the intended basis only.
 
 ## Project layout
 

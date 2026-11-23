@@ -24,7 +24,7 @@ public static class VaultEndpoints
             return Results.Ok(vault.ListForUser(user).Select(ToDto).ToArray());
         });
 
-        group.MapGet("/files/{id}/content", async (string id, HttpContext context, VaultService vault, CancellationToken cancellationToken) =>
+        group.MapGet("/files/{id}/content", (string id, HttpContext context, VaultService vault) =>
         {
             if (ApiAuth.RequireAuthenticated(context) is { } unauthorized)
             {
