@@ -2,7 +2,10 @@ import { KeyRoundIcon, ShieldCheckIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 
-/** Composes the split KeePort sign-in screen around the supplied account flow. */
+/**
+ * Composes the split KeePort sign-in screen around the supplied account flow.
+ * @param props - The application area, theme action, and sign-in or setup content to render.
+ */
 export function AuthLayout({
   area,
   themeAction,

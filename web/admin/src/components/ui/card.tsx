@@ -1,7 +1,10 @@
 import * as React from "react"
 import { cn } from "cn"
 
-/** Defines a bordered surface for related content. */
+/**
+ * Defines a bordered surface for related content.
+ * @param props - The visual size, styles, and native card container attributes.
+ */
 function Card({
   className,
   size = "default",
@@ -20,7 +23,10 @@ function Card({
   )
 }
 
-/** Groups a card heading and optional actions. */
+/**
+ * Groups a card heading and optional actions.
+ * @param props - CSS class overrides, the remaining CardHeader attributes forwarded to its element.
+ */
 function CardHeader({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
@@ -34,7 +40,10 @@ function CardHeader({ className, ...props }: React.ComponentProps<"div">) {
   )
 }
 
-/** Renders the card title. */
+/**
+ * Renders the card title.
+ * @param props - CSS class overrides, the remaining CardTitle attributes forwarded to its element.
+ */
 function CardTitle({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
@@ -48,7 +57,10 @@ function CardTitle({ className, ...props }: React.ComponentProps<"div">) {
   )
 }
 
-/** Adds context to the card heading. */
+/**
+ * Adds context to the card heading.
+ * @param props - CSS class overrides, the remaining CardDescription attributes forwarded to its element.
+ */
 function CardDescription({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
@@ -59,7 +71,10 @@ function CardDescription({ className, ...props }: React.ComponentProps<"div">) {
   )
 }
 
-/** Positions an action in the card header. */
+/**
+ * Positions an action in the card header.
+ * @param props - CSS class overrides, the remaining CardAction attributes forwarded to its element.
+ */
 function CardAction({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
@@ -73,7 +88,10 @@ function CardAction({ className, ...props }: React.ComponentProps<"div">) {
   )
 }
 
-/** Wraps the body of a card. */
+/**
+ * Wraps the body of a card.
+ * @param props - CSS class overrides, the remaining CardContent attributes forwarded to its element.
+ */
 function CardContent({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
@@ -84,7 +102,10 @@ function CardContent({ className, ...props }: React.ComponentProps<"div">) {
   )
 }
 
-/** Aligns content at the bottom of a card. */
+/**
+ * Aligns content at the bottom of a card.
+ * @param props - CSS class overrides, the remaining CardFooter attributes forwarded to its element.
+ */
 function CardFooter({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div

@@ -4,6 +4,7 @@ namespace KeePort.Api.Tests;
 
 public class PasswordHasherTests
 {
+    /// <summary>Verifies that a password hash accepts the original password and rejects a different one.</summary>
     [Fact]
     public void Hash_And_Verify_Roundtrip()
     {

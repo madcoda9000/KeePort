@@ -2,38 +2,67 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { PAGE_SIZES, matchesTableSearch, prepareTableRows, selectTablePage, timestampSortValue } from './table-data.ts';
 
+/** Verifies that filtering happens before paging and ignores letter case. */
 test('filters the full list by the typed term, case-insensitively, before pagination', () => {
-  const rows = Array.from({ length: 35 }, (_, index) => ({ name: `File ${index + 1}`, status: index >= 25 ? 'Active' : 'Deleted' }));
-  const matching = prepareTableRows(rows, '  AcT ', (row, query) => matchesTableSearch(query, row.name, row.status));
+  const rows = Array.from({ length: 35 }, /**
+   * Builds enough fixtures to put active files on a later unfiltered page.
+   * @param _ - The unused element of the array-like fixture source.
+   * @param index - The zero-based index in the source collection.
+   */ (_, index) => ({ name: `File ${index + 1}`, status: index >= 25 ? 'Active' : 'Deleted' }));
+  const matching = prepareTableRows(rows, '  AcT ', /**
+   * Allows the query to match the displayed name or status, but not across fields.
+   * @param row - The fixture row supplied to the filter or sort selector.
+   * @param query - The search text before trimming and case normalization.
+   */ (row, query) => matchesTableSearch(query, row.name, row.status));
   assert.equal(selectTablePage(matching, 0, 10).rows[0].name, 'File 26');
   assert.equal(matching.length, 10);
-  assert.equal(prepareTableRows(rows, '  ', () => false).length, 35);
-  assert.equal(prepareTableRows(rows, 'missing', (row, query) => matchesTableSearch(query, row.name)).length, 0);
+  assert.equal(prepareTableRows(rows, '  ', /** Simulates a search with no matches. */ () => false).length, 35);
+  assert.equal(prepareTableRows(rows, 'missing', /**
+   * Restricts this search to the name field.
+   * @param row - The fixture row supplied to the filter or sort selector.
+   * @param query - The search text before trimming and case normalization.
+   */ (row, query) => matchesTableSearch(query, row.name)).length, 0);
 });
 
+/** Verifies natural text sorting before slicing a page without mutating its input. */
 test('sorts before paging, using natural text order and preserving source order', () => {
   const rows = Object.freeze(['Box 11', 'box 2', 'Box 1', 'Box 20']);
+  /**
+   * Uses the fixture string itself as the sort value.
+   * @param row - The fixture row supplied to the filter or sort selector.
+   */
   const value = (row) => row;
+  /** Keeps every fixture row so the test isolates sorting. */
   const matches = () => true;
   assert.deepEqual(prepareTableRows(rows, '', matches, { value, direction: 'ascending' }), ['Box 1', 'box 2', 'Box 11', 'Box 20']);
   assert.deepEqual(prepareTableRows(rows, '', matches, { value, direction: 'descending' }), ['Box 20', 'Box 11', 'box 2', 'Box 1']);
-  const numbers = Array.from({ length: 20 }, (_, index) => index + 1);
+  const numbers = Array.from({ length: 20 }, /**
+   * Builds numbered fixtures for checking page boundaries.
+   * @param _ - The unused element of the array-like fixture source.
+   * @param index - The zero-based index in the source collection.
+   */ (_, index) => index + 1);
   const ordered = prepareTableRows(numbers, '', matches, { value, direction: 'descending' });
   assert.deepEqual(selectTablePage(ordered, 0, 10).rows, [20, 19, 18, 17, 16, 15, 14, 13, 12, 11]);
 });
 
+/** Verifies chronological order across offsets and missing dates last in both directions. */
 test('sorts timestamps by time and puts missing values last in either direction', () => {
   const older = '2025-12-01T00:15:00+02:00';
   const newer = '2025-11-30T23:00:00Z';
   const dates = [newer, null, older];
   const value = timestampSortValue;
-  assert.deepEqual(prepareTableRows(dates, '', () => true, { value, direction: 'ascending' }), [older, newer, null]);
-  assert.deepEqual(prepareTableRows(dates, '', () => true, { value, direction: 'descending' }), [newer, older, null]);
+  assert.deepEqual(prepareTableRows(dates, '', /** Retains every timestamp fixture in the ascending case. */ () => true, { value, direction: 'ascending' }), [older, newer, null]);
+  assert.deepEqual(prepareTableRows(dates, '', /** Retains every timestamp fixture in the descending case. */ () => true, { value, direction: 'descending' }), [newer, older, null]);
 });
 
+/** Verifies supported page sizes and clamping for smaller or empty results. */
 test('exposes the three page sizes and clamps after rows are removed or filtered', () => {
   assert.deepEqual(PAGE_SIZES, [10, 20, 50]);
-  const rows = Array.from({ length: 53 }, (_, index) => index + 1);
+  const rows = Array.from({ length: 53 }, /**
+   * Builds sequential rows that extend past the first page.
+   * @param _ - The unused element of the array-like fixture source.
+   * @param index - The zero-based index in the source collection.
+   */ (_, index) => index + 1);
   for (const size of PAGE_SIZES) {
     const page = selectTablePage(rows, 0, size);
     assert.equal(page.rows.length, size);

@@ -91,24 +91,63 @@ const ADMIN_SECTIONS = {
 } as const;
 
 const VAULT_COLUMNS: readonly TableColumn<AdminFile>[] = [
+  /**
+   * Sorts by vault filename.
+   * @param file - The vault file metadata supplying this column's sort value.
+   */
   { id: 'name', label: 'Name', sortValue: (file) => file.name },
+  /**
+   * Sorts by file size in bytes.
+   * @param file - The vault file metadata supplying this column's sort value.
+   */
   { id: 'size', label: 'Size', sortValue: (file) => file.size },
+  /**
+   * Sorts by content revision number.
+   * @param file - The vault file metadata supplying this column's sort value.
+   */
   { id: 'revision', label: 'Rev', sortValue: (file) => file.revision },
+  /**
+   * Sorts by modification time, not the formatted date.
+   * @param file - The vault file metadata supplying this column's sort value.
+   */
   { id: 'updated', label: 'Updated', sortValue: (file) => timestampSortValue(file.updatedAt) },
+  /**
+   * Sorts by the visible deletion status.
+   * @param file - The vault file metadata supplying this column's sort value.
+   */
   { id: 'status', label: 'Status', sortValue: (file) => file.deletedAt ? 'Deleted' : 'Active' },
   { id: 'actions', label: 'Actions' }
 ];
 
 const ACCOUNT_COLUMNS: readonly TableColumn<User>[] = [
+  /**
+   * Sorts by account username.
+   * @param account - The account row supplying the displayed fields.
+   */
   { id: 'user', label: 'User', sortValue: (account) => account.username },
+  /**
+   * Sorts by role name.
+   * @param account - The account row supplying the displayed fields.
+   */
   { id: 'role', label: 'Role', sortValue: (account) => account.role },
+  /**
+   * Sorts enabled accounts before disabled accounts in ascending order.
+   * @param account - The account row supplying the displayed fields.
+   */
   { id: 'disabled', label: 'Disabled', sortValue: (account) => Number(account.disabled) },
   { id: 'newPassword', label: 'New password' },
+  /**
+   * Sorts by the last sign-in time, leaving missing dates distinct.
+   * @param account - The account row supplying the displayed fields.
+   */
   { id: 'lastLogin', label: 'Last login', sortValue: (account) => timestampSortValue(account.lastLoginAt) },
   { id: 'actions', label: 'Actions' }
 ];
 
-/** Prompts for confirmation before running a destructive admin action. */
+/**
+ * Prompts for confirmation before running a destructive admin action.
+ * @param props - The action label, confirmation title and description, disabled state, and callback to run on acceptance.
+ */
 function ConfirmAction({
   label,
   title,
@@ -145,28 +184,49 @@ function ConfirmAction({
   );
 }
 
+/**
+ * Formats a file size in bytes, kilobytes, or megabytes.
+ * @param size - The file size in bytes.
+ */
 function formatBytes(size: number) {
   if (size < 1024) return `${size} B`;
   if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+/**
+ * Formats a timestamp for display or shows a placeholder if missing.
+ * @param value - The timestamp string to format for the current locale.
+ */
 function formatDate(value: string | null) {
   if (!value) return '—';
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
 }
 
+/**
+ * Shows API error details when available and otherwise uses the fallback.
+ * @param error - The caught error to inspect.
+ * @param fallback - The message to use if the error has no useful text.
+ */
 function errorText(error: unknown, fallback: string) {
   if (error instanceof ApiError) return error.message;
   if (error instanceof Error) return error.message;
   return fallback;
 }
 
+/**
+ * Copies only the bytes represented by the view into an ArrayBuffer.
+ * @param bytes - The byte view whose selected range should be copied.
+ */
 function uint8ToArrayBuffer(bytes: Uint8Array): ArrayBuffer {
   return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
 }
 
+/**
+ * Renders account details and controls for editing or deleting that account.
+ * @param props - The managed account, signed-in account ID, and callbacks for refreshing data and reporting outcomes.
+ */
 function UserRow({
   user,
   currentUserId,
@@ -183,6 +243,7 @@ function UserRow({
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
 
+  /** Resets account edits when the server-provided account changes. */
   useEffect(() => {
     setRole(user.role);
     setDisabled(user.disabled);
@@ -191,6 +252,7 @@ function UserRow({
 
   const changed = role !== user.role || disabled !== user.disabled || Boolean(password);
 
+  /** Saves the account changes, sending a new password only when entered. */
   async function save() {
     setBusy(true);
     setMessage(null);
@@ -206,6 +268,7 @@ function UserRow({
     }
   }
 
+  /** Deletes the account and refreshes the relevant lists. */
   async function remove() {
     setBusy(true);
     setMessage(null);
@@ -234,7 +297,10 @@ function UserRow({
         <NativeSelect
           aria-label={`Role for ${user.username}`}
           value={role}
-          onChange={(event) => setRole(event.target.value as 'admin' | 'user')}
+          onChange={/**
+           * Updates the draft account role.
+           * @param event - The account role selector change event.
+           */ (event) => setRole(event.target.value as 'admin' | 'user')}
         >
           <NativeSelectOption value="admin">Admin</NativeSelectOption>
           <NativeSelectOption value="user">User</NativeSelectOption>
@@ -244,7 +310,10 @@ function UserRow({
         <Checkbox
           aria-label={`Disable ${user.username}`}
           checked={disabled}
-          onCheckedChange={(checked) => setDisabled(checked === true)}
+          onCheckedChange={/**
+           * Updates whether the draft account is disabled.
+           * @param checked - The checkbox state indicating whether to disable the account.
+           */ (checked) => setDisabled(checked === true)}
         />
       </TableCell>
       <TableCell>
@@ -255,7 +324,10 @@ function UserRow({
           autoComplete="new-password"
           placeholder="Unchanged"
           value={password}
-          onChange={(event) => setPassword(event.target.value)}
+          onChange={/**
+           * Stores the draft replacement password until save.
+           * @param event - The replacement password input change event.
+           */ (event) => setPassword(event.target.value)}
         />
       </TableCell>
       <TableCell className="text-muted-foreground">{formatDate(user.lastLoginAt)}</TableCell>
@@ -269,7 +341,7 @@ function UserRow({
             title={`Delete ${user.username}?`}
             description="This permanently removes the account and its access to vaults."
             disabled={user.id === currentUserId || busy}
-            onConfirm={() => {
+            onConfirm={/** Deletes the account after confirmation. */ () => {
               void remove();
             }}
           />
@@ -279,6 +351,10 @@ function UserRow({
   );
 }
 
+/**
+ * Renders vault metadata and actions appropriate to the file's deletion status.
+ * @param props - The vault metadata and callbacks to refresh the list, report outcomes, and open its permissions.
+ */
 function FileRow({
   file,
   onChanged,
@@ -292,6 +368,11 @@ function FileRow({
 }) {
   const [busy, setBusy] = useState(false);
 
+  /**
+   * Runs a vault mutation with shared busy, notification, and refresh handling.
+   * @param action - The API operation for the selected vault.
+   * @param success - The notice to display after the operation succeeds.
+   */
   async function run(action: () => Promise<unknown>, success: string) {
     setBusy(true);
     setMessage(null);
@@ -308,15 +389,19 @@ function FileRow({
 
   const [renameOpen, setRenameOpen] = useState(false);
 
-  /** Submits the selected file's new name after closing its dialog. */
+  /**
+   * Submits the selected file's new name after closing its dialog.
+   * @param event - The submission event from the vault rename form.
+   */
   async function rename(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const name = String(new FormData(event.currentTarget).get('name') ?? '').trim();
     if (!name) return;
     setRenameOpen(false);
-    if (name !== file.name) await run(() => api.renameFile(file.id, name), 'Vault renamed.');
+    if (name !== file.name) await run(/** Submits the new name for the selected vault. */ () => api.renameFile(file.id, name), 'Vault renamed.');
   }
 
+  /** Downloads the encrypted vault through a temporary browser object URL. */
   async function download() {
     setBusy(true);
     setMessage(null);
@@ -336,12 +421,14 @@ function FileRow({
     }
   }
 
+  /** Moves the selected vault to the deleted files list. */
   async function remove() {
-    await run(() => api.deleteFile(file.id), 'Vault moved to deleted vaults.');
+    await run(/** Requests a soft deletion of the selected vault. */ () => api.deleteFile(file.id), 'Vault moved to deleted vaults.');
   }
 
+  /** Restores the selected vault to the active files list. */
   async function restore() {
-    await run(() => api.restoreFile(file.id), 'Vault restored.');
+    await run(/** Requests restoration of the selected vault. */ () => api.restoreFile(file.id), 'Vault restored.');
   }
 
   return (
@@ -358,7 +445,7 @@ function FileRow({
       <TableCell>
         <div className="flex items-center gap-2">
           {!file.deletedAt && (
-            <Button variant="outline" size="sm" disabled={busy} onClick={() => onOpenPermissions(file)}>
+            <Button variant="outline" size="sm" disabled={busy} onClick={/** Opens the permissions editor for this vault. */ () => onOpenPermissions(file)}>
               Permissions
             </Button>
           )}
@@ -406,7 +493,7 @@ function FileRow({
               title="Move this vault to deleted files?"
               description={`You can restore ${file.name} from the deleted files list.`}
               disabled={busy}
-              onConfirm={() => {
+              onConfirm={/** Soft-deletes the vault after confirmation. */ () => {
                 void remove();
               }}
             />
@@ -417,6 +504,10 @@ function FileRow({
   );
 }
 
+/**
+ * Loads and edits the complete access list for a vault.
+ * @param props - The target vault, candidate accounts, and callbacks to close the panel and report outcomes.
+ */
 function PermissionPanel({
   file,
   users,
@@ -432,11 +523,15 @@ function PermissionPanel({
   const [busy, setBusy] = useState(true);
   const [loaded, setLoaded] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
-  const eligibleUsers = useMemo(() => users.filter((user) => user.role === 'user' && !user.disabled), [users]);
+  const eligibleUsers = useMemo(/** Derives the accounts that can receive vault grants. */ () => users.filter(/**
+   * Includes only enabled non-admin user accounts.
+   * @param user - The candidate account whose role and disabled state are checked.
+   */ (user) => user.role === 'user' && !user.disabled), [users]);
 
+  /** Reloads permissions when the selected vault or eligible accounts change. */
   useEffect(() => {
     let cancelled = false;
-    (async () => {
+    (/** Loads persisted grants and initializes unassigned accounts to no access. */ async () => {
       setBusy(true);
       setLoaded(false);
       setErrorMessage('');
@@ -457,18 +552,22 @@ function PermissionPanel({
         if (!cancelled) setBusy(false);
       }
     })();
-    return () => {
+    return /** Prevents stale permission requests from updating a closed or changed panel. */ () => {
       cancelled = true;
     };
   }, [file.id, eligibleUsers]);
 
+  /** Saves the edited grants as a complete replacement access list. */
   async function save() {
     setBusy(true);
     setErrorMessage('');
     try {
       await api.setPermissions(
         file.id,
-        Object.entries(rows).map(([userId, permission]) => ({ userId, permission }))
+        Object.entries(rows).map(/**
+         * Converts each draft entry into the API's grant shape.
+         * @param entry - The draft pair containing a user ID and its selected access level.
+         */ ([userId, permission]) => ({ userId, permission }))
       );
       setMessage({ kind: 'notice', text: `Permissions updated for ${file.name}.` });
       onClose();
@@ -482,7 +581,10 @@ function PermissionPanel({
   return (
     <Sheet
       open
-      onOpenChange={(open) => {
+      onOpenChange={/**
+       * Closes the permissions panel on dismissal.
+       * @param open - The access panel's next open state.
+       */ (open) => {
         if (!open) onClose();
       }}
     >
@@ -508,15 +610,24 @@ function PermissionPanel({
             </Alert>
           )}
           {loaded &&
-            eligibleUsers.map((user) => (
+            eligibleUsers.map(/**
+             * Renders one permission selector for each eligible account.
+             * @param user - The eligible account that receives a permission selector.
+             */ (user) => (
               <Field orientation="horizontal" key={user.id} className="justify-between rounded-lg border p-3">
                 <FieldLabel htmlFor={`permission-${user.id}`}>{user.username}</FieldLabel>
                 <NativeSelect
                   id={`permission-${user.id}`}
                   value={rows[user.id] ?? 'none'}
                   disabled={busy}
-                  onChange={(event) =>
-                    setRows((current) => ({ ...current, [user.id]: event.target.value as PermissionValue }))
+                  onChange={/**
+                   * Applies a changed permission to the account's draft grant.
+                   * @param event - The selected account's permission selector change event.
+                   */ (event) =>
+                    setRows(/**
+                     * Merges the selected grant without replacing the other unsaved edits.
+                     * @param current - The current draft grant for each account ID.
+                     */ (current) => ({ ...current, [user.id]: event.target.value as PermissionValue }))
                   }
                 >
                   <NativeSelectOption value="none">No access</NativeSelectOption>
@@ -536,6 +647,7 @@ function PermissionPanel({
   );
 }
 
+/** Manages the admin session and renders the selected administration view. */
 export default function App() {
   const [ready, setReady] = useState(false);
   const [setupRequired, setSetupRequired] = useState(false);
@@ -545,7 +657,10 @@ export default function App() {
   const [files, setFiles] = useState<AdminFile[]>([]);
   const [includeDeleted, setIncludeDeleted] = useState(false);
   const [credentials, setCredentials] = useState<WebDavCredential[]>([]);
-  const usernamesById = useMemo(() => new Map(users.map((item) => [item.id, item.username])), [users]);
+  const usernamesById = useMemo(/** Builds a lookup of account names for credential rows. */ () => new Map(users.map(/**
+   * Pairs each account ID with its display username.
+   * @param item - One account whose ID is mapped to its username.
+   */ (item) => [item.id, item.username])), [users]);
   const [permFile, setPermFile] = useState<AdminFile | null>(null);
   const [message, setMessage] = useState<Message>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -563,25 +678,30 @@ export default function App() {
   const [webdavLabel, setWebdavLabel] = useState('');
   const [webdavPassword, setWebdavPassword] = useState('');
 
+  /** Reloads the managed accounts from the Admin API. */
   async function refreshUsers() {
     setUsers(await api.listUsers());
   }
 
+  /** Reloads vault metadata using the current deletion filter. */
   async function refreshFiles() {
     setFiles(await api.listFiles(includeDeleted));
   }
 
+  /** Reloads the WebDAV credential inventory. */
   async function refreshWebDav() {
     setCredentials(await api.listWebDavCredentials());
   }
 
+  /** Refreshes accounts and WebDAV credentials in parallel. */
   async function refreshAll() {
     await Promise.all([refreshUsers(), refreshWebDav()]);
   }
 
+  /** Initializes the admin console and ignores responses after unmount. */
   useEffect(() => {
     let cancelled = false;
-    (async () => {
+    (/** Checks first-run setup before restoring an existing administrator session. */ async () => {
       try {
         const status = await api.setupStatus();
         if (cancelled) return;
@@ -602,33 +722,49 @@ export default function App() {
         if (!cancelled) setReady(true);
       }
     })();
-    return () => {
+    return /** Invalidates the pending initialization task when the effect ends. */ () => {
       cancelled = true;
     };
   }, []);
 
+  /** Refreshes files when a signed-in administrator changes the deletion filter. */
   useEffect(() => {
     if (!ready || !user || user.role !== 'admin') return;
     let cancelled = false;
+    /**
+     * Reports file-list failures only while the request is current.
+     * @param error - The reason why fetching the vault file list failed.
+     */
     api
       .listFiles(includeDeleted)
-      .then((result) => {
+      .then(/**
+       * Publishes the new file list only while the request is current.
+       * @param result - The vault file list returned for the current deletion filter.
+       */ (result) => {
         if (!cancelled) setFiles(result);
       })
       .catch((error) => {
         if (!cancelled) setMessage({ kind: 'error', text: errorText(error, 'Unable to load vault files.') });
       });
-    return () => {
+    return /** Invalidates a pending file query when its dependencies change. */ () => {
       cancelled = true;
     };
   }, [includeDeleted, ready, user]);
 
+  /**
+   * Enters the admin workspace and loads management data after authentication.
+   * @param result - The successful setup or login result containing the administrator account.
+   */
   async function afterAuth(result: { user: User }) {
     setUser(result.user);
     setSetupRequired(false);
     await refreshAll();
   }
 
+  /**
+   * Submits admin credentials and clears the form on successful sign-in.
+   * @param event - The submission event from the sign-in form.
+   */
   async function handleLogin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = event.currentTarget;
@@ -649,6 +785,10 @@ export default function App() {
     }
   }
 
+  /**
+   * Submits the setup token and first administrator's account details.
+   * @param event - The submission event from the first-run setup form.
+   */
   async function handleSetup(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = event.currentTarget;
@@ -671,12 +811,27 @@ export default function App() {
     }
   }
 
-  /** Updates the profile and the matching account row after an email change. */
+  /**
+   * Updates the profile and the matching account row after an email change.
+   * @param updated - The account returned by the profile update.
+   */
   function handleProfileUpdate(updated: User) {
+    /**
+     * Replaces the active profile only when the updated account is signed in.
+     * @param current - The account currently signed in, or null when signed out.
+     */
     setUser((current) => current?.id === updated.id ? updated : current);
-    setUsers((items) => items.map((item) => item.id === updated.id ? updated : item));
+    /**
+     * Updates the account table without reloading the inventory.
+     * @param items - The account records currently displayed in the table.
+     */
+    setUsers((items) => items.map(/**
+     * Replaces only the row matching the updated account ID.
+     * @param item - One current account row to compare with the updated account ID.
+     */ (item) => item.id === updated.id ? updated : item));
   }
 
+  /** Clears local admin state and ends the server session if it still exists. */
   async function handleLogout() {
     setMessage(null);
     setNewEmail('');
@@ -695,6 +850,10 @@ export default function App() {
     }
   }
 
+  /**
+   * Creates an account from the form and refreshes the account list.
+   * @param event - The submission event from the account creation form.
+   */
   async function handleCreateUser(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setBusy('create-user');
@@ -714,6 +873,10 @@ export default function App() {
     }
   }
 
+  /**
+   * Uploads the selected encrypted file and refreshes the vault list.
+   * @param event - The selection change from the file input containing the selected encrypted vault.
+   */
   async function handleUpload(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     event.target.value = '';
@@ -731,6 +894,7 @@ export default function App() {
     }
   }
 
+  /** Creates an encrypted KDBX in the browser and uploads the resulting file. */
   async function handleCreateVault() {
     if (!newVaultName.trim() || !newVaultPassword) {
       setMessage({ kind: 'error', text: 'Vault name and master password are required.' });
@@ -757,6 +921,10 @@ export default function App() {
     }
   }
 
+  /**
+   * Creates a WebDAV credential for the selected user account.
+   * @param event - The submission event from the WebDAV credential creation form.
+   */
   async function handleCreateWebDav(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!webdavUserId || !webdavLabel.trim() || !webdavPassword) {
@@ -781,6 +949,10 @@ export default function App() {
     }
   }
 
+  /**
+   * Revokes the credential and refreshes the credential list.
+   * @param id - The ID of the WebDAV credential to revoke.
+   */
   async function revokeWebDav(id: string) {
     setBusy('revoke-webdav');
     setMessage(null);
@@ -802,7 +974,7 @@ export default function App() {
       size="icon"
       aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
       title={theme === 'dark' ? 'Light mode' : 'Dark mode'}
-      onClick={() => setTheme(toggleTheme())}
+      onClick={/** Toggles the theme and updates the workspace controls. */ () => setTheme(toggleTheme())}
     >
       {theme === 'dark' ? <SunIcon /> : <MoonIcon />}
     </Button>
@@ -882,7 +1054,10 @@ export default function App() {
         tab={tab}
         user={user}
         onProfileUpdate={handleProfileUpdate}
-        onSelect={(next) => {
+        onSelect={/**
+         * Switches admin sections and clears the previous selection and message.
+         * @param next - The section selected in the administration navigation.
+         */ (next) => {
           setTab(next);
           setPermFile(null);
           setMessage(null);
@@ -931,7 +1106,10 @@ export default function App() {
                   <CardContent>
                     <form
                       className="grid gap-4"
-                      onSubmit={(event) => {
+                      onSubmit={/**
+                       * Creates the vault without navigating away from the admin workspace.
+                       * @param event - The new-vault form submission event.
+                       */ (event) => {
                         event.preventDefault();
                         void handleCreateVault();
                       }}
@@ -942,7 +1120,10 @@ export default function App() {
                           <Input
                             id="vault-name"
                             value={newVaultName}
-                            onChange={(event) => setNewVaultName(event.target.value)}
+                            onChange={/**
+                             * Updates the new vault's draft filename.
+                             * @param event - The vault filename input change event.
+                             */ (event) => setNewVaultName(event.target.value)}
                             placeholder="family.kdbx"
                             required
                           />
@@ -954,7 +1135,10 @@ export default function App() {
                             type="password"
                             autoComplete="off"
                             value={newVaultPassword}
-                            onChange={(event) => setNewVaultPassword(event.target.value)}
+                            onChange={/**
+                             * Updates the master password used for local KDBX creation.
+                             * @param event - The new vault master password input change event.
+                             */ (event) => setNewVaultPassword(event.target.value)}
                             required
                           />
                         </Field>
@@ -1002,7 +1186,10 @@ export default function App() {
                     <Checkbox
                       id="show-deleted"
                       checked={includeDeleted}
-                      onCheckedChange={(checked) => setIncludeDeleted(checked === true)}
+                      onCheckedChange={/**
+                       * Changes whether the file list includes deleted vaults.
+                       * @param checked - The checkbox state for including soft-deleted files.
+                       */ (checked) => setIncludeDeleted(checked === true)}
                     />
                     <FieldLabel htmlFor="show-deleted">Show deleted</FieldLabel>
                   </Field>
@@ -1013,10 +1200,17 @@ export default function App() {
                   columns={VAULT_COLUMNS}
                   searchLabel="Search vault files"
                   emptyMessage="No vault files yet."
-                  matches={(file, query) => matchesTableSearch(
+                  matches={/**
+                   * Searches the visible filename, size, revision, date, and status fields.
+                   * @param file - The vault row whose displayed metadata is searched.
+                   * @param query - The search text to match against the row.
+                   */ (file, query) => matchesTableSearch(
                     query, file.name, formatBytes(file.size), file.revision, formatDate(file.updatedAt), file.deletedAt ? 'Deleted' : 'Active'
                   )}
-                  renderRow={(file) => (
+                  renderRow={/**
+                   * Renders a vault row with its management actions.
+                   * @param file - The vault metadata row to render with its actions.
+                   */ (file) => (
                     <FileRow
                       key={file.id}
                       file={file}
@@ -1032,7 +1226,7 @@ export default function App() {
                   key={permFile.id}
                   file={permFile}
                   users={users}
-                  onClose={() => setPermFile(null)}
+                  onClose={/** Clears the permissions selection when the panel closes. */ () => setPermFile(null)}
                   setMessage={setMessage}
                 />
               )}
@@ -1055,7 +1249,10 @@ export default function App() {
                       <Input
                         id="new-username"
                         value={newUsername}
-                        onChange={(event) => setNewUsername(event.target.value)}
+                        onChange={/**
+                         * Updates the draft username for the new account.
+                         * @param event - The new account username input change event.
+                         */ (event) => setNewUsername(event.target.value)}
                         required
                       />
                     </Field>
@@ -1067,7 +1264,10 @@ export default function App() {
                         autoComplete="off"
                         maxLength={254}
                         value={newEmail}
-                        onChange={(event) => setNewEmail(event.target.value)}
+                        onChange={/**
+                         * Updates the draft email for the new account.
+                         * @param event - The new account email input change event.
+                         */ (event) => setNewEmail(event.target.value)}
                         required
                       />
                     </Field>
@@ -1078,7 +1278,10 @@ export default function App() {
                         type="password"
                         autoComplete="new-password"
                         value={newPassword}
-                        onChange={(event) => setNewPassword(event.target.value)}
+                        onChange={/**
+                         * Updates the draft login password for the new account.
+                         * @param event - The new account password input change event.
+                         */ (event) => setNewPassword(event.target.value)}
                         required
                       />
                     </Field>
@@ -1087,7 +1290,10 @@ export default function App() {
                       <NativeSelect
                         id="new-role"
                         value={newRole}
-                        onChange={(event) => setNewRole(event.target.value as 'admin' | 'user')}
+                        onChange={/**
+                         * Updates the initial role for the new account.
+                         * @param event - The new account role selector change event.
+                         */ (event) => setNewRole(event.target.value as 'admin' | 'user')}
                       >
                         <NativeSelectOption value="user">User</NativeSelectOption>
                         <NativeSelectOption value="admin">Admin</NativeSelectOption>
@@ -1113,10 +1319,17 @@ export default function App() {
                   columns={ACCOUNT_COLUMNS}
                   searchLabel="Search accounts"
                   emptyMessage="No accounts yet."
-                  matches={(account, query) => matchesTableSearch(
+                  matches={/**
+                   * Searches the displayed account details.
+                   * @param account - The account row supplying the displayed fields.
+                   * @param query - The search text to match against the row.
+                   */ (account, query) => matchesTableSearch(
                     query, account.username, account.email, account.role, account.disabled ? 'Disabled' : 'Enabled', formatDate(account.lastLoginAt)
                   )}
-                  renderRow={(account) => (
+                  renderRow={/**
+                   * Renders an editable row for the account.
+                   * @param account - The account row supplying the displayed fields.
+                   */ (account) => (
                     <UserRow
                       key={account.id}
                       user={account}
@@ -1147,13 +1360,22 @@ export default function App() {
                         id="webdav-user"
                         value={webdavUserId}
                         className="w-full"
-                        onChange={(event) => setWebdavUserId(event.target.value)}
+                        onChange={/**
+                         * Selects the account that will own the new WebDAV credential.
+                         * @param event - The WebDAV owner account selector change event.
+                         */ (event) => setWebdavUserId(event.target.value)}
                         required
                       >
                         <NativeSelectOption value="">Select user</NativeSelectOption>
                         {users
-                          .filter((item) => item.role === 'user' && !item.disabled)
-                          .map((item) => (
+                          .filter(/**
+                           * Offers WebDAV credentials only for enabled non-admin accounts.
+                           * @param item - One candidate account to test for WebDAV eligibility.
+                           */ (item) => item.role === 'user' && !item.disabled)
+                          .map(/**
+                           * Displays an eligible account as a credential-owner option.
+                           * @param item - The eligible account shown as a WebDAV owner option.
+                           */ (item) => (
                             <NativeSelectOption key={item.id} value={item.id}>
                               {item.username}
                             </NativeSelectOption>
@@ -1165,7 +1387,10 @@ export default function App() {
                       <Input
                         id="webdav-label"
                         value={webdavLabel}
-                        onChange={(event) => setWebdavLabel(event.target.value)}
+                        onChange={/**
+                         * Updates the draft WebDAV credential label.
+                         * @param event - The WebDAV credential label input change event.
+                         */ (event) => setWebdavLabel(event.target.value)}
                         placeholder="iPhone KeePassium"
                         required
                       />
@@ -1177,7 +1402,10 @@ export default function App() {
                         type="password"
                         autoComplete="new-password"
                         value={webdavPassword}
-                        onChange={(event) => setWebdavPassword(event.target.value)}
+                        onChange={/**
+                         * Updates the draft WebDAV password.
+                         * @param event - The WebDAV password input change event.
+                         */ (event) => setWebdavPassword(event.target.value)}
                         required
                       />
                     </Field>
@@ -1197,21 +1425,52 @@ export default function App() {
                   label="App credentials"
                   rows={credentials}
                   columns={[
+                    /**
+                     * Sorts by the WebDAV login name.
+                     * @param item - The WebDAV credential supplying this column's sort value.
+                     */
                     { id: 'username', label: 'Username', sortValue: (item) => item.username },
+                    /**
+                     * Sorts by the credential label.
+                     * @param item - The WebDAV credential supplying this column's sort value.
+                     */
                     { id: 'label', label: 'Label', sortValue: (item) => item.label },
+                    /**
+                     * Sorts by the owner's displayed name, falling back to the owner ID.
+                     * @param item - The WebDAV credential supplying this column's sort value.
+                     */
                     { id: 'user', label: 'User', sortValue: (item) => usernamesById.get(item.userId) ?? item.userId },
+                    /**
+                     * Sorts by credential creation time.
+                     * @param item - The WebDAV credential supplying this column's sort value.
+                     */
                     { id: 'created', label: 'Created', sortValue: (item) => timestampSortValue(item.createdAt) },
+                    /**
+                     * Sorts by the last use time, leaving unused credentials distinct.
+                     * @param item - The WebDAV credential supplying this column's sort value.
+                     */
                     { id: 'lastUsed', label: 'Last used', sortValue: (item) => timestampSortValue(item.lastUsedAt) },
+                    /**
+                     * Sorts by the visible revocation status.
+                     * @param item - The WebDAV credential supplying this column's sort value.
+                     */
                     { id: 'status', label: 'Status', sortValue: (item) => item.revokedAt ? 'Revoked' : 'Active' },
                     { id: 'actions', label: 'Actions' }
                   ]}
                   searchLabel="Search WebDAV credentials"
                   emptyMessage="No WebDAV credentials yet."
-                  matches={(item, query) => matchesTableSearch(
+                  matches={/**
+                   * Searches visible credential metadata without using its password.
+                   * @param item - The credential whose displayed metadata is searched.
+                   * @param query - The search text to match against the row.
+                   */ (item, query) => matchesTableSearch(
                     query, item.username, item.label, usernamesById.get(item.userId) ?? item.userId,
                     formatDate(item.createdAt), formatDate(item.lastUsedAt), item.revokedAt ? 'Revoked' : 'Active'
                   )}
-                  renderRow={(credential) => (
+                  renderRow={/**
+                   * Renders the credential details and its revocation action.
+                   * @param credential - The WebDAV credential whose metadata and revocation action are rendered.
+                   */ (credential) => (
                     <TableRow key={credential.id}>
                       <TableCell className="ps-6 font-medium">{credential.username}</TableCell>
                       <TableCell>{credential.label}</TableCell>
@@ -1230,7 +1489,7 @@ export default function App() {
                             title="Revoke WebDAV access?"
                             description={`The client using ${credential.username} will no longer be able to connect.`}
                             disabled={busy === 'revoke-webdav'}
-                            onConfirm={() => {
+                            onConfirm={/** Revokes this credential after confirmation. */ () => {
                               void revokeWebDav(credential.id);
                             }}
                           />
@@ -1248,7 +1507,10 @@ export default function App() {
   );
 }
 
-/** Shows the admin sections and closes the mobile navigation drawer after selection. */
+/**
+ * Shows the admin sections and closes the mobile navigation drawer after selection.
+ * @param props - The active section, signed-in administrator, and callbacks for profile updates and section changes.
+ */
 function AdminNavigation({ tab, user, onProfileUpdate, onSelect }: {
   tab: Tab;
   user: User;
@@ -1273,7 +1535,10 @@ function AdminNavigation({ tab, user, onProfileUpdate, onSelect }: {
         <SidebarGroup>
           <SidebarGroupLabel>Manage</SidebarGroupLabel>
           <SidebarMenu>
-            {(Object.keys(ADMIN_SECTIONS) as Tab[]).map((section) => {
+            {(Object.keys(ADMIN_SECTIONS) as Tab[]).map(/**
+             * Renders one navigation button for each admin section.
+             * @param section - The admin section identifier used to select its label and icon.
+             */ (section) => {
               const { title, icon: Icon } = ADMIN_SECTIONS[section];
               return (
                 <SidebarMenuItem key={section}>
@@ -1281,7 +1546,7 @@ function AdminNavigation({ tab, user, onProfileUpdate, onSelect }: {
                     type="button"
                     isActive={tab === section}
                     aria-current={tab === section ? 'page' : undefined}
-                    onClick={() => {
+                    onClick={/** Changes sections only when the selected button is not already active. */ () => {
                       if (section !== tab) onSelect(section);
                       setOpenMobile(false);
                     }}

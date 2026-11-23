@@ -21,6 +21,7 @@ public class KeePortApiTests : IDisposable
     private readonly HttpClient _admin;
     private readonly HttpClient _user;
 
+    /// <summary>Creates an isolated data directory and separate admin and vault HTTP clients.</summary>
     public KeePortApiTests()
     {
         _dataDir = Path.Combine(Path.GetTempPath(), $"keeport-tests-{Guid.NewGuid():N}");
@@ -32,6 +33,7 @@ public class KeePortApiTests : IDisposable
         _user = _factory.CreateClient();
     }
 
+    /// <summary>Disposes the HTTP clients and host, then cleans up the test environment.</summary>
     public void Dispose()
     {
         _admin.Dispose();
@@ -42,6 +44,7 @@ public class KeePortApiTests : IDisposable
         try { Directory.Delete(_dataDir, recursive: true); } catch { /* best effort test cleanup */ }
     }
 
+    /// <summary>Verifies role isolation, vault access grants, and WebDAV access boundaries.</summary>
     [Fact]
     public async Task Roles_Acls_And_WebDav_Boundaries_Are_Enforced()
     {
@@ -87,6 +90,7 @@ public class KeePortApiTests : IDisposable
         Assert.Equal(HttpStatusCode.Forbidden, webDavDelete.StatusCode);
     }
 
+    /// <summary>Verifies that stale writes preserve the original and save the submitted conflict copy.</summary>
     [Fact]
     public async Task ETag_Conflicts_Do_Not_Overwrite_And_Writes_Are_Atomic()
     {
@@ -130,7 +134,9 @@ public class KeePortApiTests : IDisposable
 
         var files = await GetJsonAsync(_admin, "/api/admin/files?includeDeleted=false");
         Assert.Equal(3, files.GetArrayLength());
-        var copies = files.EnumerateArray().Where(file => file.GetProperty("id").GetString() != vault.Id).ToArray();
+        var copies = files.EnumerateArray().Where(/* Excludes the original vault from the conflict-copy candidates.
+         * <param name="file">One returned file entry that may be the preserved conflict copy.</param>
+         */ file => file.GetProperty("id").GetString() != vault.Id).ToArray();
         var userFiles = await GetJsonAsync(_user, "/api/vault/files");
         Assert.Equal(vault.Id, Assert.Single(userFiles.EnumerateArray()).GetProperty("id").GetString());
         using var listing = await SendAsync(_user, new HttpMethod("PROPFIND"), "/webdav/", basic: credentials.BasicAuth);
@@ -170,11 +176,17 @@ public class KeePortApiTests : IDisposable
         var (csrf, _) = await LoginAsync(_user, "alice", "User passphrase 123");
         var url = $"/api/vault/files/{vault.Id}/content";
         var submissions = new[] { KdbxBytes("first"), KdbxBytes("second") };
-        var writes = submissions.Select(bytes => SendAsync(_user, HttpMethod.Put, url, bytes: bytes, csrf: csrf, etag: vault.ETag));
+        var writes = submissions.Select(/* Submits each candidate write with the same original ETag.
+         * <param name="bytes">The encrypted payload submitted by one competing write.</param>
+         */ bytes => SendAsync(_user, HttpMethod.Put, url, bytes: bytes, csrf: csrf, etag: vault.ETag));
         var responses = await Task.WhenAll(writes);
         using var first = responses[0];
         using var second = responses[1];
+        // Identifies the single successful concurrent write by its status.
+        // <param name="response">A concurrent write response being checked for success.</param>
         Assert.Single(responses, response => response.StatusCode == HttpStatusCode.OK);
+        // Identifies the rejected concurrent write by its conflict status.
+        // <param name="response">A concurrent write response being checked for conflict.</param>
         Assert.Single(responses, response => response.StatusCode == HttpStatusCode.Conflict);
         var winner = first.StatusCode == HttpStatusCode.OK ? 0 : 1;
         using var original = await _user.GetAsync(url);
@@ -182,7 +194,9 @@ public class KeePortApiTests : IDisposable
         Assert.Equal("2", original.Headers.GetValues("X-KeePort-Revision").Single());
 
         var files = await GetJsonAsync(_admin, "/api/admin/files?includeDeleted=false");
-        var copy = Assert.Single(files.EnumerateArray().Where(file => file.GetProperty("id").GetString() != vault.Id));
+        var copy = Assert.Single(files.EnumerateArray().Where(/* Excludes the winning vault file when finding the preserved losing submission.
+         * <param name="file">One returned file entry to compare with the original vault ID.</param>
+         */ file => file.GetProperty("id").GetString() != vault.Id));
         var name = copy.GetProperty("name").GetString()!;
         Assert.True(name.Length <= 200);
         Assert.Contains(".conflict-", name);
@@ -207,7 +221,9 @@ public class KeePortApiTests : IDisposable
         Assert.NotNull(limited.Headers.RetryAfter?.Delta);
         Assert.Equal("rate_limited", (await limited.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("error").GetString());
 
-        var profiles = await Task.WhenAll(Enumerable.Range(0, 12).Select(_ => _admin.GetAsync($"{AdminAuthPath}/me")));
+        var profiles = await Task.WhenAll(Enumerable.Range(0, 12).Select(/* Issues a session lookup independently of the credential attempt quota.
+         * <param name="_">The attempt index, unused because every lookup uses the same admin session.</param>
+         */ _ => _admin.GetAsync($"{AdminAuthPath}/me")));
         foreach (var profile in profiles)
         {
             using (profile)
@@ -269,7 +285,9 @@ public class KeePortApiTests : IDisposable
         using var saved = await SendAsync(_admin, HttpMethod.Put, RateLimitsPath, json: updated, csrf: adminCsrf);
         Assert.Equal(HttpStatusCode.OK, saved.StatusCode);
         Assert.Equal(updated, await saved.Content.ReadFromJsonAsync<RateLimitSettings>());
-        using var restarted = _factory.WithWebHostBuilder(_ => { });
+        using var restarted = _factory.WithWebHostBuilder(/* Reuses the factory's configuration when starting the replacement test host.
+         * <param name="_">The host builder, intentionally left unchanged for the restart.</param>
+         */ _ => { });
         using var adminAfterRestart = restarted.CreateClient();
         using var login = await adminAfterRestart.PostAsJsonAsync($"{AdminAuthPath}/login", new { username = "admin", password = AdminPassword });
         login.EnsureSuccessStatusCode();
@@ -450,7 +468,9 @@ public class KeePortApiTests : IDisposable
         Assert.Equal("new.alice+profile@example.test", profile.GetProperty("email").GetString());
         Assert.Equal(15, profile.GetProperty("autoLockMinutes").GetInt32());
         var users = (await GetJsonAsync(_admin, "/api/admin/users")).EnumerateArray().ToArray();
-        Assert.Equal(AdminEmail, users.Single(user => user.GetProperty("username").GetString() == "admin").GetProperty("email").GetString());
+        Assert.Equal(AdminEmail, users.Single(/* Selects the original administrator account from the response.
+         * <param name="user">One returned account being checked for the administrator username.</param>
+         */ user => user.GetProperty("username").GetString() == "admin").GetProperty("email").GetString());
     }
 
     /// <summary>Checks that opening an existing SQLite database adds the email column without replacing accounts.</summary>
@@ -484,6 +504,8 @@ public class KeePortApiTests : IDisposable
         Assert.Equal("legacy@example.test", db.GetUserById(account.Id)?.Email);
     }
 
+    /// <summary>Completes first-run setup and returns the administrator's CSRF token.</summary>
+    /// <param name="client">The test client connected to the Admin API.</param>
     private async Task<string> SetupAdminAsync(HttpClient client)
     {
         await client.GetAsync("/api/health");
@@ -494,6 +516,7 @@ public class KeePortApiTests : IDisposable
         return json.GetProperty("csrfToken").GetString()!;
     }
 
+    /// <summary>Reads the one-time setup token from the isolated test database.</summary>
     private string ReadSetupToken()
     {
         using var connection = new SqliteConnection($"Data Source={Path.Combine(_dataDir, "keeport.db")}");
@@ -504,6 +527,10 @@ public class KeePortApiTests : IDisposable
         return value ?? throw new InvalidOperationException("Setup token was not created.");
     }
 
+    /// <summary>Signs in through the vault API and returns the session's CSRF token and user ID.</summary>
+    /// <param name="client">The test client connected to the Vault API.</param>
+    /// <param name="username">The account username.</param>
+    /// <param name="password">The plaintext password to hash or verify.</param>
     private static async Task<(string csrf, string userId)> LoginAsync(HttpClient client, string username, string password)
     {
         var response = await client.PostAsJsonAsync("/api/auth/login", new { username, password });
@@ -515,6 +542,11 @@ public class KeePortApiTests : IDisposable
         return (json.GetProperty("csrfToken").GetString()!, json.GetProperty("user").GetProperty("id").GetString()!);
     }
 
+    /// <summary>Creates an account through the Admin API and returns its ID and username.</summary>
+    /// <param name="client">The test HTTP client for the request.</param>
+    /// <param name="csrf">The CSRF token for the client session.</param>
+    /// <param name="username">The account username.</param>
+    /// <param name="role">The role used to select the account privileges or session scope.</param>
     private static async Task<(string Id, string Username)> CreateUserAsync(HttpClient client, string csrf, string username, string role)
     {
         var response = await SendAsync(client, HttpMethod.Post, "/api/admin/users", json: new { username, email = $"{username}@example.test", password = "User passphrase 123", role }, csrf: csrf);
@@ -523,6 +555,11 @@ public class KeePortApiTests : IDisposable
         return (json.GetProperty("id").GetString()!, json.GetProperty("username").GetString()!);
     }
 
+    /// <summary>Uploads a multipart KDBX fixture and returns its ID and ETag.</summary>
+    /// <param name="client">The test HTTP client for the request.</param>
+    /// <param name="csrf">The CSRF token for the client session.</param>
+    /// <param name="name">The proposed display filename for the vault, including its .kdbx extension.</param>
+    /// <param name="content">The fixture text to append after the KDBX signature.</param>
     private static async Task<AdminVault> UploadVaultAsync(HttpClient client, string csrf, string name, string content)
     {
         using var form = new MultipartFormDataContent();
@@ -537,6 +574,10 @@ public class KeePortApiTests : IDisposable
         return new AdminVault(json.GetProperty("id").GetString()!, json.GetProperty("etag").GetString()!);
     }
 
+    /// <summary>Creates a WebDAV credential and prepares its Basic authorization header.</summary>
+    /// <param name="client">The test HTTP client for the request.</param>
+    /// <param name="csrf">The CSRF token for the client session.</param>
+    /// <param name="userId">The ID of the user account.</param>
     private static async Task<WebDavCredential> CreateWebDavCredentialAsync(HttpClient client, string csrf, string userId)
     {
         const string password = "Webdav passphrase 123";
@@ -548,12 +589,21 @@ public class KeePortApiTests : IDisposable
         return new WebDavCredential(username, $"Basic {basic}");
     }
 
+    /// <summary>Replaces the vault's access list with a grant for the specified user.</summary>
+    /// <param name="client">The test HTTP client for the request.</param>
+    /// <param name="csrf">The CSRF token for the client session.</param>
+    /// <param name="fileId">The ID of the vault file.</param>
+    /// <param name="userId">The ID of the user account.</param>
+    /// <param name="permission">The grant to assign to the test user, such as read or read-write.</param>
     private static async Task SetPermissionsAsync(HttpClient client, string csrf, string fileId, string userId, string permission)
     {
         var response = await SendAsync(client, HttpMethod.Put, $"/api/admin/files/{fileId}/permissions", json: new { permissions = new[] { new { userId, permission } } }, csrf: csrf);
         response.EnsureSuccessStatusCode();
     }
 
+    /// <summary>Fetches a successful JSON response and returns its root element.</summary>
+    /// <param name="client">The test HTTP client for the request.</param>
+    /// <param name="url">The API route to call, including any query string.</param>
     private static async Task<JsonElement> GetJsonAsync(HttpClient client, string url)
     {
         var response = await client.GetAsync(url);
@@ -561,6 +611,15 @@ public class KeePortApiTests : IDisposable
         return await response.Content.ReadFromJsonAsync<JsonElement>();
     }
 
+    /// <summary>Sends a test request with the optional body, authentication, CSRF, and ETag headers.</summary>
+    /// <param name="client">The test HTTP client for the request.</param>
+    /// <param name="method">The HTTP method of the request.</param>
+    /// <param name="url">The API route to call, including any query string.</param>
+    /// <param name="json">An optional object to serialize as the JSON request body.</param>
+    /// <param name="bytes">Optional binary request content, used when no JSON body is passed.</param>
+    /// <param name="csrf">The CSRF token for the client session.</param>
+    /// <param name="etag">The optional entity tag to send in the If-Match header.</param>
+    /// <param name="basic">The optional preformatted Basic authorization value.</param>
     private static async Task<HttpResponseMessage> SendAsync(
         HttpClient client,
         HttpMethod method,
@@ -584,6 +643,7 @@ public class KeePortApiTests : IDisposable
         return await client.SendAsync(request);
     }
 
+    /// <summary>Verifies that uploads and vault writes reject a payload without KDBX magic bytes.</summary>
     [Fact]
     public async Task Kdbx_Signature_Is_Enforced_On_Upload_And_Write()
     {
@@ -606,9 +666,17 @@ public class KeePortApiTests : IDisposable
         Assert.Equal(HttpStatusCode.BadRequest, invalidWrite.StatusCode);
     }
 
+    /// <summary>Prefixes test payload text with the KDBX signature bytes.</summary>
+    /// <param name="payload">The fixture text to encode after the KDBX signature.</param>
     private static byte[] KdbxBytes(string payload)
         => new byte[] { 0x03, 0xD9, 0xA2, 0x9A }.Concat(Encoding.UTF8.GetBytes(payload)).ToArray();
 
+    /// <summary>Holds a test vault's ID and current ETag.</summary>
+    /// <param name="Id">The stable identifier for this resource.</param>
+    /// <param name="ETag">The current entity tag for the uploaded test vault.</param>
     private sealed record AdminVault(string Id, string ETag);
+    /// <summary>Holds a test credential's username and Basic authorization value.</summary>
+    /// <param name="Username">The generated WebDAV login name used by the test.</param>
+    /// <param name="BasicAuth">The authorization value for authenticating test WebDAV requests.</param>
     private sealed record WebDavCredential(string Username, string BasicAuth);
 }

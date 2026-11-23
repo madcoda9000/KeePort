@@ -53,7 +53,10 @@ function useSidebar() {
   return context
 }
 
-/** Shares responsive sidebar state and keyboard controls. */
+/**
+ * Shares responsive sidebar state and keyboard controls.
+ * @param props - Initial or controlled open state, a change callback, and the wrapper's styles, children, and remaining attributes.
+ */
 function SidebarProvider({
   defaultOpen = true,
   open: openProp,
@@ -75,6 +78,10 @@ function SidebarProvider({
   const [_open, _setOpen] = React.useState(defaultOpen)
   const open = openProp ?? _open
   const setOpen = React.useCallback(
+    /**
+     * Updates the desktop sidebar state and persists it in a cookie.
+     * @param value - The next desktop open state, or an updater that derives it from the current state.
+     */
     (value: boolean | ((value: boolean) => boolean)) => {
       const openState = typeof value === "function" ? value(open) : value
       if (setOpenProp) {
@@ -90,12 +97,23 @@ function SidebarProvider({
   )
 
   // Helper to toggle the sidebar.
-  const toggleSidebar = React.useCallback(() => {
-    return isMobile ? setOpenMobile((open) => !open) : setOpen((open) => !open)
+  const toggleSidebar = React.useCallback(/** Toggles the mobile drawer or desktop sidebar, based on the viewport. */ () => {
+    return isMobile ? setOpenMobile(/**
+     * Reverses the current mobile drawer state.
+     * @param open - Whether the mobile drawer is currently open.
+     */ (open) => !open) : setOpen(/**
+     * Reverses the current desktop sidebar state.
+     * @param open - Whether the desktop sidebar is currently expanded.
+     */ (open) => !open)
   }, [isMobile, setOpen, setOpenMobile])
 
   // Adds a keyboard shortcut to toggle the sidebar.
+  /** Registers the sidebar keyboard shortcut while the provider is mounted. */
   React.useEffect(() => {
+    /**
+     * Toggles the sidebar when its shortcut is pressed with Ctrl or Command.
+     * @param event - The keyboard event to check for the sidebar toggle shortcut.
+     */
     const handleKeyDown = (event: KeyboardEvent) => {
       if (
         event.key === SIDEBAR_KEYBOARD_SHORTCUT &&
@@ -107,7 +125,7 @@ function SidebarProvider({
     }
 
     window.addEventListener("keydown", handleKeyDown)
-    return () => window.removeEventListener("keydown", handleKeyDown)
+    return /** Removes the provider's keyboard shortcut listener. */ () => window.removeEventListener("keydown", handleKeyDown)
   }, [toggleSidebar])
 
   // We add a state so that we can do data-state="expanded" or "collapsed".
@@ -115,6 +133,7 @@ function SidebarProvider({
   const state = open ? "expanded" : "collapsed"
 
   const contextValue = React.useMemo<SidebarContextProps>(
+    /** Builds the shared sidebar context from the current state and controls. */
     () => ({
       state,
       open,
@@ -150,7 +169,10 @@ function SidebarProvider({
   )
 }
 
-/** Renders a fixed desktop sidebar or a mobile drawer. */
+/**
+ * Renders a fixed desktop sidebar or a mobile drawer.
+ * @param props - The sidebar's side, visual variant, collapse behavior, direction, and content and attributes to render.
+ */
 function Sidebar({
   side = "left",
   variant = "sidebar",
@@ -253,7 +275,10 @@ function Sidebar({
   )
 }
 
-/** Toggles the sidebar from a button. */
+/**
+ * Toggles the sidebar from a button.
+ * @param props - The optional click callback and button attributes; the sidebar toggles after the callback.
+ */
 function SidebarTrigger({
   className,
   onClick,
@@ -268,7 +293,10 @@ function SidebarTrigger({
       variant="ghost"
       size="icon-sm"
       className={cn(className)}
-      onClick={(event) => {
+      onClick={/**
+       * Runs the supplied click handler before toggling the sidebar.
+       * @param event - The click event forwarded to the caller before the sidebar toggles.
+       */ (event) => {
         onClick?.(event)
         toggleSidebar()
       }}
@@ -280,7 +308,10 @@ function SidebarTrigger({
   )
 }
 
-/** Toggles the sidebar from its outer edge. */
+/**
+ * Toggles the sidebar from its outer edge.
+ * @param props - CSS class overrides, the remaining SidebarRail attributes forwarded to its element.
+ */
 function SidebarRail({ className, ...props }: React.ComponentProps<"button">) {
   const { toggleSidebar } = useSidebar()
 
@@ -306,7 +337,10 @@ function SidebarRail({ className, ...props }: React.ComponentProps<"button">) {
   )
 }
 
-/** Wraps the main page next to the sidebar. */
+/**
+ * Wraps the main page next to the sidebar.
+ * @param props - CSS class overrides, the remaining SidebarInset attributes forwarded to its element.
+ */
 function SidebarInset({ className, ...props }: React.ComponentProps<"main">) {
   return (
     <main
@@ -320,7 +354,10 @@ function SidebarInset({ className, ...props }: React.ComponentProps<"main">) {
   )
 }
 
-/** Renders a search or filter input in the sidebar. */
+/**
+ * Renders a search or filter input in the sidebar.
+ * @param props - CSS class overrides, the remaining SidebarInput attributes forwarded to its element.
+ */
 function SidebarInput({
   className,
   ...props
@@ -335,7 +372,10 @@ function SidebarInput({
   )
 }
 
-/** Keeps branding or actions at the top of the sidebar. */
+/**
+ * Keeps branding or actions at the top of the sidebar.
+ * @param props - CSS class overrides, the remaining SidebarHeader attributes forwarded to its element.
+ */
 function SidebarHeader({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
@@ -347,7 +387,10 @@ function SidebarHeader({ className, ...props }: React.ComponentProps<"div">) {
   )
 }
 
-/** Keeps account details or actions at the sidebar bottom. */
+/**
+ * Keeps account details or actions at the sidebar bottom.
+ * @param props - CSS class overrides, the remaining SidebarFooter attributes forwarded to its element.
+ */
 function SidebarFooter({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
@@ -359,7 +402,10 @@ function SidebarFooter({ className, ...props }: React.ComponentProps<"div">) {
   )
 }
 
-/** Divides sidebar content. */
+/**
+ * Divides sidebar content.
+ * @param props - CSS class overrides, the remaining SidebarSeparator attributes forwarded to its element.
+ */
 function SidebarSeparator({
   className,
   ...props
@@ -374,7 +420,10 @@ function SidebarSeparator({
   )
 }
 
-/** Wraps the scrollable sidebar body. */
+/**
+ * Wraps the scrollable sidebar body.
+ * @param props - CSS class overrides, the remaining SidebarContent attributes forwarded to its element.
+ */
 function SidebarContent({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
@@ -389,7 +438,10 @@ function SidebarContent({ className, ...props }: React.ComponentProps<"div">) {
   )
 }
 
-/** Groups related sidebar controls. */
+/**
+ * Groups related sidebar controls.
+ * @param props - CSS class overrides, the remaining SidebarGroup attributes forwarded to its element.
+ */
 function SidebarGroup({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
@@ -401,7 +453,10 @@ function SidebarGroup({ className, ...props }: React.ComponentProps<"div">) {
   )
 }
 
-/** Names a sidebar group. */
+/**
+ * Names a sidebar group.
+ * @param props - CSS class overrides, whether to forward behavior to the child element, the remaining SidebarGroupLabel attributes forwarded to its element.
+ */
 function SidebarGroupLabel({
   className,
   asChild = false,
@@ -422,7 +477,10 @@ function SidebarGroupLabel({
   )
 }
 
-/** Places an action beside a sidebar group label. */
+/**
+ * Places an action beside a sidebar group label.
+ * @param props - CSS class overrides, whether to forward behavior to the child element, the remaining SidebarGroupAction attributes forwarded to its element.
+ */
 function SidebarGroupAction({
   className,
   asChild = false,
@@ -443,7 +501,10 @@ function SidebarGroupAction({
   )
 }
 
-/** Wraps the body of a sidebar group. */
+/**
+ * Wraps the body of a sidebar group.
+ * @param props - CSS class overrides, the remaining SidebarGroupContent attributes forwarded to its element.
+ */
 function SidebarGroupContent({
   className,
   ...props
@@ -458,7 +519,10 @@ function SidebarGroupContent({
   )
 }
 
-/** Renders a list of sidebar navigation items. */
+/**
+ * Renders a list of sidebar navigation items.
+ * @param props - CSS class overrides, the remaining SidebarMenu attributes forwarded to its element.
+ */
 function SidebarMenu({ className, ...props }: React.ComponentProps<"ul">) {
   return (
     <ul
@@ -470,7 +534,10 @@ function SidebarMenu({ className, ...props }: React.ComponentProps<"ul">) {
   )
 }
 
-/** Wraps one sidebar navigation item. */
+/**
+ * Wraps one sidebar navigation item.
+ * @param props - CSS class overrides, the remaining SidebarMenuItem attributes forwarded to its element.
+ */
 function SidebarMenuItem({ className, ...props }: React.ComponentProps<"li">) {
   return (
     <li
@@ -504,7 +571,10 @@ const sidebarMenuButtonVariants = cva(
   }
 )
 
-/** Renders a sidebar navigation action and active state. */
+/**
+ * Renders a sidebar navigation action and active state.
+ * @param props - The menu item state, sizing, visual variant, optional tooltip, and attributes for the button or slotted element.
+ */
 function SidebarMenuButton({
   asChild = false,
   isActive = false,
@@ -555,7 +625,10 @@ function SidebarMenuButton({
   )
 }
 
-/** Adds a secondary action to a menu item. */
+/**
+ * Adds a secondary action to a menu item.
+ * @param props - The action's hover visibility, styling, and attributes for the button or slotted element.
+ */
 function SidebarMenuAction({
   className,
   asChild = false,
@@ -582,7 +655,10 @@ function SidebarMenuAction({
   )
 }
 
-/** Displays metadata beside a sidebar item. */
+/**
+ * Displays metadata beside a sidebar item.
+ * @param props - CSS class overrides, the remaining SidebarMenuBadge attributes forwarded to its element.
+ */
 function SidebarMenuBadge({
   className,
   ...props
@@ -600,7 +676,10 @@ function SidebarMenuBadge({
   )
 }
 
-/** Shows a placeholder for a loading menu item. */
+/**
+ * Shows a placeholder for a loading menu item.
+ * @param props - Whether to include an icon placeholder, plus styles and container attributes.
+ */
 function SidebarMenuSkeleton({
   className,
   showIcon = false,
@@ -609,7 +688,7 @@ function SidebarMenuSkeleton({
   showIcon?: boolean
 }) {
   // Random width between 50 to 90%.
-  const [width] = React.useState(() => {
+  const [width] = React.useState(/** Chooses a stable random width for this skeleton instance. */ () => {
     return `${Math.floor(Math.random() * 40) + 50}%`
   })
 
@@ -639,7 +718,10 @@ function SidebarMenuSkeleton({
   )
 }
 
-/** Renders a nested sidebar menu. */
+/**
+ * Renders a nested sidebar menu.
+ * @param props - CSS class overrides, the remaining SidebarMenuSub attributes forwarded to its element.
+ */
 function SidebarMenuSub({ className, ...props }: React.ComponentProps<"ul">) {
   return (
     <ul
@@ -654,7 +736,10 @@ function SidebarMenuSub({ className, ...props }: React.ComponentProps<"ul">) {
   )
 }
 
-/** Wraps one nested sidebar item. */
+/**
+ * Wraps one nested sidebar item.
+ * @param props - CSS class overrides, the remaining SidebarMenuSubItem attributes forwarded to its element.
+ */
 function SidebarMenuSubItem({
   className,
   ...props
@@ -669,7 +754,10 @@ function SidebarMenuSubItem({
   )
 }
 
-/** Renders an action in a nested sidebar menu. */
+/**
+ * Renders an action in a nested sidebar menu.
+ * @param props - The link's active state, size, styling, and native attributes or slotted content.
+ */
 function SidebarMenuSubButton({
   asChild = false,
   size = "md",

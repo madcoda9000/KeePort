@@ -5,7 +5,10 @@ import { cn } from "cn"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
 
-/** Groups related controls in a fieldset. */
+/**
+ * Groups related controls in a fieldset.
+ * @param props - CSS class overrides, the remaining FieldSet attributes forwarded to its element.
+ */
 function FieldSet({ className, ...props }: React.ComponentProps<"fieldset">) {
   return (
     <fieldset
@@ -19,7 +22,10 @@ function FieldSet({ className, ...props }: React.ComponentProps<"fieldset">) {
   )
 }
 
-/** Names a group of related fields. */
+/**
+ * Names a group of related fields.
+ * @param props - CSS class overrides, the visual variant, the remaining FieldLegend attributes forwarded to its element.
+ */
 function FieldLegend({
   className,
   variant = "legend",
@@ -38,7 +44,10 @@ function FieldLegend({
   )
 }
 
-/** Applies consistent spacing between fields. */
+/**
+ * Applies consistent spacing between fields.
+ * @param props - CSS class overrides, the remaining FieldGroup attributes forwarded to its element.
+ */
 function FieldGroup({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
@@ -70,7 +79,10 @@ const fieldVariants = cva(
   }
 )
 
-/** Arranges a field label, input and supporting text. */
+/**
+ * Arranges a field label, input and supporting text.
+ * @param props - CSS class overrides, the layout direction, the remaining Field attributes forwarded to its element.
+ */
 function Field({
   className,
   orientation = "vertical",
@@ -87,7 +99,10 @@ function Field({
   )
 }
 
-/** Wraps text and controls for one field. */
+/**
+ * Wraps text and controls for one field.
+ * @param props - CSS class overrides, the remaining FieldContent attributes forwarded to its element.
+ */
 function FieldContent({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
@@ -101,7 +116,10 @@ function FieldContent({ className, ...props }: React.ComponentProps<"div">) {
   )
 }
 
-/** Connects a form label to its control. */
+/**
+ * Connects a form label to its control.
+ * @param props - CSS class overrides, the remaining FieldLabel attributes forwarded to its element.
+ */
 function FieldLabel({
   className,
   ...props
@@ -119,7 +137,10 @@ function FieldLabel({
   )
 }
 
-/** Provides a heading for composite fields. */
+/**
+ * Provides a heading for composite fields.
+ * @param props - CSS class overrides, the remaining FieldTitle attributes forwarded to its element.
+ */
 function FieldTitle({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
@@ -133,7 +154,10 @@ function FieldTitle({ className, ...props }: React.ComponentProps<"div">) {
   )
 }
 
-/** Provides hints about a form field. */
+/**
+ * Provides hints about a form field.
+ * @param props - CSS class overrides, the remaining FieldDescription attributes forwarded to its element.
+ */
 function FieldDescription({ className, ...props }: React.ComponentProps<"p">) {
   return (
     <p
@@ -149,7 +173,10 @@ function FieldDescription({ className, ...props }: React.ComponentProps<"p">) {
   )
 }
 
-/** Separates groups of fields. */
+/**
+ * Separates groups of fields.
+ * @param props - The optional separator label and the element's styling and attributes.
+ */
 function FieldSeparator({
   children,
   className,
@@ -180,7 +207,10 @@ function FieldSeparator({
   )
 }
 
-/** Collects and presents validation errors. */
+/**
+ * Collects and presents validation errors.
+ * @param props - Optional custom content or validation errors to display, plus error container styling and attributes.
+ */
 function FieldError({
   className,
   children,
@@ -189,7 +219,7 @@ function FieldError({
 }: React.ComponentProps<"div"> & {
   errors?: Array<{ message?: string } | undefined>
 }) {
-  const content = useMemo(() => {
+  const content = useMemo(/** Uses custom content when provided or renders the distinct validation messages. */ () => {
     if (children) {
       return children
     }
@@ -199,7 +229,10 @@ function FieldError({
     }
 
     const uniqueErrors = [
-      ...new Map(errors.map((error) => [error?.message, error])).values(),
+      ...new Map(errors.map(/**
+       * Keys validation errors by message so duplicates can be collapsed.
+       * @param error - The candidate validation error and its optional message.
+       */ (error) => [error?.message, error])).values(),
     ]
 
     if (uniqueErrors?.length == 1) {
@@ -209,6 +242,11 @@ function FieldError({
     return (
       <ul className="ml-4 flex list-disc flex-col gap-1">
         {uniqueErrors.map(
+          /**
+           * Renders a list item for each distinct nonempty message.
+           * @param error - The candidate validation error and its optional message.
+           * @param index - The zero-based index in the source collection.
+           */
           (error, index) =>
             error?.message && <li key={index}>{error.message}</li>
         )}

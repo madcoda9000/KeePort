@@ -11,6 +11,8 @@ public static class AuthEndpoints
 {
     public const string CredentialRateLimitPolicy = "auth-credentials";
 
+    /// <summary>Registers separate admin and vault authentication routes, plus setup and user preferences.</summary>
+    /// <param name="app">The endpoint route builder on which to register the routes.</param>
     public static void MapAuthEndpoints(this IEndpointRouteBuilder app)
     {
         var admin = app.MapGroup(SessionService.AdminApiPath + "/auth");
@@ -18,6 +20,8 @@ public static class AuthEndpoints
         MapAccountEndpoints(admin, UserRole.Admin);
         MapAccountEndpoints(vault, UserRole.User);
 
+        // Reports whether initial admin setup is still needed and whether any users exist.
+        // <param name="db">The SQLite store for KeePort metadata.</param>
         admin.MapGet("/setup-status", (KeePortDb db) =>
         {
             var hasAdmin = db.HasAdmin();
@@ -26,6 +30,13 @@ public static class AuthEndpoints
             return Results.Ok(new SetupStatusResponse(RequiresSetup: !hasAdmin && setupToken is not null, HasUsers: hasUsers));
         });
 
+        // Validates the one-time setup token and creates the first administrator account.
+        // <param name="request">The one-time token and first administrator's account details.</param>
+        // <param name="db">The SQLite store for KeePort metadata.</param>
+        // <param name="hasher">The service for hashing and verifying passwords.</param>
+        // <param name="sessions">The service for managing sessions, cookies, and CSRF tokens.</param>
+        // <param name="configuration">The configuration used to select the session cookie security options.</param>
+        // <param name="context">The current HTTP request and response context.</param>
         admin.MapPost("/setup", (SetupRequest request, KeePortDb db, PasswordHasher hasher, SessionService sessions, IConfiguration configuration, HttpContext context) =>
         {
             if (db.HasAdmin())
@@ -78,6 +89,10 @@ public static class AuthEndpoints
             return Results.Ok(new AuthResponse(ToDto(user), csrfToken));
         }).RequireRateLimiting(CredentialRateLimitPolicy);
 
+        // Updates the signed-in vault user's auto-lock preference.
+        // <param name="request">The update containing the user's auto-lock preference.</param>
+        // <param name="context">The current HTTP request and response context.</param>
+        // <param name="db">The SQLite store for KeePort metadata.</param>
         vault.MapPut("/settings", (UpdateSettingsRequest request, HttpContext context, KeePortDb db) =>
         {
             if (ApiAuth.RequireAuthenticated(context) is { } unauthorized)
@@ -95,8 +110,17 @@ public static class AuthEndpoints
     }
 
     /// <summary>Maps sign-in and self-service endpoints for one account role.</summary>
+    /// <param name="group">The route group for the account type.</param>
+    /// <param name="role">The user role handled by this group.</param>
     private static void MapAccountEndpoints(RouteGroupBuilder group, UserRole role)
     {
+        // Checks credentials for the required role and issues that application's session cookie.
+        // <param name="request">The username and password submitted for sign-in.</param>
+        // <param name="db">The SQLite store for KeePort metadata.</param>
+        // <param name="hasher">The service for hashing and verifying passwords.</param>
+        // <param name="sessions">The service for managing sessions, cookies, and CSRF tokens.</param>
+        // <param name="configuration">The configuration used to select the session cookie security options.</param>
+        // <param name="context">The current HTTP request and response context.</param>
         group.MapPost("/login", (LoginRequest request, KeePortDb db, PasswordHasher hasher, SessionService sessions, IConfiguration configuration, HttpContext context) =>
         {
             var user = db.GetUserByUsername(request.Username ?? string.Empty);
@@ -111,6 +135,11 @@ public static class AuthEndpoints
             return Results.Ok(new AuthResponse(ToDto(user), csrfToken));
         }).RequireRateLimiting(CredentialRateLimitPolicy);
 
+        // Removes the current session and clears the cookie for the selected role.
+        // <param name="context">The current HTTP request and response context.</param>
+        // <param name="db">The SQLite store for KeePort metadata.</param>
+        // <param name="sessions">The service for managing sessions, cookies, and CSRF tokens.</param>
+        // <param name="configuration">The configuration used to select the session cookie security options.</param>
         group.MapPost("/logout", (HttpContext context, KeePortDb db, SessionService sessions, IConfiguration configuration) =>
         {
             if (ApiAuth.GetSession(context) is { } session)
@@ -121,6 +150,8 @@ public static class AuthEndpoints
             return Results.NoContent();
         });
 
+        // Returns the signed-in user's account details.
+        // <param name="context">The current HTTP request and response context.</param>
         group.MapGet("/me", (HttpContext context) =>
         {
             if (ApiAuth.RequireAuthenticated(context) is { } unauthorized)
@@ -131,6 +162,8 @@ public static class AuthEndpoints
             return Results.Ok(ToDto(user));
         });
 
+        // Returns the CSRF token for the current session.
+        // <param name="context">The current HTTP request and response context.</param>
         group.MapGet("/csrf", (HttpContext context) =>
         {
             if (ApiAuth.RequireAuthenticated(context) is { } unauthorized)
@@ -141,6 +174,11 @@ public static class AuthEndpoints
             return Results.Ok(new { csrfToken = session.CsrfToken });
         });
 
+        // Verifies the current password and stores a hash of the validated replacement.
+        // <param name="request">The current password and the replacement password.</param>
+        // <param name="context">The current HTTP request and response context.</param>
+        // <param name="db">The SQLite store for KeePort metadata.</param>
+        // <param name="hasher">The service for hashing and verifying passwords.</param>
         group.MapPost("/change-password", (ChangePasswordRequest request, HttpContext context, KeePortDb db, PasswordHasher hasher) =>
         {
             if (ApiAuth.RequireAuthenticated(context) is { } unauthorized)
@@ -165,6 +203,9 @@ public static class AuthEndpoints
     }
 
     /// <summary>Validates and changes the authenticated account's contact email.</summary>
+    /// <param name="request">The update containing the replacement contact email.</param>
+    /// <param name="context">The current HTTP request and response context.</param>
+    /// <param name="db">The SQLite store for KeePort metadata.</param>
     private static IResult UpdateEmail(UpdateEmailRequest request, HttpContext context, KeePortDb db)
     {
         if (ApiAuth.RequireAuthenticated(context) is { } unauthorized)
@@ -181,11 +222,16 @@ public static class AuthEndpoints
         return Results.Ok(ToDto(db.GetUserById(user.Id)!));
     }
 
+    /// <summary>Converts a stored user into its public API representation without the password hash.</summary>
+    /// <param name="user">The user account associated with the operation.</param>
     internal static UserDto ToDto(UserRecord user)
     {
         return new UserDto(user.Id, user.Username, user.Role.ToString().ToLowerInvariant(), user.Disabled, user.CreatedAt, user.LastLoginAt, user.AutoLockMinutes, user.Email);
     }
 
+    /// <summary>Compares two UTF-8 token values using constant-time byte comparison.</summary>
+    /// <param name="expected">The reference token value.</param>
+    /// <param name="actual">The token supplied by the request.</param>
     private static bool FixedTimeEquals(string expected, string actual)
     {
         var expectedBytes = System.Text.Encoding.UTF8.GetBytes(expected);

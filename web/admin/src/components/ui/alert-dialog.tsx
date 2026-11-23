@@ -4,14 +4,20 @@ import { AlertDialog as AlertDialogPrimitive } from "radix-ui"
 
 import { Button } from "@/components/ui/button"
 
-/** Controls a confirmation dialog. */
+/**
+ * Controls a confirmation dialog.
+ * @param props - The AlertDialog primitive options and children to render.
+ */
 function AlertDialog({
   ...props
 }: React.ComponentProps<typeof AlertDialogPrimitive.Root>) {
   return <AlertDialogPrimitive.Root data-slot="alert-dialog" {...props} />
 }
 
-/** Opens the confirmation dialog. */
+/**
+ * Opens the confirmation dialog.
+ * @param props - The AlertDialogTrigger primitive options and children to render.
+ */
 function AlertDialogTrigger({
   ...props
 }: React.ComponentProps<typeof AlertDialogPrimitive.Trigger>) {
@@ -20,7 +26,10 @@ function AlertDialogTrigger({
   )
 }
 
-/** Mounts the confirmation outside the page layout. */
+/**
+ * Mounts the confirmation outside the page layout.
+ * @param props - The AlertDialogPortal primitive options and children to render.
+ */
 function AlertDialogPortal({
   ...props
 }: React.ComponentProps<typeof AlertDialogPrimitive.Portal>) {
@@ -29,7 +38,10 @@ function AlertDialogPortal({
   )
 }
 
-/** Dims the page behind the confirmation. */
+/**
+ * Dims the page behind the confirmation.
+ * @param props - CSS class overrides, the remaining AlertDialogOverlay attributes forwarded to its element.
+ */
 function AlertDialogOverlay({
   className,
   ...props
@@ -46,7 +58,10 @@ function AlertDialogOverlay({
   )
 }
 
-/** Renders the modal confirmation panel. */
+/**
+ * Renders the modal confirmation panel.
+ * @param props - The content size and dialog content attributes, including any additional CSS classes.
+ */
 function AlertDialogContent({
   className,
   size = "default",
@@ -70,7 +85,10 @@ function AlertDialogContent({
   )
 }
 
-/** Groups the confirmation title and description. */
+/**
+ * Groups the confirmation title and description.
+ * @param props - CSS class overrides, the remaining AlertDialogHeader attributes forwarded to its element.
+ */
 function AlertDialogHeader({
   className,
   ...props
@@ -87,7 +105,10 @@ function AlertDialogHeader({
   )
 }
 
-/** Aligns confirmation actions. */
+/**
+ * Aligns confirmation actions.
+ * @param props - CSS class overrides, the remaining AlertDialogFooter attributes forwarded to its element.
+ */
 function AlertDialogFooter({
   className,
   ...props
@@ -104,7 +125,10 @@ function AlertDialogFooter({
   )
 }
 
-/** Displays an icon or image inside the confirmation. */
+/**
+ * Displays an icon or image inside the confirmation.
+ * @param props - CSS class overrides, the remaining AlertDialogMedia attributes forwarded to its element.
+ */
 function AlertDialogMedia({
   className,
   ...props
@@ -121,7 +145,10 @@ function AlertDialogMedia({
   )
 }
 
-/** Provides the accessible confirmation heading. */
+/**
+ * Provides the accessible confirmation heading.
+ * @param props - CSS class overrides, the remaining AlertDialogTitle attributes forwarded to its element.
+ */
 function AlertDialogTitle({
   className,
   ...props
@@ -138,7 +165,10 @@ function AlertDialogTitle({
   )
 }
 
-/** Explains the result of confirming. */
+/**
+ * Explains the result of confirming.
+ * @param props - CSS class overrides, the remaining AlertDialogDescription attributes forwarded to its element.
+ */
 function AlertDialogDescription({
   className,
   ...props
@@ -155,7 +185,10 @@ function AlertDialogDescription({
   )
 }
 
-/** Confirms the action and closes the dialog. */
+/**
+ * Confirms the action and closes the dialog.
+ * @param props - CSS class overrides, the visual variant, visual sizing, the remaining AlertDialogAction attributes forwarded to its element.
+ */
 function AlertDialogAction({
   className,
   variant = "default",
@@ -174,7 +207,10 @@ function AlertDialogAction({
   )
 }
 
-/** Closes the confirmation without acting. */
+/**
+ * Closes the confirmation without acting.
+ * @param props - CSS class overrides, the visual variant, visual sizing, the remaining AlertDialogCancel attributes forwarded to its element.
+ */
 function AlertDialogCancel({
   className,
   variant = "outline",

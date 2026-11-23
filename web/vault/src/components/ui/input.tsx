@@ -1,7 +1,10 @@
 import * as React from "react"
 import { cn } from "cn"
 
-/** Renders a styled native input. */
+/**
+ * Renders a styled native input.
+ * @param props - The input type, additional CSS classes, and native input attributes.
+ */
 function Input({ className, type, ...props }: React.ComponentProps<"input">) {
   return (
     <input

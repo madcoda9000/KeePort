@@ -8,6 +8,9 @@ using Microsoft.AspNetCore.Routing;
 
 namespace KeePort.Api.Endpoints;
 
+/// <summary>Pairs a verified WebDAV credential with its owning user.</summary>
+/// <param name="Credential">The verified credential used for WebDAV authentication.</param>
+/// <param name="User">The user account that owns the verified credential.</param>
 public sealed record WebDavAuthResult(WebDavCredentialRecord Credential, UserRecord User);
 
 public static class WebDavEndpoints
@@ -15,8 +18,15 @@ public static class WebDavEndpoints
     private const string AuthItemKey = "KeePort.WebDavAuth";
     private static readonly string[] Methods = ["OPTIONS", "PROPFIND", "GET", "HEAD", "PUT", "DELETE", "LOCK", "UNLOCK"];
 
+    /// <summary>Adds authentication for WebDAV requests before they reach the vault handlers.</summary>
+    /// <param name="app">The application pipeline to which the middleware is added.</param>
+    /// <param name="db">The SQLite store for KeePort metadata.</param>
+    /// <param name="hasher">The service for hashing and verifying passwords.</param>
     public static IApplicationBuilder UseWebDavAuthentication(this IApplicationBuilder app, KeePortDb db, PasswordHasher hasher)
     {
+       // Authenticates WebDAV requests and challenges unauthenticated clients when required.
+        // <param name="context">The current HTTP request and response context.</param>
+        // <param name="next">The next middleware in the request pipeline.</param>
         return app.Use(async (context, next) =>
         {
             var path = context.Request.Path.Value ?? string.Empty;
@@ -40,12 +50,19 @@ public static class WebDavEndpoints
         });
     }
 
+    /// <summary>Maps supported WebDAV methods on the root and child paths.</summary>
+    /// <param name="app">The endpoint route builder on which to register the routes.</param>
     public static void MapWebDavEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapMethods("/webdav", Methods, HandleAsync);
         app.MapMethods("/webdav/{**path}", Methods, HandleAsync);
     }
 
+    /// <summary>Routes a WebDAV request to the appropriate collection or vault operation.</summary>
+    /// <param name="context">The current HTTP request and response context.</param>
+    /// <param name="vault">The service for checking vault access and reading or writing encrypted files.</param>
+    /// <param name="db">The SQLite store for KeePort metadata.</param>
+    /// <param name="cancellationToken">A token that cancels the operation when the caller no longer needs it.</param>
     private static async Task<IResult> HandleAsync(HttpContext context, VaultService vault, KeePortDb db, CancellationToken cancellationToken)
     {
         if (context.Items[AuthItemKey] is not WebDavAuthResult auth)
@@ -81,6 +98,8 @@ public static class WebDavEndpoints
         };
     }
 
+    /// <summary>Removes the WebDAV path prefix and decodes the remaining path.</summary>
+    /// <param name="path">The incoming WebDAV request path, including the WebDAV prefix.</param>
     private static string GetRelativePath(string path)
     {
         const string prefix = "/webdav";
@@ -100,6 +119,8 @@ public static class WebDavEndpoints
         return relative;
     }
 
+    /// <summary>Advertises the methods and DAV capabilities supported by this endpoint.</summary>
+    /// <param name="context">The current HTTP request and response context.</param>
     private static IResult HandleOptions(HttpContext context)
     {
         context.Response.Headers.Allow = "OPTIONS, PROPFIND, GET, HEAD, PUT, LOCK, UNLOCK";
@@ -109,12 +130,22 @@ public static class WebDavEndpoints
         return Results.StatusCode(StatusCodes.Status200OK);
     }
 
+    /// <summary>Returns HTTP 405 with the methods allowed on the target resource.</summary>
+    /// <param name="context">The current HTTP request and response context.</param>
+    /// <param name="allow">The comma-separated HTTP methods to include in the Allow header.</param>
     private static IResult MethodNotAllowed(HttpContext context, string allow)
     {
         context.Response.Headers.Allow = allow;
         return Results.StatusCode(StatusCodes.Status405MethodNotAllowed);
     }
 
+    /// <summary>Returns vault bytes or headers only after checking read access and conditional requests.</summary>
+    /// <param name="context">The current HTTP request and response context.</param>
+    /// <param name="vault">The service for checking vault access and reading or writing encrypted files.</param>
+    /// <param name="user">The user account associated with the operation.</param>
+    /// <param name="file">The metadata of the vault file to operate on.</param>
+    /// <param name="includeBody">Whether to send the encrypted response body; false for HEAD.</param>
+    /// <param name="cancellationToken">A token that cancels the operation when the caller no longer needs it.</param>
     private static IResult HandleGet(HttpContext context, VaultService vault, UserRecord user, VaultFileRecord file, bool includeBody, CancellationToken cancellationToken)
     {
         if (!vault.CanRead(user, file))
@@ -141,6 +172,12 @@ public static class WebDavEndpoints
         return Results.File(path, "application/octet-stream", file.Name, enableRangeProcessing: false);
     }
 
+    /// <summary>Checks write access and conditional headers before accepting a WebDAV upload.</summary>
+    /// <param name="context">The current HTTP request and response context.</param>
+    /// <param name="vault">The service for checking vault access and reading or writing encrypted files.</param>
+    /// <param name="user">The user account associated with the operation.</param>
+    /// <param name="file">The metadata of the vault file to operate on.</param>
+    /// <param name="cancellationToken">A token that cancels the operation when the caller no longer needs it.</param>
     private static async Task<IResult> HandlePutAsync(HttpContext context, VaultService vault, UserRecord user, VaultFileRecord file, CancellationToken cancellationToken)
     {
         if (file.DeletedAt is not null)
@@ -189,6 +226,9 @@ public static class WebDavEndpoints
         };
     }
 
+    /// <summary>Returns a successful WebDAV update status with the new ETag.</summary>
+    /// <param name="context">The current HTTP request and response context.</param>
+    /// <param name="file">The metadata of the vault file to operate on.</param>
     private static IResult SuccessPut(HttpContext context, VaultFileRecord file)
     {
         context.Response.Headers.ETag = file.ETag;
@@ -196,6 +236,9 @@ public static class WebDavEndpoints
         return Results.StatusCode(StatusCodes.Status204NoContent);
     }
 
+    /// <summary>Returns the WebDAV precondition failure with the current ETag when available.</summary>
+    /// <param name="context">The current HTTP request and response context.</param>
+    /// <param name="currentETag">The current file entity tag, if known.</param>
     private static IResult ConflictPut(HttpContext context, string? currentETag)
     {
         if (!string.IsNullOrEmpty(currentETag))
@@ -207,6 +250,8 @@ public static class WebDavEndpoints
             statusCode: StatusCodes.Status412PreconditionFailed);
     }
 
+    /// <summary>Returns a compatibility lock token without taking a server-side lock.</summary>
+    /// <param name="context">The current HTTP request and response context.</param>
     private static IResult HandleLock(HttpContext context)
     {
         var token = $"opaquelocktoken:{Guid.NewGuid():N}";
@@ -215,6 +260,12 @@ public static class WebDavEndpoints
         return Results.StatusCode(StatusCodes.Status200OK);
     }
 
+    /// <summary>Builds the WebDAV multistatus response for a vault or collection listing.</summary>
+    /// <param name="context">The current HTTP request and response context.</param>
+    /// <param name="vault">The service for checking vault access and reading or writing encrypted files.</param>
+    /// <param name="user">The user account associated with the operation.</param>
+    /// <param name="isCollection">Whether the target is the WebDAV root collection rather than a vault file.</param>
+    /// <param name="file">The file metadata, or null for a collection response.</param>
     private static IResult HandlePropFind(HttpContext context, VaultService vault, UserRecord user, bool isCollection, VaultFileRecord? file)
     {
         var depth = context.Request.Headers["Depth"].ToString();
@@ -224,7 +275,9 @@ public static class WebDavEndpoints
             return Results.Json(new ErrorResponse("forbidden", "You do not have read access to this vault."), statusCode: StatusCodes.Status403Forbidden);
         }
         var files = isCollection
-            ? vault.ListForUser(user).Where(f => vault.CanRead(user, f)).ToArray()
+            ? vault.ListForUser(user).Where(/* Includes only vaults the authenticated user can read.
+             * <param name="f">A vault file whose read permission must be checked.</param>
+             */ f => vault.CanRead(user, f)).ToArray()
             : file is null ? Array.Empty<VaultFileRecord>() : [file];
 
         var xml = new StringBuilder();
@@ -251,6 +304,13 @@ public static class WebDavEndpoints
         return new WebDavXmlResult(xml.ToString());
     }
 
+    /// <summary>Appends one resource and its DAV properties to the multistatus document.</summary>
+    /// <param name="xml">The accumulating multistatus document to which to append the resource.</param>
+    /// <param name="href">The resource URL to include in the DAV response.</param>
+    /// <param name="displayName">The human-readable name of the DAV resource.</param>
+    /// <param name="isCollection">Whether the target is the WebDAV root collection rather than a vault file.</param>
+    /// <param name="file">The file metadata, or null for a collection response.</param>
+    /// <param name="lastModified">The modification time to advertise for this resource.</param>
     private static void AppendResponse(StringBuilder xml, string href, string displayName, bool isCollection, VaultFileRecord? file, DateTimeOffset lastModified)
     {
         xml.Append("<D:response>");
@@ -269,6 +329,8 @@ public static class WebDavEndpoints
         xml.Append("</D:response>");
     }
 
+    /// <summary>Escapes characters that would otherwise be interpreted as XML markup.</summary>
+    /// <param name="value">The text to escape for insertion into a DAV XML document.</param>
     private static string XmlEscape(string value)
     {
         return value
@@ -279,6 +341,10 @@ public static class WebDavEndpoints
             .Replace("'", "&apos;", StringComparison.Ordinal);
     }
 
+    /// <summary>Verifies a WebDAV Basic credential and rejects revoked credentials or ineligible owners.</summary>
+    /// <param name="context">The current HTTP request and response context.</param>
+    /// <param name="db">The SQLite store for KeePort metadata.</param>
+    /// <param name="hasher">The service for hashing and verifying passwords.</param>
     private static WebDavAuthResult? Authenticate(HttpContext context, KeePortDb db, PasswordHasher hasher)
     {
         var header = context.Request.Headers.Authorization.ToString();
@@ -324,8 +390,12 @@ public static class WebDavEndpoints
         return new WebDavAuthResult(credential, credential.User);
     }
 
+    /// <summary>Wraps a WebDAV multistatus XML document as an HTTP result.</summary>
+    /// <param name="xml">The XML document to send in the multistatus response.</param>
     private sealed class WebDavXmlResult(string xml) : IResult
     {
+        /// <summary>Writes the XML response using the WebDAV multistatus status code.</summary>
+        /// <param name="context">The current HTTP request and response context.</param>
         public async Task ExecuteAsync(HttpContext context)
         {
             context.Response.StatusCode = StatusCodes.Status207MultiStatus;

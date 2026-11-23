@@ -10,10 +10,15 @@ namespace KeePort.Api.Endpoints;
 
 public static class VaultEndpoints
 {
+    /// <summary>Registers vault listing, content download, and content update endpoints.</summary>
+    /// <param name="app">The endpoint route builder on which to register the routes.</param>
     public static void MapVaultEndpoints(this IEndpointRouteBuilder app)
     {
         var group = app.MapGroup("/api/vault");
 
+        // Lists the active vaults the signed-in user can access.
+        // <param name="context">The current HTTP request and response context.</param>
+        // <param name="vault">The service for checking vault access and reading or writing encrypted files.</param>
         group.MapGet("/files", (HttpContext context, VaultService vault) =>
         {
             if (ApiAuth.RequireAuthenticated(context) is { } unauthorized)
@@ -24,6 +29,10 @@ public static class VaultEndpoints
             return Results.Ok(vault.ListForUser(user).Select(ToDto).ToArray());
         });
 
+        // Checks read permission before serving the encrypted vault with its current ETag.
+        // <param name="id">The vault file ID.</param>
+        // <param name="context">The current HTTP request and response context.</param>
+        // <param name="vault">The service for checking vault access and reading or writing encrypted files.</param>
         group.MapGet("/files/{id}/content", (string id, HttpContext context, VaultService vault) =>
         {
             if (ApiAuth.RequireAuthenticated(context) is { } unauthorized)
@@ -53,6 +62,11 @@ public static class VaultEndpoints
             return Results.File(path, "application/octet-stream", file.Name, enableRangeProcessing: false);
         });
 
+        // Checks write access and the ETag precondition before accepting encrypted vault content.
+        // <param name="id">The vault file ID.</param>
+        // <param name="context">The current HTTP request and response context.</param>
+        // <param name="vault">The service for checking vault access and reading or writing encrypted files.</param>
+        // <param name="cancellationToken">A token that cancels the operation when the caller no longer needs it.</param>
         group.MapPut("/files/{id}/content", async (string id, HttpContext context, VaultService vault, CancellationToken cancellationToken) =>
         {
             if (ApiAuth.RequireAuthenticated(context) is { } unauthorized)
@@ -110,6 +124,9 @@ public static class VaultEndpoints
         });
     }
 
+    /// <summary>Returns the saved file metadata with the matching ETag header.</summary>
+    /// <param name="context">The current HTTP request and response context.</param>
+    /// <param name="file">The metadata of the vault file to operate on.</param>
     private static IResult SuccessResult(HttpContext context, VaultFileRecord file)
     {
         context.Response.Headers.ETag = file.ETag;
@@ -117,6 +134,8 @@ public static class VaultEndpoints
         return Results.Ok(ToDto(file));
     }
 
+    /// <summary>Converts a vault record into the metadata returned by the Vault API.</summary>
+    /// <param name="file">The metadata of the vault file to operate on.</param>
     internal static VaultFileDto ToDto(VaultFileRecord file)
     {
         return new VaultFileDto(file.Id, file.Name, file.Size, file.Revision, file.ETag, file.CreatedAt, file.UpdatedAt, file.Permission, file.DeletedAt);

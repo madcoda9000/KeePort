@@ -8,6 +8,8 @@ public sealed class KeePortDb : IDisposable
 {
     private readonly string _connectionString;
 
+    /// <summary>Resolves the SQLite database and vault storage paths from configuration.</summary>
+    /// <param name="configuration">The configuration containing the storage directory and SQLite settings.</param>
     public KeePortDb(IConfiguration configuration)
     {
         DataDir = configuration["KeePort:DataDir"] ?? "/data";
@@ -25,6 +27,7 @@ public sealed class KeePortDb : IDisposable
     public string DatabasePath { get; }
     public string VaultDirectory { get; }
 
+    /// <summary>Creates the storage directories, initializes the SQLite schema, and prepares first-run setup.</summary>
     public void Initialize()
     {
         Directory.CreateDirectory(DataDir);
@@ -123,6 +126,10 @@ public sealed class KeePortDb : IDisposable
         EnsureSetupToken();
     }
 
+    /// <summary>Adds a column only when an existing database is missing it.</summary>
+    /// <param name="table">The existing SQLite table to inspect.</param>
+    /// <param name="column">The column to add if it is missing.</param>
+    /// <param name="definition">The SQL type and constraints for the new column.</param>
     private void EnsureColumn(string table, string column, string definition)
     {
         using var connection = Open();
@@ -143,6 +150,7 @@ public sealed class KeePortDb : IDisposable
         Execute(connection, $"ALTER TABLE {table} ADD COLUMN {column} {definition};");
     }
 
+    /// <summary>Creates a setup token when no administrator or pending token exists.</summary>
     private void EnsureSetupToken()
     {
         if (HasAdmin())
@@ -163,6 +171,7 @@ public sealed class KeePortDb : IDisposable
         }
     }
 
+    /// <summary>Checks whether an administrator account exists.</summary>
     public bool HasAdmin()
     {
         using var connection = Open();
@@ -172,6 +181,7 @@ public sealed class KeePortDb : IDisposable
         return Convert.ToInt64(command.ExecuteScalar()) > 0;
     }
 
+    /// <summary>Reads the pending first-run setup token, if present.</summary>
     public string? GetSetupToken()
     {
         using var connection = Open();
@@ -181,6 +191,7 @@ public sealed class KeePortDb : IDisposable
         return command.ExecuteScalar() as string;
     }
 
+    /// <summary>Removes the pending setup token from application state.</summary>
     public void ClearSetupToken()
     {
         using var connection = Open();
@@ -204,6 +215,7 @@ public sealed class KeePortDb : IDisposable
     }
 
     /// <summary>Writes both limit values together.</summary>
+    /// <param name="settings">The configured login/setup and WebDAV request limits.</param>
     public void UpdateRateLimitSettings(RateLimitSettings settings)
     {
         using var connection = Open();
@@ -214,6 +226,8 @@ public sealed class KeePortDb : IDisposable
             """, new SqliteParameter("@auth", settings.AuthPerMinute), new SqliteParameter("@webdav", settings.WebDavPerMinute));
     }
 
+    /// <summary>Finds a user account by case-insensitive username.</summary>
+    /// <param name="username">The account username.</param>
     public UserRecord? GetUserByUsername(string username)
     {
         using var connection = Open();
@@ -228,6 +242,8 @@ public sealed class KeePortDb : IDisposable
         return reader.Read() ? ReadUser(reader) : null;
     }
 
+    /// <summary>Finds a user account by ID.</summary>
+    /// <param name="id">The user account ID.</param>
     public UserRecord? GetUserById(string id)
     {
         using var connection = Open();
@@ -242,6 +258,7 @@ public sealed class KeePortDb : IDisposable
         return reader.Read() ? ReadUser(reader) : null;
     }
 
+    /// <summary>Lists user accounts in username order.</summary>
     public IReadOnlyList<UserRecord> ListUsers()
     {
         using var connection = Open();
@@ -260,6 +277,8 @@ public sealed class KeePortDb : IDisposable
         return users;
     }
 
+    /// <summary>Inserts a user account with its initial role, credentials, and preferences.</summary>
+    /// <param name="user">The user account associated with the operation.</param>
     public void CreateUser(UserRecord user)
     {
         using var connection = Open();
@@ -278,6 +297,10 @@ public sealed class KeePortDb : IDisposable
             new SqliteParameter("@email", DbValue(user.Email)));
     }
 
+    /// <summary>Updates a user's role and disabled status together.</summary>
+    /// <param name="id">The user account ID.</param>
+    /// <param name="role">The role used to select the account privileges or session scope.</param>
+    /// <param name="disabled">Whether the user must be prevented from signing in.</param>
     public void UpdateUserRoleAndDisabled(string id, UserRole role, bool disabled)
     {
         using var connection = Open();
@@ -290,6 +313,9 @@ public sealed class KeePortDb : IDisposable
             new SqliteParameter("@disabled", disabled ? 1 : 0));
     }
 
+    /// <summary>Replaces the stored password hash for a user.</summary>
+    /// <param name="id">The user account ID.</param>
+    /// <param name="passwordHash">The encoded password hash to store.</param>
     public void UpdateUserPassword(string id, string passwordHash)
     {
         using var connection = Open();
@@ -300,6 +326,8 @@ public sealed class KeePortDb : IDisposable
     }
 
     /// <summary>Stores the validated contact email for one account.</summary>
+    /// <param name="id">The user account ID.</param>
+    /// <param name="email">The validated contact email address to store.</param>
     public void UpdateUserEmail(string id, string email)
     {
         using var connection = Open();
@@ -309,6 +337,9 @@ public sealed class KeePortDb : IDisposable
             new SqliteParameter("@email", email));
     }
 
+    /// <summary>Stores a user's auto-lock delay or clears their override.</summary>
+    /// <param name="id">The user account ID.</param>
+    /// <param name="autoLockMinutes">The delay in minutes before auto-lock, or null to clear the user override.</param>
     public void UpdateUserAutoLockMinutes(string id, int? autoLockMinutes)
     {
         using var connection = Open();
@@ -318,6 +349,9 @@ public sealed class KeePortDb : IDisposable
             new SqliteParameter("@autoLockMinutes", DbValue(autoLockMinutes)));
     }
 
+    /// <summary>Records the time of a user's last successful sign-in.</summary>
+    /// <param name="id">The user account ID.</param>
+    /// <param name="lastLoginAt">The time of the last successful sign-in.</param>
     public void UpdateLastLogin(string id, DateTimeOffset lastLoginAt)
     {
         using var connection = Open();
@@ -327,6 +361,8 @@ public sealed class KeePortDb : IDisposable
             new SqliteParameter("@lastLoginAt", lastLoginAt.ToString("O")));
     }
 
+    /// <summary>Deletes the user account and its dependent access records in one transaction.</summary>
+    /// <param name="id">The user account ID.</param>
     public void DeleteUser(string id)
     {
         using var connection = Open();
@@ -339,6 +375,8 @@ public sealed class KeePortDb : IDisposable
         transaction.Commit();
     }
 
+    /// <summary>Inserts a session with its token hashes and lifetime metadata.</summary>
+    /// <param name="session">The session including its owner, token hashes, and expiration.</param>
     public void CreateSession(SessionRecord session)
     {
         using var connection = Open();
@@ -358,6 +396,8 @@ public sealed class KeePortDb : IDisposable
             new SqliteParameter("@ipAddress", DbValue(session.IpAddress)));
     }
 
+    /// <summary>Loads the session and associated user for a matching token hash.</summary>
+    /// <param name="tokenHash">The stored hash of the session token.</param>
     public SessionRecord? GetSessionByTokenHash(string tokenHash)
     {
         using var connection = Open();
@@ -394,6 +434,10 @@ public sealed class KeePortDb : IDisposable
         return session with { User = user };
     }
 
+    /// <summary>Updates the session's last-seen time and expiration.</summary>
+    /// <param name="id">The database ID of the session to refresh.</param>
+    /// <param name="lastSeenAt">The time of the most recent session activity.</param>
+    /// <param name="expiresAt">The updated expiration time for the session.</param>
     public void TouchSession(string id, DateTimeOffset lastSeenAt, DateTimeOffset expiresAt)
     {
         using var connection = Open();
@@ -404,6 +448,8 @@ public sealed class KeePortDb : IDisposable
             new SqliteParameter("@expiresAt", expiresAt.ToString("O")));
     }
 
+    /// <summary>Removes the session identified by its token hash.</summary>
+    /// <param name="tokenHash">The stored hash of the session token.</param>
     public void DeleteSessionByTokenHash(string tokenHash)
     {
         using var connection = Open();
@@ -411,6 +457,9 @@ public sealed class KeePortDb : IDisposable
         Execute(connection, "DELETE FROM sessions WHERE token_hash = @tokenHash;", new SqliteParameter("@tokenHash", tokenHash));
     }
 
+    /// <summary>Looks up a vault by ID, optionally including soft-deleted vaults.</summary>
+    /// <param name="id">The vault file ID.</param>
+    /// <param name="includeDeleted">Whether to include soft-deleted vaults.</param>
     public VaultFileRecord? GetVaultFile(string id, bool includeDeleted = false)
     {
         using var connection = Open();
@@ -426,6 +475,8 @@ public sealed class KeePortDb : IDisposable
         return reader.Read() ? ReadVaultFile(reader) : null;
     }
 
+    /// <summary>Finds an active vault by its name.</summary>
+    /// <param name="name">The proposed display filename for the vault, including its .kdbx extension.</param>
     public VaultFileRecord? GetVaultFileByName(string name)
     {
         using var connection = Open();
@@ -440,6 +491,8 @@ public sealed class KeePortDb : IDisposable
         return reader.Read() ? ReadVaultFile(reader) : null;
     }
 
+    /// <summary>Lists active vaults visible to the user and includes their effective permissions.</summary>
+    /// <param name="user">The user account associated with the operation.</param>
     public IReadOnlyList<VaultFileRecord> ListVaultFilesForUser(UserRecord user)
     {
         using var connection = Open();
@@ -482,6 +535,8 @@ public sealed class KeePortDb : IDisposable
         return files;
     }
 
+    /// <summary>Lists vault metadata for administration, optionally including soft-deleted vaults.</summary>
+    /// <param name="includeDeleted">Whether to include soft-deleted vaults.</param>
     public IReadOnlyList<VaultFileRecord> ListAllVaultFiles(bool includeDeleted)
     {
         using var connection = Open();
@@ -503,6 +558,8 @@ public sealed class KeePortDb : IDisposable
         return files;
     }
 
+    /// <summary>Inserts the metadata for a vault stored on disk.</summary>
+    /// <param name="file">The metadata of the vault file to operate on.</param>
     public void CreateVaultFile(VaultFileRecord file)
     {
         using var connection = Open();
@@ -525,6 +582,13 @@ public sealed class KeePortDb : IDisposable
             new SqliteParameter("@updatedBy", DbValue(file.UpdatedBy)));
     }
 
+    /// <summary>Records a new content revision, including its size, checksum, ETag, and author.</summary>
+    /// <param name="id">The vault file ID.</param>
+    /// <param name="size">The encrypted file size in bytes.</param>
+    /// <param name="sha256">The hexadecimal SHA-256 checksum of the encrypted bytes.</param>
+    /// <param name="revision">The revision number of the file content.</param>
+    /// <param name="etag">The entity tag identifying the file revision.</param>
+    /// <param name="updatedBy">The ID of the user making the change, if known.</param>
     public void UpdateVaultFileContent(string id, long size, string sha256, long revision, string etag, string? updatedBy)
     {
         using var connection = Open();
@@ -543,6 +607,10 @@ public sealed class KeePortDb : IDisposable
             new SqliteParameter("@updatedBy", DbValue(updatedBy)));
     }
 
+    /// <summary>Changes the display name of a vault and records who renamed it.</summary>
+    /// <param name="id">The vault file ID.</param>
+    /// <param name="name">The proposed display filename for the vault, including its .kdbx extension.</param>
+    /// <param name="updatedBy">The ID of the user making the change, if known.</param>
     public void RenameVaultFile(string id, string name, string? updatedBy)
     {
         using var connection = Open();
@@ -556,6 +624,8 @@ public sealed class KeePortDb : IDisposable
             new SqliteParameter("@updatedBy", DbValue(updatedBy)));
     }
 
+    /// <summary>Marks a vault as deleted without removing its stored file.</summary>
+    /// <param name="id">The vault file ID.</param>
     public void SoftDeleteVaultFile(string id)
     {
         using var connection = Open();
@@ -565,6 +635,8 @@ public sealed class KeePortDb : IDisposable
             new SqliteParameter("@deletedAt", DateTimeOffset.UtcNow.ToString("O")));
     }
 
+    /// <summary>Clears the deletion marker on a vault.</summary>
+    /// <param name="id">The vault file ID.</param>
     public void RestoreVaultFile(string id)
     {
         using var connection = Open();
@@ -574,6 +646,9 @@ public sealed class KeePortDb : IDisposable
             new SqliteParameter("@updatedAt", DateTimeOffset.UtcNow.ToString("O")));
     }
 
+    /// <summary>Looks up the explicit permission assigned to a user for a vault.</summary>
+    /// <param name="userId">The ID of the user account.</param>
+    /// <param name="fileId">The ID of the vault file.</param>
     public VaultPermissionRecord? GetPermission(string userId, string fileId)
     {
         using var connection = Open();
@@ -597,6 +672,8 @@ public sealed class KeePortDb : IDisposable
             : null;
     }
 
+    /// <summary>Lists the explicit grants for a vault with their usernames.</summary>
+    /// <param name="fileId">The ID of the vault file.</param>
     public IReadOnlyList<VaultPermissionRecord> ListPermissionsForFile(string fileId)
     {
         using var connection = Open();
@@ -626,6 +703,9 @@ public sealed class KeePortDb : IDisposable
         return permissions;
     }
 
+    /// <summary>Replaces a vault's entire access list in one transaction.</summary>
+    /// <param name="fileId">The ID of the vault file.</param>
+    /// <param name="permissions">The full set of user IDs and grants to store in place of the existing access list.</param>
     public void ReplacePermissionsForFile(string fileId, IEnumerable<(string UserId, VaultPermission Permission)> permissions)
     {
         using var connection = Open();
@@ -646,6 +726,8 @@ public sealed class KeePortDb : IDisposable
         transaction.Commit();
     }
 
+    /// <summary>Finds a WebDAV credential by its WebDAV username and loads its owner.</summary>
+    /// <param name="username">The WebDAV credential's login name.</param>
     public WebDavCredentialRecord? GetWebDavCredentialByUsername(string username)
     {
         using var connection = Open();
@@ -680,6 +762,7 @@ public sealed class KeePortDb : IDisposable
         return credential;
     }
 
+    /// <summary>Lists WebDAV credentials and their usage and revocation metadata.</summary>
     public IReadOnlyList<WebDavCredentialRecord> ListWebDavCredentials()
     {
         using var connection = Open();
@@ -713,6 +796,8 @@ public sealed class KeePortDb : IDisposable
         return credentials;
     }
 
+    /// <summary>Inserts a WebDAV credential linked to its owner.</summary>
+    /// <param name="credential">The WebDAV credential metadata.</param>
     public void CreateWebDavCredential(WebDavCredentialRecord credential)
     {
         using var connection = Open();
@@ -731,6 +816,9 @@ public sealed class KeePortDb : IDisposable
             new SqliteParameter("@revokedAt", DbValue(credential.RevokedAt?.ToString("O"))));
     }
 
+    /// <summary>Marks a WebDAV credential as revoked at the specified time.</summary>
+    /// <param name="id">The credential ID.</param>
+    /// <param name="revokedAt">The time at which the credential is revoked.</param>
     public void RevokeWebDavCredential(string id, DateTimeOffset revokedAt)
     {
         using var connection = Open();
@@ -740,6 +828,9 @@ public sealed class KeePortDb : IDisposable
             new SqliteParameter("@revokedAt", revokedAt.ToString("O")));
     }
 
+    /// <summary>Records when a WebDAV credential was last used.</summary>
+    /// <param name="id">The credential ID.</param>
+    /// <param name="lastUsedAt">The time of the most recent successful use.</param>
     public void UpdateWebDavCredentialLastUsed(string id, DateTimeOffset lastUsedAt)
     {
         using var connection = Open();
@@ -749,6 +840,8 @@ public sealed class KeePortDb : IDisposable
             new SqliteParameter("@lastUsedAt", lastUsedAt.ToString("O")));
     }
 
+    /// <summary>Checks whether a WebDAV username is already in use.</summary>
+    /// <param name="username">The WebDAV credential's login name.</param>
     public bool WebDavUsernameExists(string username)
     {
         using var connection = Open();
@@ -759,10 +852,17 @@ public sealed class KeePortDb : IDisposable
         return Convert.ToInt64(command.ExecuteScalar()) > 0;
     }
 
+    /// <summary>Converts a null reference to the sentinel used for SQL NULL values.</summary>
+    /// <param name="value">A parameter value that may be null before conversion to SQLite's null sentinel.</param>
     private static object DbValue(object? value) => value ?? DBNull.Value;
 
+    /// <summary>Creates an unopened SQLite connection with the configured connection string.</summary>
     private SqliteConnection Open() => new(_connectionString);
 
+    /// <summary>Executes a parameterized SQL command on an open connection.</summary>
+    /// <param name="connection">The open SQLite connection on which to execute the command.</param>
+    /// <param name="sql">The SQL command text with placeholders for bound values.</param>
+    /// <param name="parameters">The values to bind to the SQL command placeholders.</param>
     private static void Execute(SqliteConnection connection, string sql, params SqliteParameter[] parameters)
     {
         using var command = connection.CreateCommand();
@@ -771,6 +871,11 @@ public sealed class KeePortDb : IDisposable
         command.ExecuteNonQuery();
     }
 
+    /// <summary>Executes a parameterized SQL command within the supplied transaction.</summary>
+    /// <param name="connection">The open SQLite connection on which to execute the command.</param>
+    /// <param name="transaction">The active SQLite transaction for the command.</param>
+    /// <param name="sql">The SQL command text with placeholders for bound values.</param>
+    /// <param name="parameters">The values to bind to the SQL command placeholders.</param>
     private static void Execute(SqliteConnection connection, SqliteTransaction transaction, string sql, params SqliteParameter[] parameters)
     {
         using var command = connection.CreateCommand();
@@ -780,6 +885,9 @@ public sealed class KeePortDb : IDisposable
         command.ExecuteNonQuery();
     }
 
+    /// <summary>Reads a user from the current row starting at the specified column offset.</summary>
+    /// <param name="reader">The reader positioned on the row to decode.</param>
+    /// <param name="offset">The index of the first user column within the current row.</param>
     private static UserRecord ReadUser(SqliteDataReader reader, int offset = 0)
     {
         return new UserRecord
@@ -796,6 +904,8 @@ public sealed class KeePortDb : IDisposable
         };
     }
 
+    /// <summary>Reads vault metadata from the current SQLite row.</summary>
+    /// <param name="reader">The reader positioned on the row to decode.</param>
     private static VaultFileRecord ReadVaultFile(SqliteDataReader reader)
     {
         return new VaultFileRecord
@@ -815,10 +925,16 @@ public sealed class KeePortDb : IDisposable
         };
     }
 
+    /// <summary>Parses a persisted timestamp using round-trip date semantics.</summary>
+    /// <param name="value">The serialized timestamp read from SQLite.</param>
     private static DateTimeOffset ParseDate(string value) => DateTimeOffset.Parse(value, null, System.Globalization.DateTimeStyles.RoundtripKind);
 
+    /// <summary>Encodes bytes as unpadded URL-safe Base64.</summary>
+    /// <param name="bytes">The raw bytes to encode as Base64URL.</param>
     public static string Base64Url(byte[] bytes) => Convert.ToBase64String(bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
 
+    /// <summary>Decodes unpadded URL-safe Base64 after restoring standard padding.</summary>
+    /// <param name="value">The unpadded Base64URL text to decode.</param>
     public static byte[] Base64UrlDecode(string value)
     {
         var base64 = value.Replace('-', '+').Replace('_', '/');
@@ -826,6 +942,7 @@ public sealed class KeePortDb : IDisposable
         return Convert.FromBase64String(base64 + new string('=', padding));
     }
 
+    /// <summary>Completes disposal; per-operation connections have no shared resources to release.</summary>
     public void Dispose()
     {
         // SQLite connections are opened per operation.

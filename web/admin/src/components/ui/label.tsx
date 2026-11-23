@@ -2,7 +2,10 @@ import * as React from "react"
 import { cn } from "cn"
 import { Label as LabelPrimitive } from "radix-ui"
 
-/** Renders an accessible Radix label. */
+/**
+ * Renders an accessible Radix label.
+ * @param props - CSS class overrides, the remaining Label attributes forwarded to its element.
+ */
 function Label({
   className,
   ...props

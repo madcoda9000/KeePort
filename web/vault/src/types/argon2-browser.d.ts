@@ -24,7 +24,15 @@ declare module 'argon2-browser/dist/argon2-bundled.min.js' {
     Argon2id: number;
   };
 
+  /**
+   * Derives an Argon2 hash using the supplied password, salt, and work parameters.
+   * @param options - The password, salt, and Argon2 cost parameters used for the derivation.
+   */
   export function hash(options: Argon2HashOptions): Promise<Argon2HashResult>;
+  /**
+   * Verifies a password against an Argon2 hash.
+   * @param options - The candidate password and encoded hash together with any required options.
+   */
   export function verify(options: Argon2HashOptions & { hash?: Uint8Array | string; hashHex?: string }): Promise<boolean>;
 
   const argon2: {

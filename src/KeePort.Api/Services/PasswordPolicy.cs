@@ -5,6 +5,9 @@ public static class PasswordPolicy
     public const int MinLength = 10;
     public const int MaxLength = 256;
 
+    /// <summary>Returns a password policy error or null when the candidate is accepted.</summary>
+    /// <param name="password">The submitted password to check against the configured rules.</param>
+    /// <param name="username">The optional account username that the password must not match.</param>
     public static string? Validate(string? password, string? username = null)
     {
         if (string.IsNullOrWhiteSpace(password))
@@ -26,6 +29,8 @@ public static class PasswordPolicy
         return null;
     }
 
+    /// <summary>Returns a username validation error or null when the candidate is accepted.</summary>
+    /// <param name="username">The proposed username to check against the account naming rules.</param>
     public static string? ValidateUsername(string? username)
     {
         if (string.IsNullOrWhiteSpace(username))

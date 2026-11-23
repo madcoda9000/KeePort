@@ -2,7 +2,10 @@ import * as React from "react"
 import { cn } from "cn"
 import { Avatar as AvatarPrimitive } from "radix-ui"
 
-/** Displays an account avatar or its fallback. */
+/**
+ * Displays an account avatar or its fallback.
+ * @param props - The avatar size, styling, and attributes for its image and fallback container.
+ */
 function Avatar({
   className,
   size = "default",
@@ -23,7 +26,10 @@ function Avatar({
   )
 }
 
-/** Displays the avatar image when available. */
+/**
+ * Displays the avatar image when available.
+ * @param props - The image source, accessible text, and primitive image attributes and styling.
+ */
 function AvatarImage({
   className,
   ...props
@@ -40,7 +46,10 @@ function AvatarImage({
   )
 }
 
-/** Shows initials or an icon when no avatar image is available. */
+/**
+ * Shows initials or an icon when no avatar image is available.
+ * @param props - The fallback content and its avatar primitive attributes.
+ */
 function AvatarFallback({
   className,
   ...props
@@ -57,7 +66,10 @@ function AvatarFallback({
   )
 }
 
-/** Overlays a status indicator on the avatar. */
+/**
+ * Overlays a status indicator on the avatar.
+ * @param props - CSS class overrides, the remaining AvatarBadge attributes forwarded to its element.
+ */
 function AvatarBadge({ className, ...props }: React.ComponentProps<"span">) {
   return (
     <span
@@ -74,7 +86,10 @@ function AvatarBadge({ className, ...props }: React.ComponentProps<"span">) {
   )
 }
 
-/** Arranges multiple avatars in an overlapping group. */
+/**
+ * Arranges multiple avatars in an overlapping group.
+ * @param props - CSS class overrides, the remaining AvatarGroup attributes forwarded to its element.
+ */
 function AvatarGroup({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
@@ -88,7 +103,10 @@ function AvatarGroup({ className, ...props }: React.ComponentProps<"div">) {
   )
 }
 
-/** Indicates how many additional avatars the group represents. */
+/**
+ * Indicates how many additional avatars the group represents.
+ * @param props - CSS class overrides, the remaining AvatarGroupCount attributes forwarded to its element.
+ */
 function AvatarGroupCount({
   className,
   ...props

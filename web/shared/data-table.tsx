@@ -24,7 +24,10 @@ interface DataTableProps<T> {
   renderRow: (row: T) => ReactNode;
 }
 
-/** Adds live search, accessible column sorting and paging to a shadcn table. */
+/**
+ * Adds live search, accessible column sorting and paging to a shadcn table.
+ * @param props - The complete rows, column definitions, search predicate, row renderer, and labels for the table and empty state.
+ */
 export function DataTable<T>({ label, rows, columns, searchLabel, matches, emptyMessage, renderRow }: DataTableProps<T>) {
   const pageSizeId = useId();
   const [query, setQuery] = useState('');
@@ -32,8 +35,11 @@ export function DataTable<T>({ label, rows, columns, searchLabel, matches, empty
   const [pageIndex, setPageIndex] = useState(0);
   const [pageSize, setPageSize] = useState<PageSize>(PAGE_SIZES[0]);
 
-  const results = useMemo(() => {
-    const value = columns.find((column) => column.id === sort?.columnId)?.sortValue;
+  const results = useMemo(/** Prepares the filtered, sorted rows from the current query and column. */ () => {
+    const value = columns.find(/**
+     * Finds the column providing the active sort key.
+     * @param column - The column metadata, including its label and optional sort-key function.
+     */ (column) => column.id === sort?.columnId)?.sortValue;
     return prepareTableRows(rows, query, matches, value && sort ? { value, direction: sort.direction } : undefined);
   }, [rows, columns, matches, query, sort]);
   const page = selectTablePage(results, pageIndex, pageSize);
@@ -41,8 +47,15 @@ export function DataTable<T>({ label, rows, columns, searchLabel, matches, empty
     setPageIndex(page.pageIndex);
   }
 
-  /** Toggles the direction of a column, starting on the first page. */
+  /**
+   * Toggles the direction of a column, starting on the first page.
+   * @param columnId - The ID of the column requested for sorting.
+   */
   function sortBy(columnId: string) {
+    /**
+     * Reverses the current column's order or starts a different column ascending.
+     * @param current - The active sort state, or null when no column is selected.
+     */
     setSort((current) => ({
       columnId,
       direction: current?.columnId === columnId && current.direction === 'ascending' ? 'descending' : 'ascending'
@@ -61,7 +74,10 @@ export function DataTable<T>({ label, rows, columns, searchLabel, matches, empty
             aria-label={searchLabel}
             placeholder={`${searchLabel}…`}
             value={query}
-            onChange={(event) => {
+            onChange={/**
+             * Updates live search and returns to the first page.
+             * @param event - The live search input change event.
+             */ (event) => {
               setQuery(event.target.value);
               setPageIndex(0);
             }}
@@ -71,7 +87,11 @@ export function DataTable<T>({ label, rows, columns, searchLabel, matches, empty
       <Table aria-label={label}>
         <TableHeader className="bg-muted/45">
           <TableRow>
-            {columns.map((column, index) => {
+            {columns.map(/**
+             * Renders a sortable header or a plain label depending on the column.
+             * @param column - The column metadata, including its label and optional sort-key function.
+             * @param index - The zero-based index in the source collection.
+             */ (column, index) => {
               const direction = sort?.columnId === column.id ? sort.direction : undefined;
               const Icon = direction === 'ascending' ? ArrowUpIcon : direction === 'descending' ? ArrowDownIcon : ArrowUpDownIcon;
               return (
@@ -82,7 +102,7 @@ export function DataTable<T>({ label, rows, columns, searchLabel, matches, empty
                   className={index === 0 ? `ps-6 ${column.className ?? ''}` : column.className}
                 >
                   {column.sortValue ? (
-                    <Button type="button" variant="ghost" size="sm" className="-ms-2 px-2" onClick={() => sortBy(column.id)}>
+                    <Button type="button" variant="ghost" size="sm" className="-ms-2 px-2" onClick={/** Changes the sort order for this column. */ () => sortBy(column.id)}>
                       {column.label}<Icon aria-hidden="true" className="text-muted-foreground" />
                     </Button>
                   ) : column.label}
@@ -112,20 +132,26 @@ export function DataTable<T>({ label, rows, columns, searchLabel, matches, empty
               id={pageSizeId}
               size="sm"
               value={pageSize}
-              onChange={(event) => {
+              onChange={/**
+               * Applies the selected page size and returns to the first page.
+               * @param event - The page-size selector change event.
+               */ (event) => {
                 setPageSize(Number(event.target.value) as PageSize);
                 setPageIndex(0);
               }}
             >
-              {PAGE_SIZES.map((size) => <NativeSelectOption key={size} value={size}>{size}</NativeSelectOption>)}
+              {PAGE_SIZES.map(/**
+               * Renders one page-size option per supported row count.
+               * @param size - One of the supported maximum row counts per page.
+               */ (size) => <NativeSelectOption key={size} value={size}>{size}</NativeSelectOption>)}
             </NativeSelect>
           </div>
           <div className="flex items-center gap-2">
             <span className="tabular-nums">Page {page.pageIndex + 1} of {page.pageCount}</span>
-            <Button type="button" size="icon-sm" variant="outline" aria-label="Previous page" disabled={page.pageIndex === 0} onClick={() => setPageIndex(page.pageIndex - 1)}>
+            <Button type="button" size="icon-sm" variant="outline" aria-label="Previous page" disabled={page.pageIndex === 0} onClick={/** Moves back one result page. */ () => setPageIndex(page.pageIndex - 1)}>
               <ChevronLeftIcon aria-hidden="true" />
             </Button>
-            <Button type="button" size="icon-sm" variant="outline" aria-label="Next page" disabled={page.pageIndex + 1 === page.pageCount} onClick={() => setPageIndex(page.pageIndex + 1)}>
+            <Button type="button" size="icon-sm" variant="outline" aria-label="Next page" disabled={page.pageIndex + 1 === page.pageCount} onClick={/** Moves forward one result page. */ () => setPageIndex(page.pageIndex + 1)}>
               <ChevronRightIcon aria-hidden="true" />
             </Button>
           </div>

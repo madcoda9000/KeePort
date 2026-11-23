@@ -2,7 +2,10 @@ import * as React from "react"
 import { cn } from "cn"
 import { Tooltip as TooltipPrimitive } from "radix-ui"
 
-/** Sets tooltip timing for the application. */
+/**
+ * Sets tooltip timing for the application.
+ * @param props - The default tooltip delay and remaining provider options for its descendants.
+ */
 function TooltipProvider({
   delayDuration = 0,
   ...props
@@ -16,21 +19,30 @@ function TooltipProvider({
   )
 }
 
-/** Controls a single tooltip. */
+/**
+ * Controls a single tooltip.
+ * @param props - The Tooltip primitive options and children to render.
+ */
 function Tooltip({
   ...props
 }: React.ComponentProps<typeof TooltipPrimitive.Root>) {
   return <TooltipPrimitive.Root data-slot="tooltip" {...props} />
 }
 
-/** Associates an element with a tooltip. */
+/**
+ * Associates an element with a tooltip.
+ * @param props - The TooltipTrigger primitive options and children to render.
+ */
 function TooltipTrigger({
   ...props
 }: React.ComponentProps<typeof TooltipPrimitive.Trigger>) {
   return <TooltipPrimitive.Trigger data-slot="tooltip-trigger" {...props} />
 }
 
-/** Renders the tooltip text near its trigger. */
+/**
+ * Renders the tooltip text near its trigger.
+ * @param props - The tooltip content, spacing from the trigger, CSS class overrides, and remaining tooltip attributes.
+ */
 function TooltipContent({
   className,
   sideOffset = 0,

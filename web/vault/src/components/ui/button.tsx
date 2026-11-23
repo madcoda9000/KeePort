@@ -40,7 +40,10 @@ const buttonVariants = cva(
   }
 )
 
-/** Renders an action with shared sizes and visual variants. */
+/**
+ * Renders an action with shared sizes and visual variants.
+ * @param props - The visual variant, size, and CSS class overrides, plus attributes for the button or slotted element.
+ */
 function Button({
   className,
   variant = "default",

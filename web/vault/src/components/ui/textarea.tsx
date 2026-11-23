@@ -1,7 +1,10 @@
 import * as React from "react"
 import { cn } from "cn"
 
-/** Renders a styled multiline input. */
+/**
+ * Renders a styled multiline input.
+ * @param props - The native textarea attributes and any additional CSS classes.
+ */
 function Textarea({ className, ...props }: React.ComponentProps<"textarea">) {
   return (
     <textarea

@@ -7,6 +7,10 @@ export interface TotpConfig {
   algorithm: 'SHA-1' | 'SHA-256' | 'SHA-512';
 }
 
+/**
+ * Decodes Base32 secret text into bytes, ignoring characters outside the alphabet.
+ * @param input - The Base32 text to decode, with optional formatting characters.
+ */
 export function base32Decode(input: string): Uint8Array {
   const clean = input.toUpperCase().replace(/[^A-Z2-7]/g, '');
   let bits = 0;
@@ -25,6 +29,10 @@ export function base32Decode(input: string): Uint8Array {
   return new Uint8Array(out);
 }
 
+/**
+ * Maps the URI's algorithm name to a Web Crypto hash name, defaulting to SHA-1.
+ * @param raw - The optional algorithm parameter read from the provisioning URI.
+ */
 function hashName(raw: string | null): TotpConfig['algorithm'] {
   const normalized = (raw ?? 'SHA1').toUpperCase().replace('-', '');
   if (normalized === 'SHA256') return 'SHA-256';
@@ -32,6 +40,10 @@ function hashName(raw: string | null): TotpConfig['algorithm'] {
   return 'SHA-1';
 }
 
+/**
+ * Reads a provisioning URI or raw Base32 secret as a TOTP configuration.
+ * @param raw - A provisioning URI or a raw Base32 shared secret from the entry.
+ */
 export function parseOtpSecret(raw: string): TotpConfig | null {
   const trimmed = raw.trim();
   if (!trimmed) return null;
@@ -57,6 +69,11 @@ export function parseOtpSecret(raw: string): TotpConfig | null {
   return { secret: decoded, digits: 6, period: 30, algorithm: 'SHA-1' };
 }
 
+/**
+ * Generates the TOTP code and remaining validity for the supplied timestamp.
+ * @param config - The TOTP secret, hash algorithm, digit count, and time-step configuration.
+ * @param timeMs - The calculation time in milliseconds since the Unix epoch; defaults to now.
+ */
 export async function totpCode(config: TotpConfig, timeMs: number = Date.now()): Promise<{ code: string; secondsLeft: number }> {
   const counter = Math.floor(timeMs / 1000 / config.period);
   const buf = new ArrayBuffer(8);

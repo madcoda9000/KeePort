@@ -6,7 +6,10 @@ type NativeSelectProps = Omit<React.ComponentProps<"select">, "size"> & {
   size?: "sm" | "default"
 }
 
-/** Renders a styled native select with an indicator. */
+/**
+ * Renders a styled native select with an indicator.
+ * @param props - The select size, CSS class overrides, and native select attributes such as value and onChange.
+ */
 function NativeSelect({
   className,
   size = "default",
@@ -32,7 +35,10 @@ function NativeSelect({
   )
 }
 
-/** Defines one native select option. */
+/**
+ * Defines one native select option.
+ * @param props - The native option attributes, including its value, label, and any CSS class overrides.
+ */
 function NativeSelectOption({
   className,
   ...props
@@ -46,7 +52,10 @@ function NativeSelectOption({
   )
 }
 
-/** Labels a group of native options. */
+/**
+ * Labels a group of native options.
+ * @param props - The group label, option children, and native option-group attributes.
+ */
 function NativeSelectOptGroup({
   className,
   ...props

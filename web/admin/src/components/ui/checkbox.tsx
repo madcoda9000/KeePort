@@ -5,7 +5,10 @@ import { cn } from "cn"
 import { Checkbox as CheckboxPrimitive } from "radix-ui"
 import { CheckIcon } from "lucide-react"
 
-/** Renders an accessible Radix checkbox and indicator. */
+/**
+ * Renders an accessible Radix checkbox and indicator.
+ * @param props - CSS class overrides, the remaining Checkbox attributes forwarded to its element.
+ */
 function Checkbox({
   className,
   ...props

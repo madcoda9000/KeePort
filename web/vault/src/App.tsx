@@ -69,29 +69,59 @@ type Message = { kind: 'notice' | 'error'; text: string } | null;
 const DEFAULT_AUTO_LOCK_MINUTES = 5;
 
 const ENTRY_COLUMNS: readonly TableColumn<EntryView>[] = [
+  /**
+   * Sorts by entry title.
+   * @param entry - The unlocked entry supplying this column's sort value.
+   */
   { id: 'title', label: 'Title', sortValue: (entry) => entry.title },
+  /**
+   * Sorts by username, treating a blank username as missing.
+   * @param entry - The unlocked entry supplying this column's sort value.
+   */
   { id: 'username', label: 'Username', sortValue: (entry) => entry.username || null },
+  /**
+   * Sorts by whether a password is set, without comparing password contents.
+   * @param entry - The unlocked entry supplying this column's sort value.
+   */
   { id: 'password', label: 'Password', sortValue: (entry) => Number(Boolean(entry.password)), className: 'hidden sm:table-cell' },
+  /**
+   * Sorts by website URL, treating a blank URL as missing.
+   * @param entry - The unlocked entry supplying this column's sort value.
+   */
   { id: 'website', label: 'Website', sortValue: (entry) => entry.url || null, className: 'hidden md:table-cell' }
 ];
 
+/**
+ * Formats the encrypted file size for display.
+ * @param size - The file size in bytes.
+ */
 function formatBytes(size: number) {
   if (size < 1024) return `${size} B`;
   if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+/**
+ * Formats a vault timestamp or retains the original text if invalid.
+ * @param value - The timestamp string to format for the current locale.
+ */
 function formatDate(value: string) {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
 }
 
+/**
+ * Extracts API error details or uses the fallback message.
+ * @param error - The caught error to inspect.
+ * @param fallback - The message to use if the error has no useful text.
+ */
 function errorText(error: unknown, fallback: string) {
   if (error instanceof ApiError) return error.message;
   if (error instanceof Error) return error.message;
   return fallback;
 }
 
+/** Manages the vault session, client-side unlocking, and entry editing. */
 export default function App() {
   const [authChecked, setAuthChecked] = useState(false);
   const [user, setUser] = useState<User | null>(null);
@@ -105,6 +135,7 @@ export default function App() {
   const [edits, setEdits] = useState<EntryEdits | null>(null);
   const [totp, setTotp] = useState<{ code: string; secondsLeft: number } | null>(null);
 
+  /** Starts periodic TOTP updates while the current draft has a usable secret. */
   useEffect(() => {
     const config = edits?.otp ? parseOtpSecret(edits.otp) : null;
     if (!config) {
@@ -112,6 +143,7 @@ export default function App() {
       return;
     }
     let cancelled = false;
+    /** Calculates the current code and countdown without updating a stale view. */
     const update = async () => {
       try {
         const result = await totpCode(config);
@@ -121,8 +153,8 @@ export default function App() {
       }
     };
     void update();
-    const timer = window.setInterval(() => void update(), 1000);
-    return () => {
+    const timer = window.setInterval(/** Refreshes the code and countdown on each timer tick. */ () => void update(), 1000);
+    return /** Stops TOTP updates when the secret or entry changes. */ () => {
       cancelled = true;
       window.clearInterval(timer);
     };
@@ -136,15 +168,23 @@ export default function App() {
   const [showProfile, setShowProfile] = useState(false);
   const [profileMessage, setProfileMessage] = useState<Message>(null);
 
-  const selectedFile = useMemo(() => files.find((file) => file.id === selectedId) ?? null, [files, selectedId]);
+  const selectedFile = useMemo(/** Resolves the selected vault against the available file metadata. */ () => files.find(/**
+   * Matches the selected vault by ID.
+   * @param file - One accessible file whose ID is compared with the current selection.
+   */ (file) => file.id === selectedId) ?? null, [files, selectedId]);
   const canWrite = permission === 'read-write';
   const unlocked = Boolean(db && selectedFile);
 
+  /** Refreshes the encrypted vault inventory for the current user. */
   async function refreshFiles() {
     const list = await api.listVaultFiles();
     setFiles(list);
   }
 
+  /**
+   * Locks the open database and clears its credentials and entry state.
+   * @param notify - Whether to display the vault locked notice.
+   */
   function lockVault(notify = false) {
     clearVaultCredentials(db);
     setDb(null);
@@ -157,6 +197,10 @@ export default function App() {
     if (notify) setMessage({ kind: 'notice', text: 'Vault locked. Secrets were discarded from this browser tab.' });
   }
 
+  /**
+   * Locks the current vault before switching to the selected file.
+   * @param file - The encrypted vault selected in the navigation.
+   */
   function selectFile(file: VaultFile) {
     lockVault(false);
     setSelectedId(file.id);
@@ -165,6 +209,10 @@ export default function App() {
     setMessage(null);
   }
 
+  /**
+   * Downloads the encrypted vault and unlocks it locally with the supplied credentials.
+   * @param event - The submission event from the vault unlock form.
+   */
   async function handleUnlock(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!selectedFile) return;
@@ -195,12 +243,17 @@ export default function App() {
     }
   }
 
+  /** Opens an empty draft for creating an entry in the unlocked vault. */
   function startNewEntry() {
     setSelectedEntry(null);
     setEdits({ title: '', username: '', password: '', url: '', notes: '', otp: '' });
     setMessage(null);
   }
 
+  /**
+   * Encrypts and saves entry changes using the current ETag as a precondition.
+   * @param event - The submission event from the entry editor form.
+   */
   async function handleSave(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!db || !selectedFile || !edits) return;
@@ -221,8 +274,18 @@ export default function App() {
       const bytes = await saveVault(db);
       const updated = await api.putFileBytes(selectedFile.id, bytes, etag);
       const nextEntries = listEntries(db);
-      const refreshed = nextEntries.find((entry) => entry.id === entryId) ?? null;
-      setFiles((current) => current.map((file) => (file.id === updated.id ? { ...file, ...updated } : file)));
+      const refreshed = nextEntries.find(/**
+       * Finds the saved entry in the refreshed list.
+       * @param entry - One refreshed entry whose ID is compared with the saved entry.
+       */ (entry) => entry.id === entryId) ?? null;
+      /**
+       * Updates the file list with the metadata returned by the save.
+       * @param current - The vault metadata list currently shown to the user.
+       */
+      setFiles((current) => current.map(/**
+       * Merges the new metadata into only the saved vault's row.
+       * @param file - One listed vault whose metadata may need to be refreshed.
+       */ (file) => (file.id === updated.id ? { ...file, ...updated } : file)));
       setEtag(updated.etag);
       setEntries(nextEntries);
       setSelectedEntry(refreshed);
@@ -255,6 +318,10 @@ export default function App() {
     }
   }
 
+  /**
+   * Signs in to the Vault API and refreshes the user's file inventory.
+   * @param event - The submission event from the sign-in form.
+   */
   async function handleLogin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = event.currentTarget;
@@ -277,6 +344,7 @@ export default function App() {
     }
   }
 
+  /** Locks the vault, clears local session state, and ends the server session. */
   async function handleLogout() {
     lockVault(false);
     setMessage(null);
@@ -290,6 +358,10 @@ export default function App() {
     }
   }
 
+  /**
+   * Validates the confirmation and submits the login password change.
+   * @param event - The submission event from the login password change form.
+   */
   async function handleChangePassword(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = event.currentTarget;
@@ -314,7 +386,10 @@ export default function App() {
     }
   }
 
-  /** Saves the contact address entered in the profile. */
+  /**
+   * Saves the contact address entered in the profile.
+   * @param event - The submission event from the contact email form.
+   */
   async function handleSaveEmail(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const email = String(new FormData(event.currentTarget).get('email') ?? '').trim();
@@ -330,6 +405,10 @@ export default function App() {
     }
   }
 
+  /**
+   * Validates and saves the user's auto-lock delay.
+   * @param event - The submission event from the auto-lock preference form.
+   */
   async function handleSaveAutoLock(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const minutes = Number(new FormData(event.currentTarget).get('autoLockMinutes'));
@@ -351,9 +430,10 @@ export default function App() {
     }
   }
 
+  /** Checks for an existing vault session on mount. */
   useEffect(() => {
     let cancelled = false;
-    (async () => {
+    (/** Restores the signed-in account, CSRF token, and file inventory. */ async () => {
       try {
         const me = await api.me();
         await api.csrf();
@@ -369,14 +449,16 @@ export default function App() {
         if (!cancelled) setAuthChecked(true);
       }
     })();
-    return () => {
+    return /** Marks session initialization as obsolete when the component unmounts. */ () => {
       cancelled = true;
     };
   }, []);
 
+  /** Schedules auto-lock while the open vault's browser tab is hidden. */
   useEffect(() => {
     if (!db) return;
     let lockTimer: number | undefined;
+    /** Clears credentials and unlocked data when the auto-lock timer expires. */
     const lock = () => {
       clearVaultCredentials(db);
       setDb(null);
@@ -387,6 +469,7 @@ export default function App() {
       setPassword('');
       setKeyFile(null);
     };
+    /** Starts the lock timer on tab hide and cancels it on return. */
     const onVisibility = () => {
       if (document.hidden) {
         lockTimer = window.setTimeout(lock, autoLockMinutes * 60 * 1000);
@@ -396,13 +479,17 @@ export default function App() {
       }
     };
     document.addEventListener('visibilitychange', onVisibility);
-    return () => {
+    return /** Removes the visibility listener and cancels any pending auto-lock. */ () => {
       document.removeEventListener('visibilitychange', onVisibility);
       if (lockTimer !== undefined) window.clearTimeout(lockTimer);
     };
   }, [db, autoLockMinutes]);
 
-  /** Copies a single entry value without showing it in feedback. */
+  /**
+   * Copies a single entry value without showing it in feedback.
+   * @param value - The current draft field text or generated TOTP code to copy.
+   * @param label - The field name to use in the clipboard status message.
+   */
   async function copyValue(value: string, label: string) {
     try {
       await navigator.clipboard.writeText(value);
@@ -419,7 +506,7 @@ export default function App() {
       size="icon"
       aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
       title={theme === 'dark' ? 'Light mode' : 'Dark mode'}
-      onClick={() => setTheme(toggleTheme())}
+      onClick={/** Switches and stores the preferred color theme. */ () => setTheme(toggleTheme())}
     >
       {theme === 'dark' ? <SunIcon /> : <MoonIcon />}
     </Button>
@@ -478,7 +565,10 @@ export default function App() {
         profile={
           <Dialog
             open={showProfile}
-            onOpenChange={(open) => {
+            onOpenChange={/**
+             * Tracks profile visibility and clears old messages on reopening.
+             * @param open - The requested profile dialog state.
+             */ (open) => {
               setShowProfile(open);
               if (open) setProfileMessage(null);
             }}
@@ -676,7 +766,10 @@ export default function App() {
                         type="password"
                         autoComplete="off"
                         value={password}
-                        onChange={(event) => setPassword(event.target.value)}
+                        onChange={/**
+                         * Updates the master password draft for unlocking the selected vault.
+                         * @param event - The master password input change event.
+                         */ (event) => setPassword(event.target.value)}
                       />
                     </Field>
                     <Field>
@@ -684,7 +777,10 @@ export default function App() {
                       <Input
                         id="key-file"
                         type="file"
-                        onChange={(event) => setKeyFile(event.target.files?.[0] ?? null)}
+                        onChange={/**
+                         * Stores the optional key file selected for local unlocking.
+                         * @param event - The file input event containing the optional key file.
+                         */ (event) => setKeyFile(event.target.files?.[0] ?? null)}
                       />
                     </Field>
                   </FieldGroup>
@@ -728,7 +824,7 @@ export default function App() {
                       </CardDescription>
                     </div>
                     <div className="flex flex-wrap gap-2">
-                      <Button variant="outline" size="sm" disabled={busy === 'save'} onClick={() => lockVault(true)}>
+                      <Button variant="outline" size="sm" disabled={busy === 'save'} onClick={/** Locks the vault and notifies the user. */ () => lockVault(true)}>
                         <LockKeyholeIcon /> Lock vault
                       </Button>
                       {canWrite && (
@@ -747,13 +843,16 @@ export default function App() {
                   searchLabel="Search vault entries"
                   matches={entryMatches}
                   emptyMessage="This vault has no entries yet."
-                  renderRow={(entry) => (
+                  renderRow={/**
+                   * Renders entry metadata with an action to open its details.
+                   * @param entry - The unlocked entry to display in the table and open from the row.
+                   */ (entry) => (
                     <TableRow key={entry.id}>
                       <TableCell className="py-2 ps-3">
                         <Button
                           variant="ghost"
                           className="h-auto max-w-44 items-start gap-2 px-3 py-1.5 text-start sm:max-w-72"
-                          onClick={() => {
+                          onClick={/** Clears the workspace message and opens a draft for the selected entry. */ () => {
                             setMessage(null);
                             setSelectedEntry(entry);
                             setEdits({
@@ -791,7 +890,10 @@ export default function App() {
 
               <Sheet
                 open={edits !== null}
-                onOpenChange={(open) => {
+                onOpenChange={/**
+                 * Discards the entry draft when the sheet closes outside a save.
+                 * @param open - The requested entry sheet visibility.
+                 */ (open) => {
                   if (!open && busy !== 'save') {
                     setSelectedEntry(null);
                     setEdits(null);
@@ -823,7 +925,10 @@ export default function App() {
                             id="entry-title"
                             value={edits.title}
                             readOnly={!canWrite}
-                            onChange={(event) => setEdits({ ...edits, title: event.target.value })}
+                            onChange={/**
+                             * Updates the draft entry title.
+                             * @param event - The entry title input change event.
+                             */ (event) => setEdits({ ...edits, title: event.target.value })}
                           />
                         </Field>
                         <Field>
@@ -832,7 +937,10 @@ export default function App() {
                             id="entry-username"
                             value={edits.username}
                             readOnly={!canWrite}
-                            onChange={(event) => setEdits({ ...edits, username: event.target.value })}
+                            onChange={/**
+                             * Updates the draft entry username.
+                             * @param event - The entry username input change event.
+                             */ (event) => setEdits({ ...edits, username: event.target.value })}
                           />
                         </Field>
                         <Field>
@@ -843,7 +951,10 @@ export default function App() {
                             autoComplete="off"
                             value={edits.password}
                             readOnly={!canWrite}
-                            onChange={(event) => setEdits({ ...edits, password: event.target.value })}
+                            onChange={/**
+                             * Updates the draft entry password.
+                             * @param event - The entry password input change event.
+                             */ (event) => setEdits({ ...edits, password: event.target.value })}
                           />
                         </Field>
                         <Field>
@@ -852,7 +963,10 @@ export default function App() {
                             id="entry-url"
                             value={edits.url}
                             readOnly={!canWrite}
-                            onChange={(event) => setEdits({ ...edits, url: event.target.value })}
+                            onChange={/**
+                             * Updates the draft website URL.
+                             * @param event - The website URL input change event.
+                             */ (event) => setEdits({ ...edits, url: event.target.value })}
                           />
                         </Field>
                         <Field>
@@ -861,7 +975,10 @@ export default function App() {
                             id="entry-notes"
                             value={edits.notes}
                             readOnly={!canWrite}
-                            onChange={(event) => setEdits({ ...edits, notes: event.target.value })}
+                            onChange={/**
+                             * Updates the draft notes.
+                             * @param event - The entry notes input change event.
+                             */ (event) => setEdits({ ...edits, notes: event.target.value })}
                           />
                         </Field>
                         <Field>
@@ -872,7 +989,10 @@ export default function App() {
                             autoComplete="off"
                             value={edits.otp}
                             readOnly={!canWrite}
-                            onChange={(event) => setEdits({ ...edits, otp: event.target.value })}
+                            onChange={/**
+                             * Updates the draft TOTP secret or provisioning URI.
+                             * @param event - The TOTP field change event containing a secret or provisioning URI.
+                             */ (event) => setEdits({ ...edits, otp: event.target.value })}
                             aria-describedby="otp-help"
                           />
                           <FieldDescription id="otp-help">Use an otpauth URI or a Base32 secret.</FieldDescription>
@@ -887,7 +1007,7 @@ export default function App() {
                             size="sm"
                             className="ms-auto"
                             type="button"
-                            onClick={() => void copyValue(totp.code, 'TOTP code')}
+                            onClick={/** Copies the current TOTP code to the clipboard. */ () => void copyValue(totp.code, 'TOTP code')}
                           >
                             <CopyIcon /> Copy code
                           </Button>
@@ -905,7 +1025,7 @@ export default function App() {
                           size="sm"
                           type="button"
                           disabled={!edits.username}
-                          onClick={() => void copyValue(edits.username, 'Username')}
+                          onClick={/** Copies the draft username to the clipboard. */ () => void copyValue(edits.username, 'Username')}
                         >
                           <CopyIcon /> Copy username
                         </Button>
@@ -914,7 +1034,7 @@ export default function App() {
                           size="sm"
                           type="button"
                           disabled={!edits.password}
-                          onClick={() => void copyValue(edits.password, 'Password')}
+                          onClick={/** Copies the draft password to the clipboard. */ () => void copyValue(edits.password, 'Password')}
                         >
                           <CopyIcon /> Copy password
                         </Button>
@@ -931,7 +1051,10 @@ export default function App() {
   );
 }
 
-/** Renders vault navigation and the signed-in account's profile action. */
+/**
+ * Renders vault navigation and the signed-in account's profile action.
+ * @param props - The available files, active file ID, disabled state, selection callback, signed-in account, and profile control.
+ */
 function VaultNavigation({
   files,
   selectedId,
@@ -966,7 +1089,10 @@ function VaultNavigation({
           <SidebarGroupLabel>Shared vaults</SidebarGroupLabel>
           {!files.length && <p className="px-2 py-1 text-sm text-muted-foreground">No files available.</p>}
           <SidebarMenu>
-            {files.map((file) => (
+            {files.map(/**
+             * Renders a sidebar item for each accessible vault file.
+             * @param file - The accessible vault to render as a navigation item.
+             */ (file) => (
               <SidebarMenuItem key={file.id}>
                 <SidebarMenuButton
                   type="button"
@@ -974,7 +1100,7 @@ function VaultNavigation({
                   aria-current={file.id === selectedId ? 'true' : undefined}
                   disabled={disabled}
                   title={file.name}
-                  onClick={() => {
+                  onClick={/** Selects the vault only when it is not already active. */ () => {
                     if (file.id !== selectedId) onSelect(file);
                     setOpenMobile(false);
                   }}

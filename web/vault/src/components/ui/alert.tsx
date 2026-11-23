@@ -18,7 +18,10 @@ const alertVariants = cva(
   }
 )
 
-/** Announces a message in the selected tone. */
+/**
+ * Announces a message in the selected tone.
+ * @param props - CSS class overrides, the visual variant, the remaining Alert attributes forwarded to its element.
+ */
 function Alert({
   className,
   variant,
@@ -34,7 +37,10 @@ function Alert({
   )
 }
 
-/** Labels the alert. */
+/**
+ * Labels the alert.
+ * @param props - CSS class overrides, the remaining AlertTitle attributes forwarded to its element.
+ */
 function AlertTitle({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
@@ -48,7 +54,10 @@ function AlertTitle({ className, ...props }: React.ComponentProps<"div">) {
   )
 }
 
-/** Renders supporting alert text. */
+/**
+ * Renders supporting alert text.
+ * @param props - CSS class overrides, the remaining AlertDescription attributes forwarded to its element.
+ */
 function AlertDescription({
   className,
   ...props
@@ -65,7 +74,10 @@ function AlertDescription({
   )
 }
 
-/** Places an action alongside the alert. */
+/**
+ * Places an action alongside the alert.
+ * @param props - CSS class overrides, the remaining AlertAction attributes forwarded to its element.
+ */
 function AlertAction({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div

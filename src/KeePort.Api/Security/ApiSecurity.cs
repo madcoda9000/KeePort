@@ -8,15 +8,23 @@ namespace KeePort.Api.Security;
 
 public static class ApiAuth
 {
+    /// <summary>Gets the authenticated user attached to the current request, if present.</summary>
+    /// <param name="context">The current HTTP request and response context.</param>
     public static UserRecord? GetUser(HttpContext context) => context.Items[SessionService.UserItemKey] as UserRecord;
 
+    /// <summary>Gets the validated session attached to the current request, if present.</summary>
+    /// <param name="context">The current HTTP request and response context.</param>
     public static SessionRecord? GetSession(HttpContext context) => context.Items[SessionService.SessionItemKey] as SessionRecord;
 
+    /// <summary>Returns an unauthorized result unless the current request has a signed-in user.</summary>
+    /// <param name="context">The current HTTP request and response context.</param>
     public static IResult? RequireAuthenticated(HttpContext context)
     {
         return GetUser(context) is null ? Results.Unauthorized() : null;
     }
 
+    /// <summary>Returns an authorization error unless the signed-in user is an administrator.</summary>
+    /// <param name="context">The current HTTP request and response context.</param>
     public static IResult? RequireAdmin(HttpContext context)
     {
         var user = GetUser(context);
@@ -34,8 +42,15 @@ public static class ApiAuth
 
 public static class ApiSecurityExtensions
 {
+    /// <summary>Adds session authentication middleware for the KeePort API routes.</summary>
+    /// <param name="app">The application pipeline to which the middleware is added.</param>
+    /// <param name="sessions">The service for managing sessions, cookies, and CSRF tokens.</param>
+    /// <param name="secureCookies">Whether to set the Secure flag on session cookies.</param>
     public static IApplicationBuilder UseKeePortSession(this IApplicationBuilder app, SessionService sessions, bool secureCookies)
     {
+       // Selects the role-specific cookie and attaches the validated session to the request.
+        // <param name="context">The current HTTP request and response context.</param>
+        // <param name="next">The next middleware in the request pipeline.</param>
         return app.Use(async (context, next) =>
         {
             var path = context.Request.Path;
@@ -69,8 +84,14 @@ public static class ApiSecurityExtensions
         });
     }
 
+    /// <summary>Adds CSRF enforcement for API requests that change state.</summary>
+    /// <param name="app">The application pipeline to which the middleware is added.</param>
+    /// <param name="sessions">The service for managing sessions, cookies, and CSRF tokens.</param>
     public static IApplicationBuilder UseKeePortCsrf(this IApplicationBuilder app, SessionService sessions)
     {
+       // Rejects non-exempt API mutations unless they carry a valid session CSRF token.
+        // <param name="context">The current HTTP request and response context.</param>
+        // <param name="next">The next middleware in the request pipeline.</param>
         return app.Use(async (context, next) =>
         {
             var method = context.Request.Method;
@@ -93,6 +114,8 @@ public static class ApiSecurityExtensions
         });
     }
 
+    /// <summary>Identifies the setup and login routes that can run without a CSRF token.</summary>
+    /// <param name="path">The API request path to check against the exemption list.</param>
     private static bool IsCsrfExempt(string path)
     {
         return path.Equals("/api/auth/login", StringComparison.OrdinalIgnoreCase) ||

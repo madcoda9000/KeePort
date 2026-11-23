@@ -7,7 +7,10 @@ function initialTheme(): 'light' | 'dark' {
   return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
 }
 
-/** Applies the shadcn dark-mode class and tells native controls which palette to use. */
+/**
+ * Applies the shadcn dark-mode class and tells native controls which palette to use.
+ * @param theme - The light or dark theme to apply to the document.
+ */
 function applyTheme(theme: 'light' | 'dark') {
   document.documentElement.classList.toggle('dark', theme === 'dark');
   document.documentElement.style.colorScheme = theme;

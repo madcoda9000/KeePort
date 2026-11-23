@@ -4,7 +4,10 @@ import * as React from "react"
 import { cn } from "cn"
 import { Separator as SeparatorPrimitive } from "radix-ui"
 
-/** Divides content horizontally or vertically. */
+/**
+ * Divides content horizontally or vertically.
+ * @param props - The separator orientation, decorative flag, and additional CSS classes and element attributes.
+ */
 function Separator({
   className,
   orientation = "horizontal",

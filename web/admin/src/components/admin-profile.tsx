@@ -12,12 +12,18 @@ import { SidebarFooter, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '
 
 type ProfileMessage = { kind: 'notice' | 'error'; text: string };
 
-/** Shows the admin account and lets the signed-in admin update its contact email and login password. */
+/**
+ * Shows the admin account and lets the signed-in admin update its contact email and login password.
+ * @param props - The signed-in administrator and the callback that receives the updated account after a profile change.
+ */
 export function AdminProfile({ user, onUpdate }: { user: User; onUpdate: (user: User) => void }) {
   const [busy, setBusy] = useState<'email' | 'password' | null>(null);
   const [message, setMessage] = useState<ProfileMessage | null>(null);
 
-  /** Saves the contact email and updates the account displayed in the sidebar. */
+  /**
+   * Saves the contact email and updates the account displayed in the sidebar.
+   * @param event - The submission event from the admin contact email form.
+   */
   async function handleEmail(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const email = String(new FormData(event.currentTarget).get('email') ?? '').trim();
@@ -33,7 +39,10 @@ export function AdminProfile({ user, onUpdate }: { user: User; onUpdate: (user: 
     }
   }
 
-  /** Checks password confirmation before changing the current account's password. */
+  /**
+   * Checks password confirmation before changing the current account's password.
+   * @param event - The submission event from the admin login password form.
+   */
   async function handlePassword(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = event.currentTarget;
@@ -74,7 +83,10 @@ export function AdminProfile({ user, onUpdate }: { user: User; onUpdate: (user: 
       </div>
       <SidebarMenu>
         <SidebarMenuItem>
-          <Dialog onOpenChange={(open) => { if (open) setMessage(null); }}>
+          <Dialog onOpenChange={/**
+           * Clears the previous profile message when the dialog opens.
+           * @param open - The requested profile dialog state.
+           */ (open) => { if (open) setMessage(null); }}>
             <DialogTrigger asChild>
               <SidebarMenuButton type="button" variant="outline">
                 <UserRoundIcon />

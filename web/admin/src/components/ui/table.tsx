@@ -1,7 +1,10 @@
 import * as React from "react"
 import { cn } from "cn"
 
-/** Wraps the table in a horizontal scroll container. */
+/**
+ * Wraps the table in a horizontal scroll container.
+ * @param props - CSS class overrides, the remaining Table attributes forwarded to its element.
+ */
 function Table({ className, ...props }: React.ComponentProps<"table">) {
   return (
     <div
@@ -17,7 +20,10 @@ function Table({ className, ...props }: React.ComponentProps<"table">) {
   )
 }
 
-/** Groups table heading rows. */
+/**
+ * Groups table heading rows.
+ * @param props - CSS class overrides, the remaining TableHeader attributes forwarded to its element.
+ */
 function TableHeader({ className, ...props }: React.ComponentProps<"thead">) {
   return (
     <thead
@@ -28,7 +34,10 @@ function TableHeader({ className, ...props }: React.ComponentProps<"thead">) {
   )
 }
 
-/** Groups table data rows. */
+/**
+ * Groups table data rows.
+ * @param props - CSS class overrides, the remaining TableBody attributes forwarded to its element.
+ */
 function TableBody({ className, ...props }: React.ComponentProps<"tbody">) {
   return (
     <tbody
@@ -39,7 +48,10 @@ function TableBody({ className, ...props }: React.ComponentProps<"tbody">) {
   )
 }
 
-/** Groups summary rows at the bottom of a table. */
+/**
+ * Groups summary rows at the bottom of a table.
+ * @param props - CSS class overrides, the remaining TableFooter attributes forwarded to its element.
+ */
 function TableFooter({ className, ...props }: React.ComponentProps<"tfoot">) {
   return (
     <tfoot
@@ -53,7 +65,10 @@ function TableFooter({ className, ...props }: React.ComponentProps<"tfoot">) {
   )
 }
 
-/** Renders a single table row. */
+/**
+ * Renders a single table row.
+ * @param props - CSS class overrides, the remaining TableRow attributes forwarded to its element.
+ */
 function TableRow({ className, ...props }: React.ComponentProps<"tr">) {
   return (
     <tr
@@ -67,7 +82,10 @@ function TableRow({ className, ...props }: React.ComponentProps<"tr">) {
   )
 }
 
-/** Renders a header cell for a table column. */
+/**
+ * Renders a header cell for a table column.
+ * @param props - CSS class overrides, the remaining TableHead attributes forwarded to its element.
+ */
 function TableHead({ className, ...props }: React.ComponentProps<"th">) {
   return (
     <th
@@ -81,7 +99,10 @@ function TableHead({ className, ...props }: React.ComponentProps<"th">) {
   )
 }
 
-/** Renders a data cell within a row. */
+/**
+ * Renders a data cell within a row.
+ * @param props - CSS class overrides, the remaining TableCell attributes forwarded to its element.
+ */
 function TableCell({ className, ...props }: React.ComponentProps<"td">) {
   return (
     <td
@@ -95,7 +116,10 @@ function TableCell({ className, ...props }: React.ComponentProps<"td">) {
   )
 }
 
-/** Adds a caption to a table. */
+/**
+ * Adds a caption to a table.
+ * @param props - CSS class overrides, the remaining TableCaption attributes forwarded to its element.
+ */
 function TableCaption({
   className,
   ...props

@@ -5,35 +5,50 @@ import { Dialog as DialogPrimitive } from "radix-ui"
 import { Button } from "@/components/ui/button"
 import { XIcon } from "lucide-react"
 
-/** Controls a modal dialog. */
+/**
+ * Controls a modal dialog.
+ * @param props - The Dialog primitive options and children to render.
+ */
 function Dialog({
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Root>) {
   return <DialogPrimitive.Root data-slot="dialog" {...props} />
 }
 
-/** Opens the modal from its trigger. */
+/**
+ * Opens the modal from its trigger.
+ * @param props - The DialogTrigger primitive options and children to render.
+ */
 function DialogTrigger({
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Trigger>) {
   return <DialogPrimitive.Trigger data-slot="dialog-trigger" {...props} />
 }
 
-/** Mounts modal elements outside the page layout. */
+/**
+ * Mounts modal elements outside the page layout.
+ * @param props - The DialogPortal primitive options and children to render.
+ */
 function DialogPortal({
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Portal>) {
   return <DialogPrimitive.Portal data-slot="dialog-portal" {...props} />
 }
 
-/** Closes the surrounding dialog. */
+/**
+ * Closes the surrounding dialog.
+ * @param props - The DialogClose primitive options and children to render.
+ */
 function DialogClose({
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Close>) {
   return <DialogPrimitive.Close data-slot="dialog-close" {...props} />
 }
 
-/** Dims the page behind the dialog. */
+/**
+ * Dims the page behind the dialog.
+ * @param props - CSS class overrides, the remaining DialogOverlay attributes forwarded to its element.
+ */
 function DialogOverlay({
   className,
   ...props
@@ -50,7 +65,10 @@ function DialogOverlay({
   )
 }
 
-/** Renders the dialog panel with focus management. */
+/**
+ * Renders the dialog panel with focus management.
+ * @param props - The dialog content, optional built-in close control, CSS class overrides, and other content attributes.
+ */
 function DialogContent({
   className,
   children,
@@ -89,7 +107,10 @@ function DialogContent({
   )
 }
 
-/** Groups the modal title and description. */
+/**
+ * Groups the modal title and description.
+ * @param props - CSS class overrides, the remaining DialogHeader attributes forwarded to its element.
+ */
 function DialogHeader({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
@@ -100,7 +121,10 @@ function DialogHeader({ className, ...props }: React.ComponentProps<"div">) {
   )
 }
 
-/** Aligns the dialog actions. */
+/**
+ * Aligns the dialog actions.
+ * @param props - The footer content, close-button option, styling, and additional element attributes.
+ */
 function DialogFooter({
   className,
   showCloseButton = false,
@@ -128,7 +152,10 @@ function DialogFooter({
   )
 }
 
-/** Provides an accessible dialog heading. */
+/**
+ * Provides an accessible dialog heading.
+ * @param props - CSS class overrides, the remaining DialogTitle attributes forwarded to its element.
+ */
 function DialogTitle({
   className,
   ...props
@@ -142,7 +169,10 @@ function DialogTitle({
   )
 }
 
-/** Provides accessible supporting dialog text. */
+/**
+ * Provides accessible supporting dialog text.
+ * @param props - CSS class overrides, the remaining DialogDescription attributes forwarded to its element.
+ */
 function DialogDescription({
   className,
   ...props

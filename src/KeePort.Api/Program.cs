@@ -12,6 +12,8 @@ using Microsoft.Extensions.FileProviders;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Sets Kestrel's maximum request body size for uploads.
+// <param name="options">The Kestrel server options for request size limits.</param>
 builder.WebHost.ConfigureKestrel(options =>
 {
     options.Limits.MaxRequestBodySize = 200L * 1024 * 1024;
@@ -37,14 +39,20 @@ builder.Services.AddSingleton<SessionService>();
 builder.Services.AddSingleton<VaultService>();
 builder.Services.AddSingleton<RateLimitSettingsService>();
 
+// Registers the credential and WebDAV limits and their rejection response.
+// <param name="options">The middleware settings for limiter policies and rejection handling.</param>
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    // Reads the current credential quota and partitions it by client IP and policy revision.
+    // <param name="context">The current HTTP request and response context.</param>
     options.AddPolicy(AuthEndpoints.CredentialRateLimitPolicy, context =>
     {
         var limits = context.RequestServices.GetRequiredService<RateLimitSettingsService>().Current;
         return PerIpLimit(context, limits.Settings.AuthPerMinute, limits.AuthVersion);
     });
+   // Applies the WebDAV quota only to requests under the WebDAV path.
+    // <param name="context">The current HTTP request and response context.</param>
     options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, (string, long)>(context =>
     {
         if (!context.Request.Path.StartsWithSegments("/webdav", StringComparison.OrdinalIgnoreCase))
@@ -54,6 +62,9 @@ builder.Services.AddRateLimiter(options =>
         var limits = context.RequestServices.GetRequiredService<RateLimitSettingsService>().Current;
         return PerIpLimit(context, limits.Settings.WebDavPerMinute, limits.WebDavVersion);
     });
+    // Returns a structured rate-limit error and includes Retry-After when available.
+    // <param name="rejection">The rejected request and rate-limit lease used to build the error response.</param>
+    // <param name="cancellationToken">A token that cancels the operation when the caller no longer needs it.</param>
     options.OnRejected = async (rejection, cancellationToken) =>
     {
         if (rejection.Lease.TryGetMetadata(MetadataName.RetryAfter, out var retryAfter))
@@ -66,8 +77,12 @@ builder.Services.AddRateLimiter(options =>
 });
 
 var corsOrigins = builder.Configuration.GetSection("KeePort:CorsOrigins").Get<string[]>() ?? [];
+// Registers the KeePort CORS policy.
+// <param name="options">The CORS options on which to register KeePort's named policy.</param>
 builder.Services.AddCors(options =>
 {
+    // Allows credentialed requests only from explicitly configured origins.
+    // <param name="policy">The CORS policy builder for the configured origins.</param>
     options.AddPolicy("KeePortCors", policy =>
     {
         if (corsOrigins.Length > 0)
@@ -105,6 +120,9 @@ app.UseForwardedHeaders(new ForwardedHeadersOptions
     ForwardLimit = 1
 });
 
+// Sets security headers and chooses a content policy for the API or the frontend.
+// <param name="context">The current HTTP request and response context.</param>
+// <param name="next">The next middleware in the request pipeline.</param>
 app.Use(async (context, next) =>
 {
     var path = context.Request.Path.Value ?? string.Empty;
@@ -120,6 +138,9 @@ app.Use(async (context, next) =>
 var adminPorts = app.Configuration.GetSection("KeePort:AdminPorts").Get<int[]>() ?? [];
 if (adminPorts.Length > 0)
 {
+    // Restricts access to admin routes to the configured listener ports.
+    // <param name="context">The current HTTP request and response context.</param>
+    // <param name="next">The next middleware in the request pipeline.</param>
     app.Use(async (context, next) =>
     {
         var path = context.Request.Path.Value ?? string.Empty;
@@ -142,6 +163,7 @@ app.UseKeePortSession(sessions, secureCookies);
 app.UseKeePortCsrf(sessions);
 app.UseWebDavAuthentication(db, hasher);
 
+// Reports process health with the current UTC time.
 app.MapGet("/api/health", () => Results.Ok(new { status = "ok", time = DateTimeOffset.UtcNow }))
     .WithName("Health");
 app.MapAuthEndpoints();
@@ -151,6 +173,9 @@ app.MapWebDavEndpoints();
 
 app.UseDefaultFiles();
 app.UseStaticFiles();
+// Serves the appropriate frontend entry point for eligible unmatched routes.
+// <param name="context">The current HTTP request and response context.</param>
+// <param name="next">The next middleware in the request pipeline.</param>
 app.Use(async (context, next) =>
 {
     await next();
@@ -179,10 +204,15 @@ app.Use(async (context, next) =>
 
 app.Run();
 
-/// <summary>Creates a one-minute quota for each client address and settings revision.</summary>
+// Creates a one-minute quota for each client address and settings revision.
+// <param name="context">The current HTTP request and response context.</param>
+// <param name="limit">The requests allowed per client IP in a one-minute window.</param>
+// <param name="version">The policy revision used to separate old and new quota partitions.</param>
 static RateLimitPartition<(string, long)> PerIpLimit(HttpContext context, int limit, long version)
     => RateLimitPartition.GetFixedWindowLimiter(
         (context.Connection.RemoteIpAddress?.ToString() ?? "unknown", version),
+        // Configures the one-minute partition to reject requests instead of queueing them.
+        // <param name="_">The partition key, unused because quota settings are already captured.</param>
         _ => new FixedWindowRateLimiterOptions { PermitLimit = limit, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 });
 
 public partial class Program;

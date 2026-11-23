@@ -13,6 +13,10 @@ public enum VaultWriteStatus
     Conflict
 }
 
+/// <summary>Describes a vault write outcome and the relevant file metadata or current ETag.</summary>
+/// <param name="Status">The result status of the attempted write.</param>
+/// <param name="File">The saved vault or conflict copy, if the operation produced one.</param>
+/// <param name="CurrentETag">The current file entity tag, if known.</param>
 public sealed record VaultWriteResult(VaultWriteStatus Status, VaultFileRecord? File, string? CurrentETag);
 
 public sealed class VaultService
@@ -21,23 +25,41 @@ public sealed class VaultService
     private const int MaxNameLength = 200;
 
     private readonly KeePortDb _db;
-    private readonly SemaphoreSlim[] _writeLocks = Enumerable.Range(0, 64).Select(_ => new SemaphoreSlim(1, 1)).ToArray();
+    private readonly SemaphoreSlim[] _writeLocks = Enumerable.Range(0, 64).Select(/* Creates one semaphore for each striped write-lock bucket.
+     * <param name="_">The bucket index, unused because each bucket gets an identical semaphore.</param>
+     */ _ => new SemaphoreSlim(1, 1)).ToArray();
 
+    /// <summary>Initializes the vault service with its metadata store.</summary>
+    /// <param name="db">The SQLite store for KeePort metadata.</param>
     public VaultService(KeePortDb db)
     {
         _db = db;
     }
 
+    /// <summary>Lists active vaults and their permissions for the given user.</summary>
+    /// <param name="user">The user account associated with the operation.</param>
     public IReadOnlyList<VaultFileRecord> ListForUser(UserRecord user) => _db.ListVaultFilesForUser(user);
 
+    /// <summary>Lists vault metadata for administration, optionally including deleted files.</summary>
+    /// <param name="includeDeleted">Whether to include soft-deleted vaults.</param>
     public IReadOnlyList<VaultFileRecord> ListAll(bool includeDeleted) => _db.ListAllVaultFiles(includeDeleted);
 
+    /// <summary>Finds a vault by ID with optional inclusion of deleted records.</summary>
+    /// <param name="id">The vault file ID.</param>
+    /// <param name="includeDeleted">Whether to include soft-deleted vaults.</param>
     public VaultFileRecord? Get(string id, bool includeDeleted = false) => _db.GetVaultFile(id, includeDeleted);
 
+    /// <summary>Finds an active vault by its display name.</summary>
+    /// <param name="name">The proposed display filename for the vault, including its .kdbx extension.</param>
     public VaultFileRecord? GetByName(string name) => _db.GetVaultFileByName(name);
 
+    /// <summary>Resolves the encrypted file path from the vault's stored filename.</summary>
+    /// <param name="file">The metadata of the vault file to operate on.</param>
     public string GetContentPath(VaultFileRecord file) => Path.Combine(_db.VaultDirectory, file.StoredName);
 
+    /// <summary>Reads the encrypted bytes or returns null if the stored file is missing.</summary>
+    /// <param name="file">The metadata of the vault file to operate on.</param>
+    /// <param name="cancellationToken">A token that cancels the operation when the caller no longer needs it.</param>
     public async Task<byte[]?> ReadContentAsync(VaultFileRecord file, CancellationToken cancellationToken = default)
     {
         var path = GetContentPath(file);
@@ -48,6 +70,9 @@ public sealed class VaultService
         return await File.ReadAllBytesAsync(path, cancellationToken);
     }
 
+    /// <summary>Resolves access from the administrator role or the user's explicit vault grant.</summary>
+    /// <param name="user">The account whose role or vault grant determines access.</param>
+    /// <param name="file">The vault whose access grant is being evaluated.</param>
     public string GetEffectivePermission(UserRecord user, VaultFileRecord file)
     {
         if (user.Role == UserRole.Admin)
@@ -64,11 +89,21 @@ public sealed class VaultService
         };
     }
 
+    /// <summary>Checks whether the user can read the vault.</summary>
+    /// <param name="user">The user account associated with the operation.</param>
+    /// <param name="file">The metadata of the vault file to operate on.</param>
     public bool CanRead(UserRecord user, VaultFileRecord file) => GetEffectivePermission(user, file) is "read" or "read-write";
 
+    /// <summary>Checks whether the user can modify the vault.</summary>
+    /// <param name="user">The user account associated with the operation.</param>
+    /// <param name="file">The metadata of the vault file to operate on.</param>
     public bool CanWrite(UserRecord user, VaultFileRecord file) => GetEffectivePermission(user, file) == "read-write";
 
     /// <summary>Stores encrypted content as a new vault without assigning any permissions.</summary>
+    /// <param name="name">The proposed display filename for the vault, including its .kdbx extension.</param>
+    /// <param name="content">The encrypted file bytes to validate or write.</param>
+    /// <param name="user">The account recorded as the vault creator.</param>
+    /// <param name="cancellationToken">A token that cancels the operation when the caller no longer needs it.</param>
     public async Task<VaultFileRecord> CreateAsync(string name, byte[] content, UserRecord user, CancellationToken cancellationToken)
     {
         var cleanName = ValidateName(name);
@@ -112,6 +147,10 @@ public sealed class VaultService
         return record;
     }
 
+    /// <summary>Validates a vault's new name, checks uniqueness, and records the rename.</summary>
+    /// <param name="file">The metadata of the vault file to operate on.</param>
+    /// <param name="name">The proposed display filename for the vault, including its .kdbx extension.</param>
+    /// <param name="user">The account whose ID is stored as the last updater.</param>
     public VaultFileRecord Rename(VaultFileRecord file, string name, UserRecord user)
     {
         var cleanName = ValidateName(name);
@@ -125,11 +164,21 @@ public sealed class VaultService
         return file with { Name = cleanName, UpdatedAt = DateTimeOffset.UtcNow };
     }
 
+    /// <summary>Marks the vault as deleted without removing the encrypted file.</summary>
+    /// <param name="file">The metadata of the vault file to operate on.</param>
     public void SoftDelete(VaultFileRecord file) => _db.SoftDeleteVaultFile(file.Id);
 
+    /// <summary>Clears the vault's soft-deletion marker.</summary>
+    /// <param name="file">The metadata of the vault file to operate on.</param>
     public void Restore(VaultFileRecord file) => _db.RestoreVaultFile(file.Id);
 
     /// <summary>Checks the latest revision under a write lock and saves stale submissions as separate vaults.</summary>
+    /// <param name="fileId">The ID of the vault file.</param>
+    /// <param name="content">The encrypted file bytes to validate or write.</param>
+    /// <param name="expectedETag">The entity tag supplied as a write precondition, or null if none was supplied.</param>
+    /// <param name="user">The account recorded as the writer of the revision or conflict copy.</param>
+    /// <param name="client">The source label used to identify any conflict copy created for this write.</param>
+    /// <param name="cancellationToken">A token that cancels the operation when the caller no longer needs it.</param>
     public async Task<VaultWriteResult> WriteContentAsync(
         string fileId,
         byte[] content,
@@ -189,6 +238,8 @@ public sealed class VaultService
     }
 
     /// <summary>Builds a unique, valid display name for a conflict copy.</summary>
+    /// <param name="original">The original vault filename used to derive the conflict-copy name.</param>
+    /// <param name="client">The client source label to include in the conflict-copy name.</param>
     private static string ConflictCopyName(string original, string client)
     {
         var timestamp = DateTimeOffset.UtcNow.ToString("yyyyMMdd'T'HHmmssfff'Z'", CultureInfo.InvariantCulture);
@@ -201,11 +252,18 @@ public sealed class VaultService
         return stem.TrimEnd('.') + suffix;
     }
 
+    /// <summary>Lists the explicit user permissions for the specified vault.</summary>
+    /// <param name="fileId">The ID of the vault file.</param>
     public IReadOnlyList<VaultPermissionRecord> ListPermissions(string fileId) => _db.ListPermissionsForFile(fileId);
 
+    /// <summary>Replaces the specified vault's access list with the supplied grants.</summary>
+    /// <param name="fileId">The ID of the vault file.</param>
+    /// <param name="permissions">The full set of user IDs and grants to store in place of the existing access list.</param>
     public void ReplacePermissions(string fileId, IEnumerable<(string UserId, VaultPermission Permission)> permissions)
         => _db.ReplacePermissionsForFile(fileId, permissions);
 
+    /// <summary>Validates and normalizes the display name for a KDBX file.</summary>
+    /// <param name="name">The proposed display filename for the vault, including its .kdbx extension.</param>
     public static string ValidateName(string? name)
     {
         if (string.IsNullOrWhiteSpace(name))
@@ -229,8 +287,13 @@ public sealed class VaultService
         return clean;
     }
 
+    /// <summary>Builds the quoted ETag from the file checksum and revision number.</summary>
+    /// <param name="sha256">The hexadecimal SHA-256 checksum of the encrypted bytes.</param>
+    /// <param name="revision">The revision number of the file content.</param>
     public static string BuildETag(string sha256, long revision) => $"\"{sha256}-{revision}\"";
 
+    /// <summary>Trims whitespace and the weak prefix from an ETag before comparison.</summary>
+    /// <param name="etag">The raw entity tag to normalize before comparing it.</param>
     public static string NormalizeETag(string etag)
     {
         var value = etag.Trim();
@@ -241,6 +304,9 @@ public sealed class VaultService
         return value.Trim('"');
     }
 
+    /// <summary>Compares the normalized supplied ETag or wildcard with the current file ETag.</summary>
+    /// <param name="expected">The precondition ETag or wildcard supplied by the client.</param>
+    /// <param name="actual">The current server-side ETag of the vault.</param>
     public static bool ETagMatches(string expected, string actual)
     {
         var normalizedExpected = NormalizeETag(expected);
@@ -249,9 +315,13 @@ public sealed class VaultService
                string.Equals(expected.Trim(), "*", StringComparison.Ordinal);
     }
 
+    /// <summary>Checks that the payload starts with the KDBX magic bytes.</summary>
+    /// <param name="content">The encrypted file bytes to validate or write.</param>
     public static bool HasKdbxSignature(ReadOnlySpan<byte> content)
         => content.Length >= 4 && content[0] == 0x03 && content[1] == 0xD9 && content[2] == 0xA2 && content[3] == 0x9A;
 
+    /// <summary>Rejects empty uploads or payloads without the KDBX signature.</summary>
+    /// <param name="content">The encrypted file bytes to validate or write.</param>
     private static void ValidateKdbxContent(byte[] content)
     {
         if (content.Length == 0)
@@ -264,8 +334,14 @@ public sealed class VaultService
         }
     }
 
+    /// <summary>Computes the SHA-256 checksum as lowercase hexadecimal text.</summary>
+    /// <param name="content">The bytes to hash.</param>
     private static string ComputeSha256(byte[] content) => Convert.ToHexString(SHA256.HashData(content)).ToLowerInvariant();
 
+    /// <summary>Flushes encrypted content to a temporary file and atomically moves it into place.</summary>
+    /// <param name="path">The target file path to replace after writing the temporary file.</param>
+    /// <param name="content">The encrypted file bytes to validate or write.</param>
+    /// <param name="cancellationToken">A token that cancels the operation when the caller no longer needs it.</param>
     private async Task WriteAtomicAsync(string path, byte[] content, CancellationToken cancellationToken)
     {
         var tempPath = $"{path}.tmp-{Guid.NewGuid():N}";
@@ -292,6 +368,8 @@ public sealed class VaultService
         }
     }
 
+    /// <summary>Attempts to delete a file during cleanup without masking the original failure.</summary>
+    /// <param name="path">The cleanup path whose file should be removed if it exists.</param>
     private static void TryDelete(string path)
     {
         try
@@ -308,6 +386,10 @@ public sealed class VaultService
     }
 }
 
+/// <summary>Indicates that a vault name or its submitted bytes failed validation.</summary>
+/// <param name="message">The human-readable description of the failure.</param>
 public sealed class VaultValidationException(string message) : Exception(message);
 
+/// <summary>Indicates that a vault operation conflicts with existing state.</summary>
+/// <param name="message">The human-readable description of the failure.</param>
 public sealed class VaultConflictException(string message) : Exception(message);

@@ -17,6 +17,9 @@ public sealed class SessionService
     private readonly KeePortDb _db;
     private readonly TimeSpan _sessionLifetime;
 
+    /// <summary>Initializes session storage and reads the configured session lifetime.</summary>
+    /// <param name="db">The SQLite store for KeePort metadata.</param>
+    /// <param name="configuration">The application configuration containing the session lifetime.</param>
     public SessionService(KeePortDb db, IConfiguration configuration)
     {
         _db = db;
@@ -25,8 +28,12 @@ public sealed class SessionService
     }
 
     /// <summary>Returns the cookie name for the requested account role.</summary>
+    /// <param name="role">The role used to select the account privileges or session scope.</param>
     public static string GetCookieName(UserRole role) => role == UserRole.Admin ? AdminCookieName : VaultCookieName;
 
+    /// <summary>Creates a session with fresh authentication and CSRF tokens and stores their hashes.</summary>
+    /// <param name="user">The signed-in account that will own the new session.</param>
+    /// <param name="context">The current HTTP request and response context.</param>
     public (SessionRecord Session, string Token, string CsrfToken) CreateSession(UserRecord user, HttpContext context)
     {
         var token = Base64Url(RandomNumberGenerator.GetBytes(32));
@@ -48,6 +55,9 @@ public sealed class SessionService
         return (session, token, csrfToken);
     }
 
+    /// <summary>Checks the session token, lifetime, role, and user status before returning the session.</summary>
+    /// <param name="token">The session cookie token, or null if the request has no session cookie.</param>
+    /// <param name="role">The role used to select the account privileges or session scope.</param>
     public SessionRecord? ValidateSessionToken(string? token, UserRole role)
     {
         if (string.IsNullOrWhiteSpace(token))
@@ -75,6 +85,11 @@ public sealed class SessionService
         return session;
     }
 
+    /// <summary>Writes the role-specific session cookie with the configured security flags.</summary>
+    /// <param name="context">The current HTTP request and response context.</param>
+    /// <param name="token">The raw session token to place in the cookie.</param>
+    /// <param name="role">The role used to select the account privileges or session scope.</param>
+    /// <param name="secure">Whether to set the Secure flag on the cookie.</param>
     public void SetSessionCookie(HttpContext context, string token, UserRole role, bool secure)
     {
         context.Response.Cookies.Append(GetCookieName(role), token, new CookieOptions
@@ -87,6 +102,10 @@ public sealed class SessionService
         });
     }
 
+    /// <summary>Clears the role-specific session cookie using the same scope as sign-in.</summary>
+    /// <param name="context">The current HTTP request and response context.</param>
+    /// <param name="role">The role used to select the account privileges or session scope.</param>
+    /// <param name="secure">Whether to set the Secure flag on the cookie.</param>
     public void ClearSessionCookie(HttpContext context, UserRole role, bool secure)
     {
         context.Response.Cookies.Delete(GetCookieName(role), new CookieOptions
@@ -98,6 +117,9 @@ public sealed class SessionService
         });
     }
 
+    /// <summary>Compares the submitted CSRF token's hash with the session's stored hash.</summary>
+    /// <param name="session">The session whose stored CSRF token hash is checked.</param>
+    /// <param name="headerToken">The token supplied in the CSRF request header, if present.</param>
     public bool ValidateCsrfToken(SessionRecord session, string? headerToken)
     {
         if (string.IsNullOrEmpty(headerToken))
@@ -111,6 +133,8 @@ public sealed class SessionService
     }
 
     /// <summary>Separates admin token hashes from existing Vault token hashes.</summary>
+    /// <param name="token">The raw session token to hash in the role-specific namespace.</param>
+    /// <param name="role">The role used to select the account privileges or session scope.</param>
     private static string HashToken(string token, UserRole role)
     {
         var value = role == UserRole.Admin ? $"admin:{token}" : token;
@@ -118,8 +142,12 @@ public sealed class SessionService
         return Convert.ToHexString(bytes).ToLowerInvariant();
     }
 
+    /// <summary>Encodes token bytes as unpadded URL-safe Base64.</summary>
+    /// <param name="bytes">The raw bytes to encode as Base64URL.</param>
     public static string Base64Url(byte[] bytes) => Convert.ToBase64String(bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
 
+    /// <summary>Builds an authenticated principal with the user's ID, username, and role.</summary>
+    /// <param name="user">The account from which to extract identity and role claims.</param>
     public static ClaimsPrincipal CreatePrincipal(UserRecord user)
     {
         var claims = new[]

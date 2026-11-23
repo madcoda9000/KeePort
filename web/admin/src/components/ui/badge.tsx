@@ -26,7 +26,10 @@ const badgeVariants = cva(
   }
 )
 
-/** Renders a compact status or category label. */
+/**
+ * Renders a compact status or category label.
+ * @param props - The visual variant and attributes for the badge or slotted element.
+ */
 function Badge({
   className,
   variant = "default",

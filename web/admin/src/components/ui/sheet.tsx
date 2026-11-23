@@ -7,33 +7,48 @@ import { Dialog as SheetPrimitive } from "radix-ui"
 import { Button } from "@/components/ui/button"
 import { XIcon } from "lucide-react"
 
-/** Controls a slide-in panel. */
+/**
+ * Controls a slide-in panel.
+ * @param props - The Sheet primitive options and children to render.
+ */
 function Sheet({ ...props }: React.ComponentProps<typeof SheetPrimitive.Root>) {
   return <SheetPrimitive.Root data-slot="sheet" {...props} />
 }
 
-/** Opens the slide-in panel. */
+/**
+ * Opens the slide-in panel.
+ * @param props - The SheetTrigger primitive options and children to render.
+ */
 function SheetTrigger({
   ...props
 }: React.ComponentProps<typeof SheetPrimitive.Trigger>) {
   return <SheetPrimitive.Trigger data-slot="sheet-trigger" {...props} />
 }
 
-/** Closes the surrounding sheet. */
+/**
+ * Closes the surrounding sheet.
+ * @param props - The SheetClose primitive options and children to render.
+ */
 function SheetClose({
   ...props
 }: React.ComponentProps<typeof SheetPrimitive.Close>) {
   return <SheetPrimitive.Close data-slot="sheet-close" {...props} />
 }
 
-/** Mounts the sheet outside the page layout. */
+/**
+ * Mounts the sheet outside the page layout.
+ * @param props - The SheetPortal primitive options and children to render.
+ */
 function SheetPortal({
   ...props
 }: React.ComponentProps<typeof SheetPrimitive.Portal>) {
   return <SheetPrimitive.Portal data-slot="sheet-portal" {...props} />
 }
 
-/** Dims the background behind the sheet. */
+/**
+ * Dims the background behind the sheet.
+ * @param props - CSS class overrides, the remaining SheetOverlay attributes forwarded to its element.
+ */
 function SheetOverlay({
   className,
   ...props
@@ -50,7 +65,10 @@ function SheetOverlay({
   )
 }
 
-/** Renders the drawer on the selected side. */
+/**
+ * Renders the drawer on the selected side.
+ * @param props - The sheet content, entry side, close-button option, and content styling and attributes.
+ */
 function SheetContent({
   className,
   children,
@@ -92,7 +110,10 @@ function SheetContent({
   )
 }
 
-/** Groups the sheet title and description. */
+/**
+ * Groups the sheet title and description.
+ * @param props - CSS class overrides, the remaining SheetHeader attributes forwarded to its element.
+ */
 function SheetHeader({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
@@ -103,7 +124,10 @@ function SheetHeader({ className, ...props }: React.ComponentProps<"div">) {
   )
 }
 
-/** Aligns actions in the sheet footer. */
+/**
+ * Aligns actions in the sheet footer.
+ * @param props - CSS class overrides, the remaining SheetFooter attributes forwarded to its element.
+ */
 function SheetFooter({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
@@ -114,7 +138,10 @@ function SheetFooter({ className, ...props }: React.ComponentProps<"div">) {
   )
 }
 
-/** Provides the sheet’s accessible heading. */
+/**
+ * Provides the sheet’s accessible heading.
+ * @param props - CSS class overrides, the remaining SheetTitle attributes forwarded to its element.
+ */
 function SheetTitle({
   className,
   ...props
@@ -128,7 +155,10 @@ function SheetTitle({
   )
 }
 
-/** Provides accessible context for the sheet. */
+/**
+ * Provides accessible context for the sheet.
+ * @param props - CSS class overrides, the remaining SheetDescription attributes forwarded to its element.
+ */
 function SheetDescription({
   className,
   ...props
