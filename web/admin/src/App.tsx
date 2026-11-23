@@ -12,12 +12,14 @@ import {
   NetworkIcon,
   PlusIcon,
   RotateCcwIcon,
+  SettingsIcon,
   SunIcon,
   UploadIcon,
   UsersIcon
 } from 'lucide-react';
 import { AdminProfile } from '@/components/admin-profile';
 import { AuthLayout } from '@/components/auth-layout';
+import { RateLimitSettingsPanel } from '@/components/rate-limit-settings';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
   AlertDialog,
@@ -64,7 +66,7 @@ import {
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
 type Message = { kind: 'notice' | 'error'; text: string } | null;
-type Tab = 'vaults' | 'users' | 'webdav';
+type Tab = 'vaults' | 'users' | 'webdav' | 'settings';
 type PermissionValue = 'none' | 'read' | 'read-write';
 
 const ADMIN_SECTIONS = {
@@ -78,6 +80,11 @@ const ADMIN_SECTIONS = {
     title: 'WebDAV credentials',
     description: 'Manage app passwords for external KeePass clients.',
     icon: NetworkIcon
+  },
+  settings: {
+    title: 'Settings',
+    description: 'Manage server-wide settings for KeePort.',
+    icon: SettingsIcon
   }
 } as const;
 
@@ -890,6 +897,8 @@ export default function App() {
             </Alert>
           )}
 
+          {tab === 'settings' && <RateLimitSettingsPanel />}
+
           {tab === 'vaults' && (
             <>
               <div className="grid gap-4 xl:grid-cols-2">
@@ -1239,7 +1248,7 @@ export default function App() {
   );
 }
 
-/** Shows the three admin sections and closes the mobile navigation drawer after selection. */
+/** Shows the admin sections and closes the mobile navigation drawer after selection. */
 function AdminNavigation({ tab, user, onProfileUpdate, onSelect }: {
   tab: Tab;
   user: User;

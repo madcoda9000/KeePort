@@ -32,6 +32,11 @@ export interface FilePermission {
   updatedAt: string;
 }
 
+export interface RateLimitSettings {
+  authPerMinute: number;
+  webDavPerMinute: number;
+}
+
 export interface WebDavCredential {
   id: string;
   userId: string;
@@ -93,6 +98,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 }
 
 const AUTH_PATH = '/api/admin/auth';
+const RATE_LIMITS_PATH = '/api/admin/settings/rate-limits';
 
 export const api = {
   async setupStatus() {
@@ -128,6 +134,15 @@ export const api = {
   /** Saves the signed-in admin's contact email. */
   async updateEmail(email: string) {
     return request<User>(`${AUTH_PATH}/email`, { method: 'PUT', body: JSON.stringify({ email }) });
+  },
+
+  /** Loads the current login and WebDAV limits. */
+  async getRateLimits(signal?: AbortSignal) {
+    return request<RateLimitSettings>(RATE_LIMITS_PATH, { signal });
+  },
+  /** Saves both per-minute limits using the current admin session. */
+  async updateRateLimits(settings: RateLimitSettings) {
+    return request<RateLimitSettings>(RATE_LIMITS_PATH, { method: 'PUT', body: JSON.stringify(settings) });
   },
 
   async listUsers() {

@@ -68,6 +68,12 @@ public sealed class KeePortDb : IDisposable
                 value TEXT NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS rate_limit_settings (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                auth_per_minute INTEGER NOT NULL CHECK (auth_per_minute > 0),
+                webdav_per_minute INTEGER NOT NULL CHECK (webdav_per_minute > 0)
+            );
+
             CREATE TABLE IF NOT EXISTS vault_files (
                 id TEXT PRIMARY KEY,
                 name TEXT NOT NULL,
@@ -105,6 +111,12 @@ public sealed class KeePortDb : IDisposable
                 revoked_at TEXT NULL
             );
             """);
+
+        Execute(connection, """
+            INSERT INTO rate_limit_settings (id, auth_per_minute, webdav_per_minute)
+            VALUES (1, @auth, @webdav) ON CONFLICT(id) DO NOTHING;
+            """, new SqliteParameter("@auth", RateLimitSettings.DefaultAuthPerMinute),
+            new SqliteParameter("@webdav", RateLimitSettings.DefaultWebDavPerMinute));
 
         EnsureColumn("users", "auto_lock_minutes", "INTEGER NULL");
         EnsureColumn("users", "email", "TEXT NULL");
@@ -174,6 +186,32 @@ public sealed class KeePortDb : IDisposable
         using var connection = Open();
         connection.Open();
         Execute(connection, "DELETE FROM app_state WHERE key = 'setup_token';");
+    }
+
+    /// <summary>Reads the configured limits from the singleton settings row.</summary>
+    public RateLimitSettings GetRateLimitSettings()
+    {
+        using var connection = Open();
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT auth_per_minute, webdav_per_minute FROM rate_limit_settings WHERE id = 1;";
+        using var reader = command.ExecuteReader();
+        if (!reader.Read())
+        {
+            throw new InvalidOperationException("Rate limit settings have not been initialized.");
+        }
+        return new RateLimitSettings(reader.GetInt32(0), reader.GetInt32(1));
+    }
+
+    /// <summary>Writes both limit values together.</summary>
+    public void UpdateRateLimitSettings(RateLimitSettings settings)
+    {
+        using var connection = Open();
+        connection.Open();
+        Execute(connection, """
+            INSERT INTO rate_limit_settings (id, auth_per_minute, webdav_per_minute) VALUES (1, @auth, @webdav)
+            ON CONFLICT(id) DO UPDATE SET auth_per_minute = excluded.auth_per_minute, webdav_per_minute = excluded.webdav_per_minute;
+            """, new SqliteParameter("@auth", settings.AuthPerMinute), new SqliteParameter("@webdav", settings.WebDavPerMinute));
     }
 
     public UserRecord? GetUserByUsername(string username)

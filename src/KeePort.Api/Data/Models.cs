@@ -1,5 +1,11 @@
 namespace KeePort.Api.Data;
 
+public sealed record RateLimitSettings(int AuthPerMinute, int WebDavPerMinute)
+{
+    public const int DefaultAuthPerMinute = 10;
+    public const int DefaultWebDavPerMinute = 60;
+}
+
 public enum UserRole
 {
     Admin,

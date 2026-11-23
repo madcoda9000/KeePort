@@ -35,19 +35,25 @@ builder.Services.AddSingleton<KeePortDb>();
 builder.Services.AddSingleton<PasswordHasher>();
 builder.Services.AddSingleton<SessionService>();
 builder.Services.AddSingleton<VaultService>();
+builder.Services.AddSingleton<RateLimitSettingsService>();
 
 builder.Services.AddRateLimiter(options =>
 {
-    var authLimit = builder.Configuration.GetValue("KeePort:RateLimits:AuthPerMinute", 10);
-    var webDavLimit = builder.Configuration.GetValue("KeePort:RateLimits:WebDavPerMinute", 60);
-    ArgumentOutOfRangeException.ThrowIfNegativeOrZero(authLimit);
-    ArgumentOutOfRangeException.ThrowIfNegativeOrZero(webDavLimit);
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-    options.AddPolicy(AuthEndpoints.CredentialRateLimitPolicy, context => PerIpLimit(context, authLimit));
-    options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
-        context.Request.Path.StartsWithSegments("/webdav", StringComparison.OrdinalIgnoreCase)
-            ? PerIpLimit(context, webDavLimit)
-            : RateLimitPartition.GetNoLimiter("non-webdav"));
+    options.AddPolicy(AuthEndpoints.CredentialRateLimitPolicy, context =>
+    {
+        var limits = context.RequestServices.GetRequiredService<RateLimitSettingsService>().Current;
+        return PerIpLimit(context, limits.Settings.AuthPerMinute, limits.AuthVersion);
+    });
+    options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, (string, long)>(context =>
+    {
+        if (!context.Request.Path.StartsWithSegments("/webdav", StringComparison.OrdinalIgnoreCase))
+        {
+            return RateLimitPartition.GetNoLimiter(("non-webdav", 0L));
+        }
+        var limits = context.RequestServices.GetRequiredService<RateLimitSettingsService>().Current;
+        return PerIpLimit(context, limits.Settings.WebDavPerMinute, limits.WebDavVersion);
+    });
     options.OnRejected = async (rejection, cancellationToken) =>
     {
         if (rejection.Lease.TryGetMetadata(MetadataName.RetryAfter, out var retryAfter))
@@ -80,6 +86,7 @@ var secureCookies = app.Configuration.GetValue("KeePort:CookieSecure", true);
 try
 {
     db.Initialize();
+    _ = app.Services.GetRequiredService<RateLimitSettingsService>();
 }
 catch (Exception ex)
 {
@@ -172,10 +179,10 @@ app.Use(async (context, next) =>
 
 app.Run();
 
-/// <summary>Creates an independent one-minute quota for each client address.</summary>
-static RateLimitPartition<string> PerIpLimit(HttpContext context, int limit)
+/// <summary>Creates a one-minute quota for each client address and settings revision.</summary>
+static RateLimitPartition<(string, long)> PerIpLimit(HttpContext context, int limit, long version)
     => RateLimitPartition.GetFixedWindowLimiter(
-        context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        (context.Connection.RemoteIpAddress?.ToString() ?? "unknown", version),
         _ => new FixedWindowRateLimiterOptions { PermitLimit = limit, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 });
 
 public partial class Program;

@@ -9,8 +9,6 @@ services:
       KeePort__DataDir: /data
       KeePort__CookieSecure: ${KEEPORT_COOKIE_SECURE:-false}
       KeePort__AdminPorts__0: ${KEEPORT_ADMIN_PORT:-8081}
-      KeePort__RateLimits__AuthPerMinute: ${KEEPORT_AUTH_REQUESTS_PER_MINUTE:-10}
-      KeePort__RateLimits__WebDavPerMinute: ${KEEPORT_WEBDAV_REQUESTS_PER_MINUTE:-60}
     ports:
       - "8080:8080"
       - "${KEEPORT_ADMIN_BIND:-127.0.0.1}:${KEEPORT_ADMIN_HOST_PORT:-8081}:8081"

@@ -79,7 +79,7 @@ Die Analyse vom 2026-11-23 hat ergeben, dass alle Kernanforderungen des Ursprung
 
 ## AP6 – Rate-Limiting differenzieren (S)
 
-**Status:** Erledigt. Konfigurierbare Kontingente für Login/Setup und WebDAV; Session-Endpunkte sind vom Login-Kontingent ausgenommen.
+**Status:** Erledigt. Kontingente für Login/Setup und WebDAV sind über die Admin-Einstellungen änderbar, in SQLite gespeichert und sofort wirksam. Session-Endpunkte sind vom Login-Kontingent ausgenommen.
 
 **Befund:** Das Limit (10/Min/IP) gilt für **alle** `/api/auth`-Endpoints inkl. `GET /me`, `GET /csrf`, `POST /logout` – hinter NAT können legitime Nutzer blockiert werden. WebDAV-Basic-Auth hat gar kein Limit.
 

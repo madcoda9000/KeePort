@@ -12,6 +12,7 @@ namespace KeePort.Api.Tests;
 public class KeePortApiTests : IDisposable
 {
     private const string AdminAuthPath = "/api/admin/auth";
+    private const string RateLimitsPath = "/api/admin/settings/rate-limits";
     private const string AdminPassword = "Admin passphrase 123";
     private const string AdminEmail = "admin@example.test";
 
@@ -223,9 +224,12 @@ public class KeePortApiTests : IDisposable
     [Fact]
     public async Task WebDav_Rate_Limit_Applies_Before_Authentication()
     {
-        using var factory = _factory.WithWebHostBuilder(host => host.ConfigureAppConfiguration((_, configuration) =>
-            configuration.AddInMemoryCollection(new Dictionary<string, string?> { ["KeePort:RateLimits:WebDavPerMinute"] = "2" })));
-        using var client = factory.CreateClient();
+        var csrf = await SetupAdminAsync(_admin);
+        using var client = _factory.CreateClient();
+        using var previous = await client.GetAsync("/webdav/");
+        Assert.Equal(HttpStatusCode.Unauthorized, previous.StatusCode);
+        using var update = await SendAsync(_admin, HttpMethod.Put, RateLimitsPath, json: new RateLimitSettings(10, 2), csrf: csrf);
+        Assert.Equal(HttpStatusCode.OK, update.StatusCode);
         using var collection = await client.GetAsync("/webdav/");
         using var unsupported = await SendAsync(client, new HttpMethod("REPORT"), "/webdav/example.kdbx");
         Assert.Equal(HttpStatusCode.Unauthorized, collection.StatusCode);
@@ -237,6 +241,66 @@ public class KeePortApiTests : IDisposable
         Assert.Empty(limited.Headers.WwwAuthenticate);
         using var vaultLogin = await client.PostAsJsonAsync("/api/auth/login", new { username = "unknown", password = "unused passphrase" });
         Assert.Equal(HttpStatusCode.Unauthorized, vaultLogin.StatusCode);
+    }
+
+    /// <summary>Checks defaults, admin-only access, CSRF validation and persistence across application startups.</summary>
+    [Fact]
+    public async Task Rate_Limit_Settings_Are_Protected_And_Persisted()
+    {
+        var adminCsrf = await SetupAdminAsync(_admin);
+        Assert.Equal(new RateLimitSettings(10, 60), await _admin.GetFromJsonAsync<RateLimitSettings>(RateLimitsPath));
+        await CreateUserAsync(_admin, adminCsrf, "alice", "user");
+        var (userCsrf, _) = await LoginAsync(_user, "alice", "User passphrase 123");
+        var updated = new RateLimitSettings(3, 13);
+
+        using var anonymous = _factory.CreateClient();
+        using var anonymousGet = await anonymous.GetAsync(RateLimitsPath);
+        Assert.Equal(HttpStatusCode.Unauthorized, anonymousGet.StatusCode);
+        using var vaultGet = await _user.GetAsync(RateLimitsPath);
+        Assert.Equal(HttpStatusCode.Unauthorized, vaultGet.StatusCode);
+        using var vaultPut = await SendAsync(_user, HttpMethod.Put, RateLimitsPath, json: updated, csrf: userCsrf);
+        Assert.Equal(HttpStatusCode.Unauthorized, vaultPut.StatusCode);
+        using var missingCsrf = await SendAsync(_admin, HttpMethod.Put, RateLimitsPath, json: updated);
+        Assert.Equal(HttpStatusCode.Forbidden, missingCsrf.StatusCode);
+        using var invalid = await SendAsync(_admin, HttpMethod.Put, RateLimitsPath, json: new RateLimitSettings(0, -1), csrf: adminCsrf);
+        Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+        Assert.Equal(new RateLimitSettings(10, 60), await _admin.GetFromJsonAsync<RateLimitSettings>(RateLimitsPath));
+
+        using var saved = await SendAsync(_admin, HttpMethod.Put, RateLimitsPath, json: updated, csrf: adminCsrf);
+        Assert.Equal(HttpStatusCode.OK, saved.StatusCode);
+        Assert.Equal(updated, await saved.Content.ReadFromJsonAsync<RateLimitSettings>());
+        using var restarted = _factory.WithWebHostBuilder(_ => { });
+        using var adminAfterRestart = restarted.CreateClient();
+        using var login = await adminAfterRestart.PostAsJsonAsync($"{AdminAuthPath}/login", new { username = "admin", password = AdminPassword });
+        login.EnsureSuccessStatusCode();
+        Assert.Equal(updated, await adminAfterRestart.GetFromJsonAsync<RateLimitSettings>(RateLimitsPath));
+    }
+
+    /// <summary>Checks that changes apply to existing IP partitions without resetting an unchanged quota.</summary>
+    [Fact]
+    public async Task Auth_Rate_Limit_Changes_Apply_Immediately_Without_Resetting_Other_Quotas()
+    {
+        var csrf = await SetupAdminAsync(_admin);
+        var payload = new { username = "unknown", password = "unused passphrase" };
+        using var initial = await _user.PostAsJsonAsync("/api/auth/login", payload);
+        Assert.Equal(HttpStatusCode.Unauthorized, initial.StatusCode);
+
+        var limits = new RateLimitSettings(1, 2);
+        using var firstUpdate = await SendAsync(_admin, HttpMethod.Put, RateLimitsPath, json: limits, csrf: csrf);
+        firstUpdate.EnsureSuccessStatusCode();
+        using var first = await _user.PostAsJsonAsync("/api/auth/login", payload);
+        Assert.Equal(HttpStatusCode.Unauthorized, first.StatusCode);
+        using var limited = await _user.PostAsJsonAsync($"{AdminAuthPath}/login", payload);
+        Assert.Equal(HttpStatusCode.TooManyRequests, limited.StatusCode);
+
+        using var noChange = await SendAsync(_admin, HttpMethod.Put, RateLimitsPath, json: limits, csrf: csrf);
+        noChange.EnsureSuccessStatusCode();
+        using var unchanged = await _user.PostAsJsonAsync("/api/auth/login", payload);
+        Assert.Equal(HttpStatusCode.TooManyRequests, unchanged.StatusCode);
+        using var webDavOnly = await SendAsync(_admin, HttpMethod.Put, RateLimitsPath, json: limits with { WebDavPerMinute = 7 }, csrf: csrf);
+        webDavOnly.EnsureSuccessStatusCode();
+        using var stillLimited = await _user.PostAsJsonAsync("/api/auth/login", payload);
+        Assert.Equal(HttpStatusCode.TooManyRequests, stillLimited.StatusCode);
     }
 
     /// <summary>Checks that sign-in, session restoration and sign-out are isolated between the two applications.</summary>

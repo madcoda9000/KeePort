@@ -51,7 +51,7 @@ Then run `docker compose up -d`. Do not expose port `8081` to the public interne
 
 KeePort stores everything under `/data`:
 
-- `keeport.db` — users, sessions, vault metadata, ACLs, WebDAV credential hashes.
+- `keeport.db` — users, sessions, vault metadata, ACLs, WebDAV credential hashes, and request limit settings.
 - `vault/` — encrypted `.kdbx` files.
 
 The container runs as UID/GID `1000:1000`. If you use a bind mount instead of the named volume, make it writable by that user:
@@ -125,14 +125,9 @@ Keep `/api/admin/*` and `/admin/*` off the public vault domain. If you must shar
 
 Admin and Vault sign-in and first-run setup share a limit of 10 requests per minute per IP. Session checks (`me`, `csrf`) and sign-out are not part of that quota. WebDAV has a separate limit of 60 requests per minute per IP, including unauthenticated requests. A `429 Too Many Requests` response includes `Retry-After` when the limiter can estimate the wait.
 
-Override the limits with positive integers in `.env` when using Compose, then recreate the container:
+To change the limits, sign in to the Admin console and open **Settings → Rate limits**. Enter positive whole numbers and save. The settings are stored in SQLite and take effect without a restart. Saving a different value starts a new window for that limit only. Upgrades start with the defaults; earlier environment overrides are no longer read.
 
-```dotenv
-KEEPORT_AUTH_REQUESTS_PER_MINUTE=10
-KEEPORT_WEBDAV_REQUESTS_PER_MINUTE=60
-```
-
-For other deployments, set `KeePort__RateLimits__AuthPerMinute` and `KeePort__RateLimits__WebDavPerMinute` on the application process. Clients behind NAT or a proxy may share a quota if KeePort sees the same source IP. Set per-client limits at the proxy if it is the only component that sees individual client addresses.
+Clients behind NAT or a proxy may share a quota if KeePort sees the same source IP. Set per-client limits at the proxy if it is the only component that sees individual client addresses.
 
 ## 5. WebDAV for mobile/desktop KeePass clients
 

@@ -14,6 +14,29 @@ public static class AdminEndpoints
     {
         var group = app.MapGroup("/api/admin");
 
+        group.MapGet("/settings/rate-limits", (HttpContext context, RateLimitSettingsService settings) =>
+        {
+            if (ApiAuth.RequireAdmin(context) is { } forbidden)
+            {
+                return forbidden;
+            }
+            return Results.Ok(settings.Current.Settings);
+        });
+
+        group.MapPut("/settings/rate-limits", (RateLimitSettings request, HttpContext context, RateLimitSettingsService settings) =>
+        {
+            if (ApiAuth.RequireAdmin(context) is { } forbidden)
+            {
+                return forbidden;
+            }
+            if (request.AuthPerMinute <= 0 || request.WebDavPerMinute <= 0)
+            {
+                return BadRequest("invalid_rate_limit", "Both limits must be positive whole numbers.");
+            }
+            settings.Update(request);
+            return Results.Ok(request);
+        });
+
         group.MapGet("/users", (HttpContext context, KeePortDb db) =>
         {
             if (ApiAuth.RequireAdmin(context) is { } forbidden)
