@@ -64,10 +64,7 @@ public sealed class VaultService
     public VaultFileRecord Create(string name, byte[] content, UserRecord user)
     {
         var cleanName = ValidateName(name);
-        if (content.Length == 0)
-        {
-            throw new VaultValidationException("KDBX file is empty.");
-        }
+        ValidateKdbxContent(content);
         if (_db.GetVaultFileByName(cleanName) is not null)
         {
             throw new VaultConflictException("A vault with this name already exists.");
@@ -141,10 +138,7 @@ public sealed class VaultService
             return new VaultWriteResult(VaultWriteStatus.Conflict, file, file.ETag);
         }
 
-        if (content.Length == 0)
-        {
-            throw new VaultValidationException("KDBX file is empty.");
-        }
+        ValidateKdbxContent(content);
 
         var path = GetContentPath(file);
         Directory.CreateDirectory(_db.VaultDirectory);
@@ -213,6 +207,21 @@ public sealed class VaultService
         var normalizedActual = NormalizeETag(actual);
         return string.Equals(normalizedExpected, normalizedActual, StringComparison.Ordinal) ||
                string.Equals(expected.Trim(), "*", StringComparison.Ordinal);
+    }
+
+    public static bool HasKdbxSignature(ReadOnlySpan<byte> content)
+        => content.Length >= 4 && content[0] == 0x03 && content[1] == 0xD9 && content[2] == 0xA2 && content[3] == 0x9A;
+
+    private static void ValidateKdbxContent(byte[] content)
+    {
+        if (content.Length == 0)
+        {
+            throw new VaultValidationException("KDBX file is empty.");
+        }
+        if (!HasKdbxSignature(content))
+        {
+            throw new VaultValidationException("File does not have a valid KDBX signature.");
+        }
     }
 
     private static string ComputeSha256(byte[] content) => Convert.ToHexString(SHA256.HashData(content)).ToLowerInvariant();

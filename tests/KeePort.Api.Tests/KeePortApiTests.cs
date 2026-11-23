@@ -56,25 +56,25 @@ public class KeePortApiTests : IDisposable
 
         var readContent = await SendAsync(_user, HttpMethod.Get, $"/api/vault/files/{vault.Id}/content", csrf: aliceLogin.csrf);
         Assert.Equal(HttpStatusCode.OK, readContent.StatusCode);
-        Assert.Equal("v1", Encoding.UTF8.GetString(await readContent.Content.ReadAsByteArrayAsync()));
+        Assert.Equal(KdbxBytes("v1"), await readContent.Content.ReadAsByteArrayAsync());
         var readETag = readContent.Headers.GetValues("ETag").Single();
 
-        var readOnlyWrite = await SendAsync(_user, HttpMethod.Put, $"/api/vault/files/{vault.Id}/content", bytes: Encoding.UTF8.GetBytes("v2"), csrf: aliceLogin.csrf, etag: readETag);
+        var readOnlyWrite = await SendAsync(_user, HttpMethod.Put, $"/api/vault/files/{vault.Id}/content", bytes: KdbxBytes("v2"), csrf: aliceLogin.csrf, etag: readETag);
         Assert.Equal(HttpStatusCode.Forbidden, readOnlyWrite.StatusCode);
 
-        var readOnlyWebDavWrite = await SendAsync(_user, HttpMethod.Put, "/webdav/shared.kdbx", bytes: Encoding.UTF8.GetBytes("v2-webdav"), basic: webDav.BasicAuth, etag: readETag);
+        var readOnlyWebDavWrite = await SendAsync(_user, HttpMethod.Put, "/webdav/shared.kdbx", bytes: KdbxBytes("v2-webdav"), basic: webDav.BasicAuth, etag: readETag);
         Assert.Equal(HttpStatusCode.Forbidden, readOnlyWebDavWrite.StatusCode);
 
         await SetPermissionsAsync(_admin, adminCsrf, vault.Id, alice.Id, "read-write");
-        var writeContent = await SendAsync(_user, HttpMethod.Put, $"/api/vault/files/{vault.Id}/content", bytes: Encoding.UTF8.GetBytes("v2"), csrf: aliceLogin.csrf, etag: readETag);
+        var writeContent = await SendAsync(_user, HttpMethod.Put, $"/api/vault/files/{vault.Id}/content", bytes: KdbxBytes("v2"), csrf: aliceLogin.csrf, etag: readETag);
         Assert.Equal(HttpStatusCode.OK, writeContent.StatusCode);
         var writeETag = writeContent.Headers.GetValues("ETag").Single();
 
-        var webDavWrite = await SendAsync(_user, HttpMethod.Put, "/webdav/shared.kdbx", bytes: Encoding.UTF8.GetBytes("v3"), basic: webDav.BasicAuth, etag: writeETag);
+        var webDavWrite = await SendAsync(_user, HttpMethod.Put, "/webdav/shared.kdbx", bytes: KdbxBytes("v3"), basic: webDav.BasicAuth, etag: writeETag);
         Assert.Equal(HttpStatusCode.NoContent, webDavWrite.StatusCode);
         var webDavRead = await SendAsync(_user, HttpMethod.Get, "/webdav/shared.kdbx", basic: webDav.BasicAuth);
         Assert.Equal(HttpStatusCode.OK, webDavRead.StatusCode);
-        Assert.Equal("v3", Encoding.UTF8.GetString(await webDavRead.Content.ReadAsByteArrayAsync()));
+        Assert.Equal(KdbxBytes("v3"), await webDavRead.Content.ReadAsByteArrayAsync());
 
         var webDavDelete = await SendAsync(_user, new HttpMethod("DELETE"), "/webdav/shared.kdbx", basic: webDav.BasicAuth);
         Assert.Equal(HttpStatusCode.Forbidden, webDavDelete.StatusCode);
@@ -86,22 +86,22 @@ public class KeePortApiTests : IDisposable
         var adminCsrf = await SetupAdminAsync(_admin);
         var vault = await UploadVaultAsync(_admin, adminCsrf, "etag.kdbx", "one");
 
-        var missingPrecondition = await SendAsync(_admin, HttpMethod.Put, $"/api/vault/files/{vault.Id}/content", bytes: Encoding.UTF8.GetBytes("zero"), csrf: adminCsrf);
+        var missingPrecondition = await SendAsync(_admin, HttpMethod.Put, $"/api/vault/files/{vault.Id}/content", bytes: KdbxBytes("zero"), csrf: adminCsrf);
         Assert.Equal(HttpStatusCode.PreconditionRequired, missingPrecondition.StatusCode);
 
         var firstGet = await SendAsync(_admin, HttpMethod.Get, $"/api/vault/files/{vault.Id}/content", csrf: adminCsrf);
         var etag1 = firstGet.Headers.GetValues("ETag").Single();
 
-        var firstWrite = await SendAsync(_admin, HttpMethod.Put, $"/api/vault/files/{vault.Id}/content", bytes: Encoding.UTF8.GetBytes("two"), csrf: adminCsrf, etag: etag1);
+        var firstWrite = await SendAsync(_admin, HttpMethod.Put, $"/api/vault/files/{vault.Id}/content", bytes: KdbxBytes("two"), csrf: adminCsrf, etag: etag1);
         Assert.Equal(HttpStatusCode.OK, firstWrite.StatusCode);
         var etag2 = firstWrite.Headers.GetValues("ETag").Single();
         Assert.NotEqual(etag1, etag2);
 
-        var staleWrite = await SendAsync(_admin, HttpMethod.Put, $"/api/vault/files/{vault.Id}/content", bytes: Encoding.UTF8.GetBytes("three"), csrf: adminCsrf, etag: etag1);
+        var staleWrite = await SendAsync(_admin, HttpMethod.Put, $"/api/vault/files/{vault.Id}/content", bytes: KdbxBytes("three"), csrf: adminCsrf, etag: etag1);
         Assert.Equal(HttpStatusCode.Conflict, staleWrite.StatusCode);
 
         var currentGet = await SendAsync(_admin, HttpMethod.Get, $"/api/vault/files/{vault.Id}/content", csrf: adminCsrf);
-        Assert.Equal("two", Encoding.UTF8.GetString(await currentGet.Content.ReadAsByteArrayAsync()));
+        Assert.Equal(KdbxBytes("two"), await currentGet.Content.ReadAsByteArrayAsync());
 
         var vaultDir = Path.Combine(_dataDir, "vault");
         Assert.Empty(Directory.GetFiles(vaultDir, "*.tmp-*"));
@@ -150,7 +150,7 @@ public class KeePortApiTests : IDisposable
     private static async Task<AdminVault> UploadVaultAsync(HttpClient client, string csrf, string name, string content)
     {
         using var form = new MultipartFormDataContent();
-        var fileContent = new ByteArrayContent(Encoding.UTF8.GetBytes(content));
+        var fileContent = new ByteArrayContent(KdbxBytes(content));
         fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/octet-stream");
         form.Add(fileContent, "file", name);
         using var request = new HttpRequestMessage(HttpMethod.Post, $"/api/admin/files?name={Uri.EscapeDataString(name)}") { Content = form };
@@ -207,6 +207,28 @@ public class KeePortApiTests : IDisposable
         if (json is not null) request.Content = JsonContent.Create(json);
         return await client.SendAsync(request);
     }
+
+    [Fact]
+    public async Task Kdbx_Signature_Is_Enforced_On_Upload_And_Write()
+    {
+        var adminCsrf = await SetupAdminAsync(_admin);
+
+        using var invalidForm = new MultipartFormDataContent();
+        var invalidFile = new ByteArrayContent(Encoding.UTF8.GetBytes("definitely-not-a-kdbx"));
+        invalidFile.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/octet-stream");
+        invalidForm.Add(invalidFile, "file", "broken.kdbx");
+        using var invalidUploadRequest = new HttpRequestMessage(HttpMethod.Post, "/api/admin/files?name=broken.kdbx") { Content = invalidForm };
+        invalidUploadRequest.Headers.Add("X-CSRF-Token", adminCsrf);
+        var invalidUpload = await _admin.SendAsync(invalidUploadRequest);
+        Assert.Equal(HttpStatusCode.BadRequest, invalidUpload.StatusCode);
+
+        var vault = await UploadVaultAsync(_admin, adminCsrf, "signed.kdbx", "payload");
+        var invalidWrite = await SendAsync(_admin, HttpMethod.Put, $"/api/vault/files/{vault.Id}/content", bytes: Encoding.UTF8.GetBytes("still-not-a-kdbx"), csrf: adminCsrf, etag: vault.ETag);
+        Assert.Equal(HttpStatusCode.BadRequest, invalidWrite.StatusCode);
+    }
+
+    private static byte[] KdbxBytes(string payload)
+        => new byte[] { 0x03, 0xD9, 0xA2, 0x9A }.Concat(Encoding.UTF8.GetBytes(payload)).ToArray();
 
     private sealed record AdminVault(string Id, string ETag);
     private sealed record WebDavCredential(string Username, string BasicAuth);
