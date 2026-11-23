@@ -1,0 +1,127 @@
+using KeePort.Api.Data;
+using KeePort.Api.Security;
+using KeePort.Api.Services;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Routing;
+
+namespace KeePort.Api.Endpoints;
+
+public static class AuthEndpoints
+{
+    public static void MapAuthEndpoints(this IEndpointRouteBuilder app)
+    {
+        var group = app.MapGroup("/api/auth").RequireRateLimiting("auth");
+
+        group.MapGet("/setup-status", (KeePortDb db) =>
+        {
+            var hasAdmin = db.HasAdmin();
+            var hasUsers = db.ListUsers().Count > 0;
+            var setupToken = db.GetSetupToken();
+            return Results.Ok(new SetupStatusResponse(RequiresSetup: !hasAdmin && setupToken is not null, HasUsers: hasUsers));
+        });
+
+        group.MapPost("/setup", async (SetupRequest request, KeePortDb db, PasswordHasher hasher, SessionService sessions, IConfiguration configuration, HttpContext context) =>
+        {
+            if (db.HasAdmin())
+            {
+                return Results.Json(new ErrorResponse("setup_closed", "Initial setup has already been completed."), statusCode: StatusCodes.Status409Conflict);
+            }
+
+            var expectedToken = db.GetSetupToken();
+            if (string.IsNullOrEmpty(expectedToken) || !FixedTimeEquals(expectedToken, request.SetupToken))
+            {
+                return Results.Json(new ErrorResponse("invalid_setup_token", "Setup token is invalid."), statusCode: StatusCodes.Status403Forbidden);
+            }
+
+            var usernameError = PasswordPolicy.ValidateUsername(request.Username);
+            if (usernameError is not null)
+            {
+                return Results.Json(new ErrorResponse("invalid_username", usernameError), statusCode: StatusCodes.Status400BadRequest);
+            }
+            var passwordError = PasswordPolicy.Validate(request.Password, request.Username);
+            if (passwordError is not null)
+            {
+                return Results.Json(new ErrorResponse("invalid_password", passwordError), statusCode: StatusCodes.Status400BadRequest);
+            }
+            if (db.GetUserByUsername(request.Username.Trim()) is not null)
+            {
+                return Results.Json(new ErrorResponse("username_taken", "Username is already in use."), statusCode: StatusCodes.Status409Conflict);
+            }
+
+            var now = DateTimeOffset.UtcNow;
+            var user = new UserRecord
+            {
+                Id = Guid.NewGuid().ToString("N"),
+                Username = request.Username.Trim(),
+                PasswordHash = hasher.Hash(request.Password),
+                Role = UserRole.Admin,
+                Disabled = false,
+                CreatedAt = now
+            };
+            db.CreateUser(user);
+            db.ClearSetupToken();
+
+            var (session, token, csrfToken) = sessions.CreateSession(user, context);
+            sessions.SetSessionCookie(context, token, configuration.GetValue("KeePort:CookieSecure", true));
+            return Results.Ok(new AuthResponse(ToDto(user), csrfToken));
+        });
+
+        group.MapPost("/login", async (LoginRequest request, KeePortDb db, PasswordHasher hasher, SessionService sessions, IConfiguration configuration, HttpContext context) =>
+        {
+            var user = db.GetUserByUsername(request.Username ?? string.Empty);
+            if (user is null || user.Disabled || !hasher.Verify(request.Password ?? string.Empty, user.PasswordHash))
+            {
+                return Results.Json(new ErrorResponse("invalid_credentials", "Invalid username or password."), statusCode: StatusCodes.Status401Unauthorized);
+            }
+
+            db.UpdateLastLogin(user.Id, DateTimeOffset.UtcNow);
+            var (_, token, csrfToken) = sessions.CreateSession(user, context);
+            sessions.SetSessionCookie(context, token, configuration.GetValue("KeePort:CookieSecure", true));
+            return Results.Ok(new AuthResponse(ToDto(user), csrfToken));
+        });
+
+        group.MapPost("/logout", (HttpContext context, KeePortDb db, SessionService sessions, IConfiguration configuration) =>
+        {
+            var token = context.Request.Cookies[SessionService.CookieName];
+            if (!string.IsNullOrEmpty(token))
+            {
+                db.DeleteSessionByTokenHash(SessionService.HashToken(token));
+            }
+            sessions.ClearSessionCookie(context, configuration.GetValue("KeePort:CookieSecure", true));
+            return Results.NoContent();
+        });
+
+        group.MapGet("/me", (HttpContext context) =>
+        {
+            if (ApiAuth.RequireAuthenticated(context) is { } unauthorized)
+            {
+                return unauthorized;
+            }
+            var user = ApiAuth.GetUser(context)!;
+            return Results.Ok(ToDto(user));
+        });
+
+        group.MapGet("/csrf", (HttpContext context) =>
+        {
+            if (ApiAuth.RequireAuthenticated(context) is { } unauthorized)
+            {
+                return unauthorized;
+            }
+            var session = ApiAuth.GetSession(context)!;
+            return Results.Ok(new { csrfToken = session.CsrfToken });
+        });
+    }
+
+    internal static UserDto ToDto(UserRecord user)
+    {
+        return new UserDto(user.Id, user.Username, user.Role.ToString().ToLowerInvariant(), user.Disabled, user.CreatedAt, user.LastLoginAt);
+    }
+
+    private static bool FixedTimeEquals(string expected, string actual)
+    {
+        var expectedBytes = System.Text.Encoding.UTF8.GetBytes(expected);
+        var actualBytes = System.Text.Encoding.UTF8.GetBytes(actual ?? string.Empty);
+        return expectedBytes.Length == actualBytes.Length && System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(expectedBytes, actualBytes);
+    }
+}

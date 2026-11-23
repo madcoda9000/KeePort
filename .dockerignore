@@ -1,0 +1,9 @@
+**/bin/
+**/obj/
+**/node_modules/
+**/dist/
+src/KeePort.Api/wwwroot/
+.git/
+.vs/
+.env
+*.user

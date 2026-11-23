@@ -1,0 +1,20 @@
+# .NET
+**/bin/
+**/obj/
+
+# Node
+**/node_modules/
+web/*/dist/
+
+# Generated local web hosting for dotnet run
+src/KeePort.Api/wwwroot/
+
+# Editors / OS
+.vs/
+.vscode/
+.idea/
+.DS_Store
+
+# Local env
+.env
+*.user
