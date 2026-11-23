@@ -111,11 +111,46 @@ public static class AuthEndpoints
             var session = ApiAuth.GetSession(context)!;
             return Results.Ok(new { csrfToken = session.CsrfToken });
         });
+
+        group.MapPost("/change-password", (ChangePasswordRequest request, HttpContext context, KeePortDb db, PasswordHasher hasher) =>
+        {
+            if (ApiAuth.RequireAuthenticated(context) is { } unauthorized)
+            {
+                return unauthorized;
+            }
+            var user = ApiAuth.GetUser(context)!;
+            if (string.IsNullOrEmpty(request.CurrentPassword) || !hasher.Verify(request.CurrentPassword, user.PasswordHash))
+            {
+                return Results.Json(new ErrorResponse("invalid_password", "Current password is incorrect."), statusCode: StatusCodes.Status403Forbidden);
+            }
+            var passwordError = PasswordPolicy.Validate(request.NewPassword, user.Username);
+            if (passwordError is not null)
+            {
+                return Results.Json(new ErrorResponse("invalid_password", passwordError), statusCode: StatusCodes.Status400BadRequest);
+            }
+            db.UpdateUserPassword(user.Id, hasher.Hash(request.NewPassword));
+            return Results.NoContent();
+        });
+
+        group.MapPut("/settings", (UpdateSettingsRequest request, HttpContext context, KeePortDb db) =>
+        {
+            if (ApiAuth.RequireAuthenticated(context) is { } unauthorized)
+            {
+                return unauthorized;
+            }
+            var user = ApiAuth.GetUser(context)!;
+            if (request.AutoLockMinutes is < 1 or > 1440)
+            {
+                return Results.Json(new ErrorResponse("invalid_settings", "Auto-lock minutes must be between 1 and 1440."), statusCode: StatusCodes.Status400BadRequest);
+            }
+            db.UpdateUserAutoLockMinutes(user.Id, request.AutoLockMinutes);
+            return Results.Ok(ToDto(db.GetUserById(user.Id)!));
+        });
     }
 
     internal static UserDto ToDto(UserRecord user)
     {
-        return new UserDto(user.Id, user.Username, user.Role.ToString().ToLowerInvariant(), user.Disabled, user.CreatedAt, user.LastLoginAt);
+        return new UserDto(user.Id, user.Username, user.Role.ToString().ToLowerInvariant(), user.Disabled, user.CreatedAt, user.LastLoginAt, user.AutoLockMinutes);
     }
 
     private static bool FixedTimeEquals(string expected, string actual)

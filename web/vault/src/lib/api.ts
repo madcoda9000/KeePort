@@ -5,6 +5,7 @@ export interface User {
   disabled: boolean;
   createdAt: string;
   lastLoginAt: string | null;
+  autoLockMinutes: number | null;
 }
 
 export interface VaultFile {
@@ -120,6 +121,12 @@ export const api = {
     const result = await request<{ csrfToken: string }>('/api/auth/csrf');
     setCsrfToken(result.csrfToken);
     return result.csrfToken;
+  },
+  async changePassword(payload: { currentPassword: string; newPassword: string }) {
+    await request<void>('/api/auth/change-password', { method: 'POST', body: JSON.stringify(payload) });
+  },
+  async updateSettings(payload: { autoLockMinutes: number }) {
+    return request<User>('/api/auth/settings', { method: 'PUT', body: JSON.stringify(payload) });
   },
   async listVaultFiles() {
     return request<VaultFile[]>('/api/vault/files');

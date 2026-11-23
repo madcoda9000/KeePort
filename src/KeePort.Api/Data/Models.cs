@@ -21,6 +21,7 @@ public sealed class UserRecord
     public required bool Disabled { get; init; }
     public required DateTimeOffset CreatedAt { get; init; }
     public DateTimeOffset? LastLoginAt { get; init; }
+    public int? AutoLockMinutes { get; init; }
 }
 
 public sealed record SessionRecord
@@ -77,7 +78,7 @@ public sealed class WebDavCredentialRecord
     public UserRecord? User { get; set; }
 }
 
-public sealed record UserDto(string Id, string Username, string Role, bool Disabled, DateTimeOffset CreatedAt, DateTimeOffset? LastLoginAt);
+public sealed record UserDto(string Id, string Username, string Role, bool Disabled, DateTimeOffset CreatedAt, DateTimeOffset? LastLoginAt, int? AutoLockMinutes = null);
 
 public sealed record VaultFileDto(
     string Id,
@@ -95,6 +96,10 @@ public sealed record AuthResponse(UserDto User, string CsrfToken);
 public sealed record SetupStatusResponse(bool RequiresSetup, bool HasUsers);
 
 public sealed record LoginRequest(string Username, string Password);
+
+public sealed record ChangePasswordRequest(string CurrentPassword, string NewPassword);
+
+public sealed record UpdateSettingsRequest(int? AutoLockMinutes);
 
 public sealed record SetupRequest(string SetupToken, string Username, string Password);
 

@@ -9,7 +9,7 @@ import { toggleTheme } from './theme';
 
 type Message = { kind: 'notice' | 'error'; text: string } | null;
 
-const VAULT_HIDDEN_LOCK_MS = 5 * 60 * 1000;
+const DEFAULT_AUTO_LOCK_MINUTES = 5;
 
 function formatBytes(size: number) {
   if (size < 1024) return `${size} B`;
@@ -69,6 +69,8 @@ export default function App() {
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<Message>(null);
   const [theme, setTheme] = useState(() => (document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light'));
+  const [autoLockMinutes, setAutoLockMinutes] = useState(DEFAULT_AUTO_LOCK_MINUTES);
+  const [showProfile, setShowProfile] = useState(false);
 
   const selectedFile = useMemo(() => files.find((file) => file.id === selectedId) ?? null, [files, selectedId]);
   const canWrite = permission === 'read-write';
@@ -185,6 +187,7 @@ export default function App() {
     try {
       const result = await api.login({ username, password: passwordValue });
       setUser(result.user);
+      setAutoLockMinutes(result.user.autoLockMinutes ?? DEFAULT_AUTO_LOCK_MINUTES);
       await api.csrf();
       await refreshFiles();
       form.reset();
@@ -203,6 +206,51 @@ export default function App() {
     try { await api.logout(); } catch { /* session may already be gone */ }
   }
 
+  async function handleChangePassword(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const data = new FormData(form);
+    const currentPassword = String(data.get('currentPassword') ?? '');
+    const newPassword = String(data.get('newPassword') ?? '');
+    const confirmPassword = String(data.get('confirmPassword') ?? '');
+    if (newPassword !== confirmPassword) {
+      setMessage({ kind: 'error', text: 'New passwords do not match.' });
+      return;
+    }
+    setBusy('password');
+    setMessage(null);
+    try {
+      await api.changePassword({ currentPassword, newPassword });
+      form.reset();
+      setMessage({ kind: 'notice', text: 'Password changed.' });
+    } catch (error) {
+      setMessage({ kind: 'error', text: errorText(error, 'Unable to change password.') });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleSaveAutoLock(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const minutes = Number(new FormData(event.currentTarget).get('autoLockMinutes'));
+    if (!Number.isFinite(minutes) || minutes < 1 || minutes > 1440) {
+      setMessage({ kind: 'error', text: 'Auto-lock must be between 1 and 1440 minutes.' });
+      return;
+    }
+    setBusy('settings');
+    setMessage(null);
+    try {
+      const updated = await api.updateSettings({ autoLockMinutes: Math.round(minutes) });
+      setUser(updated);
+      setAutoLockMinutes(updated.autoLockMinutes ?? DEFAULT_AUTO_LOCK_MINUTES);
+      setMessage({ kind: 'notice', text: 'Settings saved.' });
+    } catch (error) {
+      setMessage({ kind: 'error', text: errorText(error, 'Unable to save settings.') });
+    } finally {
+      setBusy(null);
+    }
+  }
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -211,6 +259,7 @@ export default function App() {
         await api.csrf();
         if (cancelled) return;
         setUser(me);
+        setAutoLockMinutes(me.autoLockMinutes ?? DEFAULT_AUTO_LOCK_MINUTES);
         await refreshFiles();
       } catch (error) {
         if (!cancelled && !(error instanceof ApiError && error.status === 401)) {
@@ -237,7 +286,7 @@ export default function App() {
     };
     const onVisibility = () => {
       if (document.hidden) {
-        lockTimer = window.setTimeout(lock, VAULT_HIDDEN_LOCK_MS);
+        lockTimer = window.setTimeout(lock, autoLockMinutes * 60 * 1000);
       } else if (lockTimer !== undefined) {
         window.clearTimeout(lockTimer);
         lockTimer = undefined;
@@ -248,7 +297,7 @@ export default function App() {
       document.removeEventListener('visibilitychange', onVisibility);
       if (lockTimer !== undefined) window.clearTimeout(lockTimer);
     };
-  }, [db]);
+  }, [db, autoLockMinutes]);
 
   if (!authChecked) {
     return <div className="login-wrap"><div className="card login"><div className="brand"><div className="logo">K</div>KeePort Vault</div><p className="muted">Restoring secure session…</p></div></div>;
@@ -276,11 +325,34 @@ export default function App() {
       <header className="topbar">
         <div className="brand"><div className="logo">K</div>KeePort Vault</div>
         <div className="topbar-actions">
-          <span className="user-chip">{user.username}</span>
+          <span className="user-chip" style={{ cursor: 'pointer' }} title="Open profile" onClick={() => setShowProfile(true)}>{user.username}</span>
           <button className="button ghost small" onClick={() => { toggleTheme(); setTheme((value) => (value === 'dark' ? 'light' : 'dark')); }}>{theme === 'dark' ? 'Light mode' : 'Dark mode'}</button>
           <button className="button ghost small" onClick={handleLogout}>Sign out</button>
         </div>
       </header>
+
+      {showProfile ? (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }} onClick={() => setShowProfile(false)}>
+          <div className="card" style={{ width: 'min(420px, 92vw)' }} onClick={(event) => event.stopPropagation()}>
+            <div className="row">
+              <h3>Profile — {user.username}</h3>
+              <span className="spacer" />
+              <button className="button ghost small" type="button" onClick={() => setShowProfile(false)}>Close</button>
+            </div>
+            <form onSubmit={handleSaveAutoLock}>
+              <div className="field"><label>Auto-lock vault after (minutes)</label><input name="autoLockMinutes" type="number" min={1} max={1440} defaultValue={autoLockMinutes} /></div>
+              <button className="button primary small" disabled={busy === 'settings'}>{busy === 'settings' ? 'Saving…' : 'Save settings'}</button>
+            </form>
+            <hr />
+            <form onSubmit={handleChangePassword}>
+              <div className="field"><label>Current password</label><input name="currentPassword" type="password" autoComplete="current-password" required /></div>
+              <div className="field"><label>New password</label><input name="newPassword" type="password" autoComplete="new-password" required /></div>
+              <div className="field"><label>Confirm new password</label><input name="confirmPassword" type="password" autoComplete="new-password" required /></div>
+              <button className="button primary small" disabled={busy === 'password'}>{busy === 'password' ? 'Changing…' : 'Change password'}</button>
+            </form>
+          </div>
+        </div>
+      ) : null}
 
       <main className="layout">
         <aside className="card sidebar">

@@ -46,7 +46,8 @@ public sealed class KeePortDb : IDisposable
                 role TEXT NOT NULL CHECK (role IN ('Admin', 'User')),
                 disabled INTEGER NOT NULL DEFAULT 0,
                 created_at TEXT NOT NULL,
-                last_login_at TEXT NULL
+                last_login_at TEXT NULL,
+                auto_lock_minutes INTEGER NULL
             );
 
             CREATE TABLE IF NOT EXISTS sessions (
@@ -104,7 +105,28 @@ public sealed class KeePortDb : IDisposable
             );
             """);
 
+        EnsureColumn("users", "auto_lock_minutes", "INTEGER NULL");
         EnsureSetupToken();
+    }
+
+    private void EnsureColumn(string table, string column, string definition)
+    {
+        using var connection = Open();
+        connection.Open();
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText = $"PRAGMA table_info({table});";
+            using var reader = command.ExecuteReader();
+            while (reader.Read())
+            {
+                if (string.Equals(reader.GetString(1), column, StringComparison.OrdinalIgnoreCase))
+                {
+                    return;
+                }
+            }
+        }
+
+        Execute(connection, $"ALTER TABLE {table} ADD COLUMN {column} {definition};");
     }
 
     private void EnsureSetupToken()
@@ -158,7 +180,7 @@ public sealed class KeePortDb : IDisposable
         connection.Open();
         using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT id, username, password_hash, role, disabled, created_at, last_login_at
+            SELECT id, username, password_hash, role, disabled, created_at, last_login_at, auto_lock_minutes
             FROM users WHERE username = @username COLLATE NOCASE;
             """;
         command.Parameters.AddWithValue("@username", username);
@@ -172,7 +194,7 @@ public sealed class KeePortDb : IDisposable
         connection.Open();
         using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT id, username, password_hash, role, disabled, created_at, last_login_at
+            SELECT id, username, password_hash, role, disabled, created_at, last_login_at, auto_lock_minutes
             FROM users WHERE id = @id;
             """;
         command.Parameters.AddWithValue("@id", id);
@@ -186,7 +208,7 @@ public sealed class KeePortDb : IDisposable
         connection.Open();
         using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT id, username, password_hash, role, disabled, created_at, last_login_at
+            SELECT id, username, password_hash, role, disabled, created_at, last_login_at, auto_lock_minutes
             FROM users ORDER BY username COLLATE NOCASE;
             """;
         var users = new List<UserRecord>();
@@ -236,6 +258,15 @@ public sealed class KeePortDb : IDisposable
             new SqliteParameter("@passwordHash", passwordHash));
     }
 
+    public void UpdateUserAutoLockMinutes(string id, int? autoLockMinutes)
+    {
+        using var connection = Open();
+        connection.Open();
+        Execute(connection, "UPDATE users SET auto_lock_minutes = @autoLockMinutes WHERE id = @id;",
+            new SqliteParameter("@id", id),
+            new SqliteParameter("@autoLockMinutes", DbValue(autoLockMinutes)));
+    }
+
     public void UpdateLastLogin(string id, DateTimeOffset lastLoginAt)
     {
         using var connection = Open();
@@ -283,7 +314,7 @@ public sealed class KeePortDb : IDisposable
         using var command = connection.CreateCommand();
         command.CommandText = """
             SELECT s.id, s.user_id, s.token_hash, s.csrf_token, s.created_at, s.expires_at, s.last_seen_at, s.user_agent, s.ip_address,
-                   u.id, u.username, u.password_hash, u.role, u.disabled, u.created_at, u.last_login_at
+                   u.id, u.username, u.password_hash, u.role, u.disabled, u.created_at, u.last_login_at, u.auto_lock_minutes
             FROM sessions s
             JOIN users u ON u.id = s.user_id
             WHERE s.token_hash = @tokenHash;
@@ -571,7 +602,7 @@ public sealed class KeePortDb : IDisposable
         using var command = connection.CreateCommand();
         command.CommandText = """
             SELECT c.id, c.user_id, c.username, c.label, c.password_hash, c.created_at, c.last_used_at, c.revoked_at,
-                   u.id, u.username, u.password_hash, u.role, u.disabled, u.created_at, u.last_login_at
+                   u.id, u.username, u.password_hash, u.role, u.disabled, u.created_at, u.last_login_at, u.auto_lock_minutes
             FROM webdav_credentials c
             JOIN users u ON u.id = c.user_id
             WHERE c.username = @username COLLATE NOCASE;
@@ -605,7 +636,7 @@ public sealed class KeePortDb : IDisposable
         using var command = connection.CreateCommand();
         command.CommandText = """
             SELECT c.id, c.user_id, c.username, c.label, c.password_hash, c.created_at, c.last_used_at, c.revoked_at,
-                   u.id, u.username, u.password_hash, u.role, u.disabled, u.created_at, u.last_login_at
+                   u.id, u.username, u.password_hash, u.role, u.disabled, u.created_at, u.last_login_at, u.auto_lock_minutes
             FROM webdav_credentials c
             JOIN users u ON u.id = c.user_id
             ORDER BY c.created_at DESC;
@@ -708,7 +739,8 @@ public sealed class KeePortDb : IDisposable
             Role = Enum.Parse<UserRole>(reader.GetString(offset + 3)),
             Disabled = reader.GetInt32(offset + 4) != 0,
             CreatedAt = ParseDate(reader.GetString(offset + 5)),
-            LastLoginAt = reader.IsDBNull(offset + 6) ? null : ParseDate(reader.GetString(offset + 6))
+            LastLoginAt = reader.IsDBNull(offset + 6) ? null : ParseDate(reader.GetString(offset + 6)),
+            AutoLockMinutes = reader.IsDBNull(offset + 7) ? null : reader.GetInt32(offset + 7)
         };
     }
 
