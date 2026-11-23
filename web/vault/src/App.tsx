@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import type { Kdbx } from 'kdbxweb';
 import { api, ApiError } from './lib/api';
 import type { User, VaultFile } from './lib/api';
-import { applyEntryEdits, clearVaultCredentials, entryMatches, listEntries, loadVault, saveVault } from './lib/kdbx';
+import { applyEntryEdits, clearVaultCredentials, createEntry, entryMatches, listEntries, loadVault, saveVault } from './lib/kdbx';
 import type { EntryEdits, EntryView } from './lib/kdbx';
 import { toggleTheme } from './theme';
 
@@ -102,9 +102,15 @@ export default function App() {
     }
   }
 
+  function startNewEntry() {
+    setSelectedEntry(null);
+    setEdits({ title: '', username: '', password: '', url: '', notes: '' });
+    setMessage(null);
+  }
+
   async function handleSave(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!db || !selectedFile || !selectedEntry || !edits) return;
+    if (!db || !selectedFile || !edits) return;
     if (!canWrite) {
       setMessage({ kind: 'error', text: 'This vault is read-only for your account.' });
       return;
@@ -112,11 +118,17 @@ export default function App() {
     setBusy('save');
     setMessage(null);
     try {
-      applyEntryEdits(selectedEntry.entry, edits);
+      let entryId: string;
+      if (selectedEntry) {
+        applyEntryEdits(selectedEntry.entry, edits);
+        entryId = selectedEntry.id;
+      } else {
+        entryId = createEntry(db, edits).uuid.id;
+      }
       const bytes = await saveVault(db);
       const updated = await api.putFileBytes(selectedFile.id, bytes, etag);
       const nextEntries = listEntries(db);
-      const refreshed = nextEntries.find((entry) => entry.id === selectedEntry.id) ?? null;
+      const refreshed = nextEntries.find((entry) => entry.id === entryId) ?? null;
       setFiles((current) => current.map((file) => (file.id === updated.id ? { ...file, ...updated } : file)));
       setEtag(updated.etag);
       setEntries(nextEntries);
@@ -283,6 +295,7 @@ export default function App() {
                 <span className={`badge ${canWrite ? 'write' : 'read'}`}>{canWrite ? 'read-write' : 'read-only'}</span>
                 <span className="muted">{visibleEntries.length} entries</span>
                 <span className="spacer" />
+                {canWrite ? <button className="button primary small" onClick={startNewEntry}>Add entry</button> : null}
                 <button className="button danger small" onClick={() => lockVault(true)}>Lock vault</button>
               </div>
 
@@ -301,10 +314,10 @@ export default function App() {
                 ))}
               </div>
 
-              {selectedEntry && edits ? (
+              {edits ? (
                 <form className="card detail" onSubmit={handleSave}>
                   <div className="row">
-                    <h3>{selectedEntry.title}</h3>
+                    <h3>{selectedEntry ? selectedEntry.title : 'New entry'}</h3>
                     <span className="spacer" />
                     <button className="button ghost small" type="button" onClick={() => { setSelectedEntry(null); setEdits(null); }}>Close</button>
                   </div>
@@ -317,7 +330,7 @@ export default function App() {
                     <div className="field full"><label>Notes</label><textarea value={edits.notes} disabled={!canWrite} onChange={(event) => setEdits({ ...edits, notes: event.target.value })} /></div>
                   </div>
                   <div className="row">
-                    {canWrite ? <button className="button primary" disabled={busy === 'save'}>{busy === 'save' ? 'Saving…' : 'Save entry'}</button> : null}
+                    {canWrite ? <button className="button primary" disabled={busy === 'save'}>{busy === 'save' ? 'Saving…' : selectedEntry ? 'Save entry' : 'Create entry'}</button> : null}
                     <button className="button ghost" type="button" onClick={() => navigator.clipboard?.writeText(edits.username).then(() => setMessage({ kind: 'notice', text: 'Username copied.' })).catch(() => undefined)}>Copy username</button>
                     <button className="button ghost" type="button" onClick={() => navigator.clipboard?.writeText(edits.password).then(() => setMessage({ kind: 'notice', text: 'Password copied.' })).catch(() => undefined)}>Copy password</button>
                   </div>

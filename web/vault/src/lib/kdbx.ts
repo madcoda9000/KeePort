@@ -107,6 +107,23 @@ export function applyEntryEdits(entry: kdbxweb.KdbxEntry, edits: EntryEdits) {
   entry.times.update();
 }
 
+export function createEntry(db: kdbxweb.Kdbx, edits: EntryEdits): kdbxweb.KdbxEntry {
+  let group = db.groups[0];
+  if (!group) {
+    db.createDefaultGroup();
+    group = db.groups[0];
+  }
+  if (!group) throw new Error('Vault has no group that can hold the new entry.');
+  const entry = db.createEntry(group);
+  entry.fields.set('Title', edits.title);
+  entry.fields.set('UserName', edits.username);
+  entry.fields.set('Password', kdbxweb.ProtectedValue.fromString(edits.password));
+  entry.fields.set('URL', edits.url);
+  entry.fields.set('Notes', kdbxweb.ProtectedValue.fromString(edits.notes));
+  entry.times.update();
+  return entry;
+}
+
 export async function saveVault(db: kdbxweb.Kdbx): Promise<Uint8Array> {
   const buffer = await db.save();
   return new Uint8Array(buffer);
