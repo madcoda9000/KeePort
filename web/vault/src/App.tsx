@@ -310,6 +310,22 @@ export default function App() {
     }
   }
 
+  /** Saves the contact address entered in the profile. */
+  async function handleSaveEmail(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const email = String(new FormData(event.currentTarget).get('email') ?? '').trim();
+    setBusy('email');
+    setProfileMessage(null);
+    try {
+      setUser(await api.updateEmail(email));
+      setProfileMessage({ kind: 'notice', text: 'Email address saved.' });
+    } catch (error) {
+      setProfileMessage({ kind: 'error', text: errorText(error, 'Unable to save email address.') });
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function handleSaveAutoLock(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const minutes = Number(new FormData(event.currentTarget).get('autoLockMinutes'));
@@ -478,7 +494,7 @@ export default function App() {
               <DialogHeader>
                 <DialogTitle>Account settings</DialogTitle>
                 <DialogDescription>
-                  Manage how your vault locks and how you sign in as {user.username}.
+                  Manage contact, vault and sign-in settings for {user.username}.
                 </DialogDescription>
               </DialogHeader>
               {profileMessage && (
@@ -486,6 +502,26 @@ export default function App() {
                   <AlertDescription>{profileMessage.text}</AlertDescription>
                 </Alert>
               )}
+              <form className="grid gap-4" onSubmit={handleSaveEmail}>
+                <h3 className="text-sm font-semibold">Contact information</h3>
+                <Field>
+                  <FieldLabel htmlFor="profile-email">Email address</FieldLabel>
+                  <Input
+                    key={user.email}
+                    id="profile-email"
+                    name="email"
+                    type="email"
+                    autoComplete="email"
+                    maxLength={254}
+                    defaultValue={user.email ?? ''}
+                    required
+                  />
+                </Field>
+                <Button type="submit" size="sm" className="justify-self-start" disabled={busy !== null}>
+                  {busy === 'email' ? 'Saving…' : 'Save email address'}
+                </Button>
+              </form>
+              <Separator />
               <form className="grid gap-4" onSubmit={handleSaveAutoLock}>
                 <h3 className="text-sm font-semibold">Vault preferences</h3>
                 <Field>

@@ -132,6 +132,8 @@ public static class AuthEndpoints
             return Results.NoContent();
         });
 
+        group.MapPut("/email", UpdateEmail);
+
         group.MapPut("/settings", (UpdateSettingsRequest request, HttpContext context, KeePortDb db) =>
         {
             if (ApiAuth.RequireAuthenticated(context) is { } unauthorized)
@@ -148,9 +150,26 @@ public static class AuthEndpoints
         });
     }
 
+    /// <summary>Validates and changes the authenticated account's contact email.</summary>
+    private static IResult UpdateEmail(UpdateEmailRequest request, HttpContext context, KeePortDb db)
+    {
+        if (ApiAuth.RequireAuthenticated(context) is { } unauthorized)
+        {
+            return unauthorized;
+        }
+        var email = EmailAddress.Normalize(request.Email);
+        if (email is null)
+        {
+            return Results.Json(new ErrorResponse("invalid_email", "Enter a valid email address."), statusCode: StatusCodes.Status400BadRequest);
+        }
+        var user = ApiAuth.GetUser(context)!;
+        db.UpdateUserEmail(user.Id, email);
+        return Results.Ok(ToDto(db.GetUserById(user.Id)!));
+    }
+
     internal static UserDto ToDto(UserRecord user)
     {
-        return new UserDto(user.Id, user.Username, user.Role.ToString().ToLowerInvariant(), user.Disabled, user.CreatedAt, user.LastLoginAt, user.AutoLockMinutes);
+        return new UserDto(user.Id, user.Username, user.Role.ToString().ToLowerInvariant(), user.Disabled, user.CreatedAt, user.LastLoginAt, user.AutoLockMinutes, user.Email);
     }
 
     private static bool FixedTimeEquals(string expected, string actual)

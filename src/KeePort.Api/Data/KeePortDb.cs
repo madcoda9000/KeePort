@@ -47,7 +47,8 @@ public sealed class KeePortDb : IDisposable
                 disabled INTEGER NOT NULL DEFAULT 0,
                 created_at TEXT NOT NULL,
                 last_login_at TEXT NULL,
-                auto_lock_minutes INTEGER NULL
+                auto_lock_minutes INTEGER NULL,
+                email TEXT NULL
             );
 
             CREATE TABLE IF NOT EXISTS sessions (
@@ -106,6 +107,7 @@ public sealed class KeePortDb : IDisposable
             """);
 
         EnsureColumn("users", "auto_lock_minutes", "INTEGER NULL");
+        EnsureColumn("users", "email", "TEXT NULL");
         EnsureSetupToken();
     }
 
@@ -180,7 +182,7 @@ public sealed class KeePortDb : IDisposable
         connection.Open();
         using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT id, username, password_hash, role, disabled, created_at, last_login_at, auto_lock_minutes
+            SELECT id, username, password_hash, role, disabled, created_at, last_login_at, auto_lock_minutes, email
             FROM users WHERE username = @username COLLATE NOCASE;
             """;
         command.Parameters.AddWithValue("@username", username);
@@ -194,7 +196,7 @@ public sealed class KeePortDb : IDisposable
         connection.Open();
         using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT id, username, password_hash, role, disabled, created_at, last_login_at, auto_lock_minutes
+            SELECT id, username, password_hash, role, disabled, created_at, last_login_at, auto_lock_minutes, email
             FROM users WHERE id = @id;
             """;
         command.Parameters.AddWithValue("@id", id);
@@ -208,7 +210,7 @@ public sealed class KeePortDb : IDisposable
         connection.Open();
         using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT id, username, password_hash, role, disabled, created_at, last_login_at, auto_lock_minutes
+            SELECT id, username, password_hash, role, disabled, created_at, last_login_at, auto_lock_minutes, email
             FROM users ORDER BY username COLLATE NOCASE;
             """;
         var users = new List<UserRecord>();
@@ -225,8 +227,8 @@ public sealed class KeePortDb : IDisposable
         using var connection = Open();
         connection.Open();
         Execute(connection, """
-            INSERT INTO users (id, username, password_hash, role, disabled, created_at, last_login_at)
-            VALUES (@id, @username, @passwordHash, @role, @disabled, @createdAt, @lastLoginAt);
+            INSERT INTO users (id, username, password_hash, role, disabled, created_at, last_login_at, email)
+            VALUES (@id, @username, @passwordHash, @role, @disabled, @createdAt, @lastLoginAt, @email);
             """,
             new SqliteParameter("@id", user.Id),
             new SqliteParameter("@username", user.Username),
@@ -234,7 +236,8 @@ public sealed class KeePortDb : IDisposable
             new SqliteParameter("@role", user.Role.ToString()),
             new SqliteParameter("@disabled", user.Disabled ? 1 : 0),
             new SqliteParameter("@createdAt", user.CreatedAt.ToString("O")),
-            new SqliteParameter("@lastLoginAt", DbValue(user.LastLoginAt?.ToString("O"))));
+            new SqliteParameter("@lastLoginAt", DbValue(user.LastLoginAt?.ToString("O"))),
+            new SqliteParameter("@email", DbValue(user.Email)));
     }
 
     public void UpdateUserRoleAndDisabled(string id, UserRole role, bool disabled)
@@ -256,6 +259,16 @@ public sealed class KeePortDb : IDisposable
         Execute(connection, "UPDATE users SET password_hash = @passwordHash WHERE id = @id;",
             new SqliteParameter("@id", id),
             new SqliteParameter("@passwordHash", passwordHash));
+    }
+
+    /// <summary>Stores the validated contact email for one account.</summary>
+    public void UpdateUserEmail(string id, string email)
+    {
+        using var connection = Open();
+        connection.Open();
+        Execute(connection, "UPDATE users SET email = @email WHERE id = @id;",
+            new SqliteParameter("@id", id),
+            new SqliteParameter("@email", email));
     }
 
     public void UpdateUserAutoLockMinutes(string id, int? autoLockMinutes)
@@ -314,7 +327,7 @@ public sealed class KeePortDb : IDisposable
         using var command = connection.CreateCommand();
         command.CommandText = """
             SELECT s.id, s.user_id, s.token_hash, s.csrf_token, s.created_at, s.expires_at, s.last_seen_at, s.user_agent, s.ip_address,
-                   u.id, u.username, u.password_hash, u.role, u.disabled, u.created_at, u.last_login_at, u.auto_lock_minutes
+                   u.id, u.username, u.password_hash, u.role, u.disabled, u.created_at, u.last_login_at, u.auto_lock_minutes, u.email
             FROM sessions s
             JOIN users u ON u.id = s.user_id
             WHERE s.token_hash = @tokenHash;
@@ -602,7 +615,7 @@ public sealed class KeePortDb : IDisposable
         using var command = connection.CreateCommand();
         command.CommandText = """
             SELECT c.id, c.user_id, c.username, c.label, c.password_hash, c.created_at, c.last_used_at, c.revoked_at,
-                   u.id, u.username, u.password_hash, u.role, u.disabled, u.created_at, u.last_login_at, u.auto_lock_minutes
+                   u.id, u.username, u.password_hash, u.role, u.disabled, u.created_at, u.last_login_at, u.auto_lock_minutes, u.email
             FROM webdav_credentials c
             JOIN users u ON u.id = c.user_id
             WHERE c.username = @username COLLATE NOCASE;
@@ -636,7 +649,7 @@ public sealed class KeePortDb : IDisposable
         using var command = connection.CreateCommand();
         command.CommandText = """
             SELECT c.id, c.user_id, c.username, c.label, c.password_hash, c.created_at, c.last_used_at, c.revoked_at,
-                   u.id, u.username, u.password_hash, u.role, u.disabled, u.created_at, u.last_login_at, u.auto_lock_minutes
+                   u.id, u.username, u.password_hash, u.role, u.disabled, u.created_at, u.last_login_at, u.auto_lock_minutes, u.email
             FROM webdav_credentials c
             JOIN users u ON u.id = c.user_id
             ORDER BY c.created_at DESC;
@@ -740,7 +753,8 @@ public sealed class KeePortDb : IDisposable
             Disabled = reader.GetInt32(offset + 4) != 0,
             CreatedAt = ParseDate(reader.GetString(offset + 5)),
             LastLoginAt = reader.IsDBNull(offset + 6) ? null : ParseDate(reader.GetString(offset + 6)),
-            AutoLockMinutes = reader.IsDBNull(offset + 7) ? null : reader.GetInt32(offset + 7)
+            AutoLockMinutes = reader.IsDBNull(offset + 7) ? null : reader.GetInt32(offset + 7),
+            Email = reader.IsDBNull(offset + 8) ? null : reader.GetString(offset + 8)
         };
     }
 

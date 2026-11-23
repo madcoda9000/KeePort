@@ -199,6 +199,11 @@ function UserRow({
     <TableRow>
       <TableCell className="max-w-48 truncate ps-6 font-medium" title={user.id}>
         {user.username}
+        {user.email && (
+          <div className="truncate text-xs font-normal text-muted-foreground" title={user.email}>
+            {user.email}
+          </div>
+        )}
       </TableCell>
       <TableCell>
         <NativeSelect
@@ -522,6 +527,7 @@ export default function App() {
   const [theme, setTheme] = useState(getTheme);
 
   const [newUsername, setNewUsername] = useState('');
+  const [newEmail, setNewEmail] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [newRole, setNewRole] = useState<'admin' | 'user'>('user');
 
@@ -654,6 +660,7 @@ export default function App() {
   async function handleLogout() {
     setForbidden(false);
     setMessage(null);
+    setNewEmail('');
     setNewPassword('');
     setNewVaultPassword('');
     setWebdavPassword('');
@@ -674,8 +681,9 @@ export default function App() {
     setBusy('create-user');
     setMessage(null);
     try {
-      await api.createUser({ username: newUsername, password: newPassword, role: newRole });
+      await api.createUser({ username: newUsername, email: newEmail, password: newPassword, role: newRole });
       setNewUsername('');
+      setNewEmail('');
       setNewPassword('');
       setNewRole('user');
       setMessage({ kind: 'notice', text: 'User created.' });
@@ -1041,6 +1049,18 @@ export default function App() {
                         id="new-username"
                         value={newUsername}
                         onChange={(event) => setNewUsername(event.target.value)}
+                        required
+                      />
+                    </Field>
+                    <Field className="w-full sm:w-60">
+                      <FieldLabel htmlFor="new-user-email">Email address</FieldLabel>
+                      <Input
+                        id="new-user-email"
+                        type="email"
+                        autoComplete="off"
+                        maxLength={254}
+                        value={newEmail}
+                        onChange={(event) => setNewEmail(event.target.value)}
                         required
                       />
                     </Field>

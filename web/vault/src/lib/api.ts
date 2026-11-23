@@ -1,6 +1,7 @@
 export interface User {
   id: string;
   username: string;
+  email: string | null;
   role: 'admin' | 'user';
   disabled: boolean;
   createdAt: string;
@@ -124,6 +125,10 @@ export const api = {
   },
   async changePassword(payload: { currentPassword: string; newPassword: string }) {
     await request<void>('/api/auth/change-password', { method: 'POST', body: JSON.stringify(payload) });
+  },
+  /** Saves the signed-in account's email and returns the updated user. */
+  async updateEmail(email: string) {
+    return request<User>('/api/auth/email', { method: 'PUT', body: JSON.stringify({ email }) });
   },
   async updateSettings(payload: { autoLockMinutes: number }) {
     return request<User>('/api/auth/settings', { method: 'PUT', body: JSON.stringify(payload) });

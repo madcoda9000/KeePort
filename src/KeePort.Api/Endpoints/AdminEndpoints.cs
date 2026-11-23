@@ -43,6 +43,11 @@ public static class AdminEndpoints
             {
                 return BadRequest("invalid_password", passwordError);
             }
+            var email = EmailAddress.Normalize(request.Email);
+            if (email is null)
+            {
+                return BadRequest("invalid_email", "Enter a valid email address.");
+            }
             var username = request.Username.Trim();
             if (db.GetUserByUsername(username) is not null)
             {
@@ -53,6 +58,7 @@ public static class AdminEndpoints
             {
                 Id = Guid.NewGuid().ToString("N"),
                 Username = username,
+                Email = email,
                 PasswordHash = hasher.Hash(request.Password),
                 Role = role,
                 Disabled = false,

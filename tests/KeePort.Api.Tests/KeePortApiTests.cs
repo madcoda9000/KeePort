@@ -2,8 +2,10 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
+using KeePort.Api.Data;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Data.Sqlite;
+using Microsoft.Extensions.Configuration;
 
 namespace KeePort.Api.Tests;
 
@@ -108,6 +110,87 @@ public class KeePortApiTests : IDisposable
         Assert.Single(Directory.GetFiles(vaultDir, "*.kdbx"));
     }
 
+    /// <summary>Checks that missing and invalid contact addresses are rejected during admin account creation.</summary>
+    [Fact]
+    public async Task Admin_Creation_Requires_A_Valid_Email_Address()
+    {
+        var csrf = await SetupAdminAsync(_admin);
+        var account = new { username = "alice", password = "User passphrase 123", role = "user" };
+        using var missing = await SendAsync(_admin, HttpMethod.Post, "/api/admin/users", json: account, csrf: csrf);
+        Assert.Equal(HttpStatusCode.BadRequest, missing.StatusCode);
+        Assert.Equal("invalid_email", (await missing.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("error").GetString());
+
+        using var invalid = await SendAsync(_admin, HttpMethod.Post, "/api/admin/users",
+            json: new { account.username, account.password, account.role, email = "Alice <alice@example.test>" }, csrf: csrf);
+        Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+        Assert.Equal("invalid_email", (await invalid.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("error").GetString());
+
+        var users = await GetJsonAsync(_admin, "/api/admin/users");
+        Assert.Equal("admin", Assert.Single(users.EnumerateArray()).GetProperty("username").GetString());
+    }
+
+    /// <summary>Checks that only a signed-in account can change its email, without changing its other settings.</summary>
+    [Fact]
+    public async Task Profile_Email_Update_Requires_Auth_And_Persists_A_Valid_Address()
+    {
+        const string url = "/api/auth/email";
+        var csrf = await SetupAdminAsync(_admin);
+        await CreateUserAsync(_admin, csrf, "alice", "user");
+        var payload = new { email = "  new.alice+profile@example.test  " };
+        using var anonymous = await SendAsync(_user, HttpMethod.Put, url, json: payload);
+        Assert.Equal(HttpStatusCode.Unauthorized, anonymous.StatusCode);
+
+        var (userCsrf, userId) = await LoginAsync(_user, "alice", "User passphrase 123");
+        using var settings = await SendAsync(_user, HttpMethod.Put, "/api/auth/settings", json: new { autoLockMinutes = 15 }, csrf: userCsrf);
+        settings.EnsureSuccessStatusCode();
+        Assert.Equal("alice@example.test", (await settings.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("email").GetString());
+        using var noCsrf = await SendAsync(_user, HttpMethod.Put, url, json: payload);
+        Assert.Equal(HttpStatusCode.Forbidden, noCsrf.StatusCode);
+        using var invalid = await SendAsync(_user, HttpMethod.Put, url, json: new { email = "not-an-email" }, csrf: userCsrf);
+        Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+        Assert.Equal("alice@example.test", (await GetJsonAsync(_user, "/api/auth/me")).GetProperty("email").GetString());
+
+        using var updated = await SendAsync(_user, HttpMethod.Put, url, json: payload, csrf: userCsrf);
+        updated.EnsureSuccessStatusCode();
+        var profile = await GetJsonAsync(_user, "/api/auth/me");
+        Assert.Equal(userId, profile.GetProperty("id").GetString());
+        Assert.Equal("new.alice+profile@example.test", profile.GetProperty("email").GetString());
+        Assert.Equal(15, profile.GetProperty("autoLockMinutes").GetInt32());
+        var users = (await GetJsonAsync(_admin, "/api/admin/users")).EnumerateArray().ToArray();
+        Assert.Equal(JsonValueKind.Null, users.Single(user => user.GetProperty("username").GetString() == "admin").GetProperty("email").ValueKind);
+    }
+
+    /// <summary>Checks that opening an existing SQLite database adds the email column without replacing accounts.</summary>
+    [Fact]
+    public void Existing_Accounts_Can_Set_An_Email_After_Migration()
+    {
+        var legacyDir = Directory.CreateDirectory(Path.Combine(_dataDir, "legacy")).FullName;
+        using (var connection = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = Path.Combine(legacyDir, "keeport.db") }.ToString()))
+        {
+            connection.Open();
+            using var command = connection.CreateCommand();
+            command.CommandText = """
+                CREATE TABLE users (
+                    id TEXT PRIMARY KEY, username TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL,
+                    role TEXT NOT NULL, disabled INTEGER NOT NULL, created_at TEXT NOT NULL,
+                    last_login_at TEXT NULL, auto_lock_minutes INTEGER NULL
+                );
+                INSERT INTO users VALUES ('legacy', 'admin', 'fixture-hash', 'Admin', 0, '2026-01-01T00:00:00Z', NULL, 12);
+                """;
+            command.ExecuteNonQuery();
+        }
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["KeePort:DataDir"] = legacyDir }).Build();
+        using var db = new KeePortDb(configuration);
+        db.Initialize();
+        var account = Assert.Single(db.ListUsers());
+        Assert.Equal("legacy", account.Id);
+        Assert.Null(account.Email);
+        Assert.Equal(12, account.AutoLockMinutes);
+        db.UpdateUserEmail(account.Id, "legacy@example.test");
+        db.Initialize();
+        Assert.Equal("legacy@example.test", db.GetUserById(account.Id)?.Email);
+    }
+
     private async Task<string> SetupAdminAsync(HttpClient client)
     {
         await client.GetAsync("/api/health");
@@ -141,7 +224,7 @@ public class KeePortApiTests : IDisposable
 
     private static async Task<(string Id, string Username)> CreateUserAsync(HttpClient client, string csrf, string username, string role)
     {
-        var response = await SendAsync(client, HttpMethod.Post, "/api/admin/users", json: new { username, password = "User passphrase 123", role }, csrf: csrf);
+        var response = await SendAsync(client, HttpMethod.Post, "/api/admin/users", json: new { username, email = $"{username}@example.test", password = "User passphrase 123", role }, csrf: csrf);
         response.EnsureSuccessStatusCode();
         var json = await response.Content.ReadFromJsonAsync<JsonElement>();
         return (json.GetProperty("id").GetString()!, json.GetProperty("username").GetString()!);

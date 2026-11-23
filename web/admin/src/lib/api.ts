@@ -1,6 +1,7 @@
 export interface User {
   id: string;
   username: string;
+  email: string | null;
   role: 'admin' | 'user';
   disabled: boolean;
   createdAt: string;
@@ -121,7 +122,7 @@ export const api = {
   async listUsers() {
     return request<User[]>('/api/admin/users');
   },
-  async createUser(payload: { username: string; password: string; role: 'admin' | 'user' }) {
+  async createUser(payload: { username: string; email: string; password: string; role: 'admin' | 'user' }) {
     return request<User>('/api/admin/users', { method: 'POST', body: JSON.stringify(payload) });
   },
   async updateUser(id: string, payload: { role?: 'admin' | 'user'; disabled?: boolean; password?: string }) {

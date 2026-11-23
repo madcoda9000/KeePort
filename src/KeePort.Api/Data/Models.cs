@@ -22,6 +22,7 @@ public sealed class UserRecord
     public required DateTimeOffset CreatedAt { get; init; }
     public DateTimeOffset? LastLoginAt { get; init; }
     public int? AutoLockMinutes { get; init; }
+    public string? Email { get; init; }
 }
 
 public sealed record SessionRecord
@@ -78,7 +79,7 @@ public sealed class WebDavCredentialRecord
     public UserRecord? User { get; set; }
 }
 
-public sealed record UserDto(string Id, string Username, string Role, bool Disabled, DateTimeOffset CreatedAt, DateTimeOffset? LastLoginAt, int? AutoLockMinutes = null);
+public sealed record UserDto(string Id, string Username, string Role, bool Disabled, DateTimeOffset CreatedAt, DateTimeOffset? LastLoginAt, int? AutoLockMinutes = null, string? Email = null);
 
 public sealed record VaultFileDto(
     string Id,
@@ -101,9 +102,11 @@ public sealed record ChangePasswordRequest(string CurrentPassword, string NewPas
 
 public sealed record UpdateSettingsRequest(int? AutoLockMinutes);
 
+public sealed record UpdateEmailRequest(string? Email);
+
 public sealed record SetupRequest(string SetupToken, string Username, string Password);
 
-public sealed record CreateUserRequest(string Username, string Password, string Role);
+public sealed record CreateUserRequest(string Username, string Password, string Role, string? Email);
 
 public sealed record UpdateUserRequest(string? Role, bool? Disabled, string? Password);
 
