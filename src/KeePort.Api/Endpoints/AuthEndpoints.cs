@@ -11,9 +11,12 @@ public static class AuthEndpoints
 {
     public static void MapAuthEndpoints(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup("/api/auth").RequireRateLimiting("auth");
+        var admin = app.MapGroup(SessionService.AdminApiPath + "/auth").RequireRateLimiting("auth");
+        var vault = app.MapGroup("/api/auth").RequireRateLimiting("auth");
+        MapAccountEndpoints(admin, UserRole.Admin);
+        MapAccountEndpoints(vault, UserRole.User);
 
-        group.MapGet("/setup-status", (KeePortDb db) =>
+        admin.MapGet("/setup-status", (KeePortDb db) =>
         {
             var hasAdmin = db.HasAdmin();
             var hasUsers = db.ListUsers().Count > 0;
@@ -21,7 +24,7 @@ public static class AuthEndpoints
             return Results.Ok(new SetupStatusResponse(RequiresSetup: !hasAdmin && setupToken is not null, HasUsers: hasUsers));
         });
 
-        group.MapPost("/setup", (SetupRequest request, KeePortDb db, PasswordHasher hasher, SessionService sessions, IConfiguration configuration, HttpContext context) =>
+        admin.MapPost("/setup", (SetupRequest request, KeePortDb db, PasswordHasher hasher, SessionService sessions, IConfiguration configuration, HttpContext context) =>
         {
             if (db.HasAdmin())
             {
@@ -44,6 +47,11 @@ public static class AuthEndpoints
             {
                 return Results.Json(new ErrorResponse("invalid_password", passwordError), statusCode: StatusCodes.Status400BadRequest);
             }
+            var email = EmailAddress.Normalize(request.Email);
+            if (email is null)
+            {
+                return Results.Json(new ErrorResponse("invalid_email", "Enter a valid email address."), statusCode: StatusCodes.Status400BadRequest);
+            }
             if (db.GetUserByUsername(request.Username.Trim()) is not null)
             {
                 return Results.Json(new ErrorResponse("username_taken", "Username is already in use."), statusCode: StatusCodes.Status409Conflict);
@@ -54,6 +62,7 @@ public static class AuthEndpoints
             {
                 Id = Guid.NewGuid().ToString("N"),
                 Username = request.Username.Trim(),
+                Email = email,
                 PasswordHash = hasher.Hash(request.Password),
                 Role = UserRole.Admin,
                 Disabled = false,
@@ -62,33 +71,51 @@ public static class AuthEndpoints
             db.CreateUser(user);
             db.ClearSetupToken();
 
-            var (session, token, csrfToken) = sessions.CreateSession(user, context);
-            sessions.SetSessionCookie(context, token, configuration.GetValue("KeePort:CookieSecure", true));
+            var (_, token, csrfToken) = sessions.CreateSession(user, context);
+            sessions.SetSessionCookie(context, token, UserRole.Admin, configuration.GetValue("KeePort:CookieSecure", true));
             return Results.Ok(new AuthResponse(ToDto(user), csrfToken));
         });
 
+        vault.MapPut("/settings", (UpdateSettingsRequest request, HttpContext context, KeePortDb db) =>
+        {
+            if (ApiAuth.RequireAuthenticated(context) is { } unauthorized)
+            {
+                return unauthorized;
+            }
+            var user = ApiAuth.GetUser(context)!;
+            if (request.AutoLockMinutes is < 1 or > 1440)
+            {
+                return Results.Json(new ErrorResponse("invalid_settings", "Auto-lock minutes must be between 1 and 1440."), statusCode: StatusCodes.Status400BadRequest);
+            }
+            db.UpdateUserAutoLockMinutes(user.Id, request.AutoLockMinutes);
+            return Results.Ok(ToDto(db.GetUserById(user.Id)!));
+        });
+    }
+
+    /// <summary>Maps sign-in and self-service endpoints for one account role.</summary>
+    private static void MapAccountEndpoints(RouteGroupBuilder group, UserRole role)
+    {
         group.MapPost("/login", (LoginRequest request, KeePortDb db, PasswordHasher hasher, SessionService sessions, IConfiguration configuration, HttpContext context) =>
         {
             var user = db.GetUserByUsername(request.Username ?? string.Empty);
-            if (user is null || user.Disabled || !hasher.Verify(request.Password ?? string.Empty, user.PasswordHash))
+            if (user is null || user.Role != role || user.Disabled || !hasher.Verify(request.Password ?? string.Empty, user.PasswordHash))
             {
                 return Results.Json(new ErrorResponse("invalid_credentials", "Invalid username or password."), statusCode: StatusCodes.Status401Unauthorized);
             }
 
             db.UpdateLastLogin(user.Id, DateTimeOffset.UtcNow);
             var (_, token, csrfToken) = sessions.CreateSession(user, context);
-            sessions.SetSessionCookie(context, token, configuration.GetValue("KeePort:CookieSecure", true));
+            sessions.SetSessionCookie(context, token, role, configuration.GetValue("KeePort:CookieSecure", true));
             return Results.Ok(new AuthResponse(ToDto(user), csrfToken));
         });
 
         group.MapPost("/logout", (HttpContext context, KeePortDb db, SessionService sessions, IConfiguration configuration) =>
         {
-            var token = context.Request.Cookies[SessionService.CookieName];
-            if (!string.IsNullOrEmpty(token))
+            if (ApiAuth.GetSession(context) is { } session)
             {
-                db.DeleteSessionByTokenHash(SessionService.HashToken(token));
+                db.DeleteSessionByTokenHash(session.TokenHash);
             }
-            sessions.ClearSessionCookie(context, configuration.GetValue("KeePort:CookieSecure", true));
+            sessions.ClearSessionCookie(context, role, configuration.GetValue("KeePort:CookieSecure", true));
             return Results.NoContent();
         });
 
@@ -133,21 +160,6 @@ public static class AuthEndpoints
         });
 
         group.MapPut("/email", UpdateEmail);
-
-        group.MapPut("/settings", (UpdateSettingsRequest request, HttpContext context, KeePortDb db) =>
-        {
-            if (ApiAuth.RequireAuthenticated(context) is { } unauthorized)
-            {
-                return unauthorized;
-            }
-            var user = ApiAuth.GetUser(context)!;
-            if (request.AutoLockMinutes is < 1 or > 1440)
-            {
-                return Results.Json(new ErrorResponse("invalid_settings", "Auto-lock minutes must be between 1 and 1440."), statusCode: StatusCodes.Status400BadRequest);
-            }
-            db.UpdateUserAutoLockMinutes(user.Id, request.AutoLockMinutes);
-            return Results.Ok(ToDto(db.GetUserById(user.Id)!));
-        });
     }
 
     /// <summary>Validates and changes the authenticated account's contact email.</summary>

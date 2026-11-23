@@ -92,31 +92,42 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return (text ? JSON.parse(text) : undefined) as T;
 }
 
+const AUTH_PATH = '/api/admin/auth';
+
 export const api = {
   async setupStatus() {
-    return request<{ requiresSetup: boolean; hasUsers: boolean }>('/api/auth/setup-status');
+    return request<{ requiresSetup: boolean; hasUsers: boolean }>(`${AUTH_PATH}/setup-status`);
   },
-  async setup(payload: { setupToken: string; username: string; password: string }) {
-    const result = await request<AuthResponse>('/api/auth/setup', { method: 'POST', body: JSON.stringify(payload) });
+  async setup(payload: { setupToken: string; username: string; email: string; password: string }) {
+    const result = await request<AuthResponse>(`${AUTH_PATH}/setup`, { method: 'POST', body: JSON.stringify(payload) });
     setCsrfToken(result.csrfToken);
     return result;
   },
   async login(payload: { username: string; password: string }) {
-    const result = await request<AuthResponse>('/api/auth/login', { method: 'POST', body: JSON.stringify(payload) });
+    const result = await request<AuthResponse>(`${AUTH_PATH}/login`, { method: 'POST', body: JSON.stringify(payload) });
     setCsrfToken(result.csrfToken);
     return result;
   },
   async logout() {
-    await request<void>('/api/auth/logout', { method: 'POST' });
+    await request<void>(`${AUTH_PATH}/logout`, { method: 'POST' });
     setCsrfToken('');
   },
   async me() {
-    return request<User>('/api/auth/me');
+    return request<User>(`${AUTH_PATH}/me`);
   },
   async csrf() {
-    const result = await request<{ csrfToken: string }>('/api/auth/csrf');
+    const result = await request<{ csrfToken: string }>(`${AUTH_PATH}/csrf`);
     setCsrfToken(result.csrfToken);
     return result.csrfToken;
+  },
+
+  /** Changes the signed-in admin's login password. */
+  async changePassword(payload: { currentPassword: string; newPassword: string }) {
+    await request<void>(`${AUTH_PATH}/change-password`, { method: 'POST', body: JSON.stringify(payload) });
+  },
+  /** Saves the signed-in admin's contact email. */
+  async updateEmail(email: string) {
+    return request<User>(`${AUTH_PATH}/email`, { method: 'PUT', body: JSON.stringify({ email }) });
   },
 
   async listUsers() {

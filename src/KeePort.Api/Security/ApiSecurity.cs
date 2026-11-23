@@ -38,23 +38,26 @@ public static class ApiSecurityExtensions
     {
         return app.Use(async (context, next) =>
         {
-            var token = context.Request.Cookies[SessionService.CookieName];
+            var path = context.Request.Path;
+            if (!path.StartsWithSegments("/api", StringComparison.OrdinalIgnoreCase))
+            {
+                await next();
+                return;
+            }
+
+            var role = path.StartsWithSegments(SessionService.AdminApiPath, StringComparison.OrdinalIgnoreCase)
+                ? UserRole.Admin : UserRole.User;
+            var token = context.Request.Cookies[SessionService.GetCookieName(role)];
             if (string.IsNullOrEmpty(token))
             {
                 await next();
                 return;
             }
 
-            var session = sessions.ValidateSessionToken(token, context);
+            var session = sessions.ValidateSessionToken(token, role);
             if (session?.User is null)
             {
-                context.Response.Cookies.Delete(SessionService.CookieName, new CookieOptions
-                {
-                    HttpOnly = true,
-                    Secure = secureCookies,
-                    SameSite = SameSiteMode.Lax,
-                    Path = "/"
-                });
+                sessions.ClearSessionCookie(context, role, secureCookies);
                 await next();
                 return;
             }
@@ -93,6 +96,7 @@ public static class ApiSecurityExtensions
     private static bool IsCsrfExempt(string path)
     {
         return path.Equals("/api/auth/login", StringComparison.OrdinalIgnoreCase) ||
-               path.Equals("/api/auth/setup", StringComparison.OrdinalIgnoreCase);
+               path.Equals(SessionService.AdminApiPath + "/auth/login", StringComparison.OrdinalIgnoreCase) ||
+               path.Equals(SessionService.AdminApiPath + "/auth/setup", StringComparison.OrdinalIgnoreCase);
     }
 }

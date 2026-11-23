@@ -338,9 +338,9 @@ public static class AdminEndpoints
                 return forbidden;
             }
             var user = db.GetUserById(request.UserId);
-            if (user is null || user.Disabled)
+            if (user is null || user.Disabled || user.Role != UserRole.User)
             {
-                return Results.Json(new ErrorResponse("invalid_user", "Unknown or disabled user."), statusCode: StatusCodes.Status400BadRequest);
+                return BadRequest("invalid_user", "WebDAV credentials require an active Vault user account.");
             }
             if (string.IsNullOrWhiteSpace(request.Label) || request.Label.Trim().Length > 100)
             {

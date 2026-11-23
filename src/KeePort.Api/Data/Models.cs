@@ -104,7 +104,7 @@ public sealed record UpdateSettingsRequest(int? AutoLockMinutes);
 
 public sealed record UpdateEmailRequest(string? Email);
 
-public sealed record SetupRequest(string SetupToken, string Username, string Password);
+public sealed record SetupRequest(string SetupToken, string Username, string Password, string? Email);
 
 public sealed record CreateUserRequest(string Username, string Password, string Role, string? Email);
 

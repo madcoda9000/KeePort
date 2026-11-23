@@ -12,11 +12,11 @@ import {
   NetworkIcon,
   PlusIcon,
   RotateCcwIcon,
-  ShieldCheckIcon,
   SunIcon,
   UploadIcon,
   UsersIcon
 } from 'lucide-react';
+import { AdminProfile } from '@/components/admin-profile';
 import { AuthLayout } from '@/components/auth-layout';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
@@ -50,7 +50,6 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '
 import {
   Sidebar,
   SidebarContent,
-  SidebarFooter,
   SidebarGroup,
   SidebarGroupLabel,
   SidebarHeader,
@@ -59,7 +58,6 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarProvider,
-  SidebarSeparator,
   SidebarTrigger,
   useSidebar
 } from '@/components/ui/sidebar';
@@ -514,7 +512,6 @@ function PermissionPanel({
 export default function App() {
   const [ready, setReady] = useState(false);
   const [setupRequired, setSetupRequired] = useState(false);
-  const [forbidden, setForbidden] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [tab, setTab] = useState<Tab>('vaults');
   const [users, setUsers] = useState<User[]>([]);
@@ -566,11 +563,6 @@ export default function App() {
         }
         const me = await api.me();
         if (cancelled) return;
-        if (me.role !== 'admin') {
-          setUser(me);
-          setForbidden(true);
-          return;
-        }
         await api.csrf();
         setUser(me);
         await refreshAll();
@@ -606,8 +598,6 @@ export default function App() {
   async function afterAuth(result: { user: User }) {
     setUser(result.user);
     setSetupRequired(false);
-    setForbidden(false);
-    await api.csrf();
     await refreshAll();
   }
 
@@ -622,11 +612,6 @@ export default function App() {
         username: String(data.get('username') ?? ''),
         password: String(data.get('password') ?? '')
       });
-      if (result.user.role !== 'admin') {
-        setUser(result.user);
-        setForbidden(true);
-        return;
-      }
       await afterAuth(result);
       form.reset();
     } catch (error) {
@@ -646,6 +631,7 @@ export default function App() {
       const result = await api.setup({
         setupToken: String(data.get('setupToken') ?? ''),
         username: String(data.get('username') ?? ''),
+        email: String(data.get('email') ?? '').trim(),
         password: String(data.get('password') ?? '')
       });
       await afterAuth(result);
@@ -657,8 +643,13 @@ export default function App() {
     }
   }
 
+  /** Updates the profile and the matching account row after an email change. */
+  function handleProfileUpdate(updated: User) {
+    setUser((current) => current?.id === updated.id ? updated : current);
+    setUsers((items) => items.map((item) => item.id === updated.id ? updated : item));
+  }
+
   async function handleLogout() {
-    setForbidden(false);
     setMessage(null);
     setNewEmail('');
     setNewPassword('');
@@ -789,23 +780,13 @@ export default function App() {
     </Button>
   );
 
-  if (!ready || setupRequired || !user || forbidden) {
+  if (!ready || setupRequired || !user) {
     return (
       <AuthLayout area="Admin" themeAction={themeAction}>
         {!ready ? (
           <p role="status" className="text-sm text-muted-foreground">
             Loading admin console…
           </p>
-        ) : forbidden ? (
-          <div className="grid gap-5">
-            <h1 className="text-3xl font-semibold tracking-tight">Access restricted</h1>
-            <p className="text-sm leading-relaxed text-muted-foreground">
-              This account is not an administrator. Use the vault webclient to access your shared files.
-            </p>
-            <Button variant="outline" onClick={handleLogout}>
-              <LogOutIcon /> Sign out
-            </Button>
-          </div>
         ) : (
           <form className="grid gap-5" onSubmit={setupRequired ? handleSetup : handleLogin}>
             <div className="space-y-2">
@@ -815,7 +796,7 @@ export default function App() {
               <p className="text-sm leading-relaxed text-muted-foreground">
                 {setupRequired
                   ? 'Use the one-time token from the KeePort logs to create your first administrator account.'
-                  : 'Sign in to manage vault files, users and WebDAV access.'}
+                  : 'Sign in with an administrator account to manage vault files, users and WebDAV access.'}
               </p>
             </div>
             {message?.kind === 'error' && (
@@ -834,6 +815,12 @@ export default function App() {
                 <FieldLabel htmlFor="username">Username</FieldLabel>
                 <Input id="username" name="username" autoComplete="username" required />
               </Field>
+              {setupRequired && (
+                <Field>
+                  <FieldLabel htmlFor="setup-email">Email address</FieldLabel>
+                  <Input id="setup-email" name="email" type="email" autoComplete="email" maxLength={254} required />
+                </Field>
+              )}
               <Field>
                 <FieldLabel htmlFor="password">Password</FieldLabel>
                 <Input
@@ -865,7 +852,8 @@ export default function App() {
     <SidebarProvider>
       <AdminNavigation
         tab={tab}
-        username={user.username}
+        user={user}
+        onProfileUpdate={handleProfileUpdate}
         onSelect={(next) => {
           setTab(next);
           setPermFile(null);
@@ -873,9 +861,9 @@ export default function App() {
         }}
       />
       <SidebarInset className="min-w-0">
-        <header className="sticky top-0 z-10 flex min-h-14 items-center gap-3 border-b bg-background/95 px-4 backdrop-blur sm:px-6">
+        <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center gap-3 border-b bg-background/95 px-4 backdrop-blur sm:px-6">
           <SidebarTrigger />
-          <Separator orientation="vertical" className="data-[orientation=vertical]:h-4" />
+          <Separator orientation="vertical" className="data-vertical:h-4 data-vertical:self-center" />
           <span className="min-w-0 flex-1 truncate text-sm font-medium">Admin console</span>
           {themeAction}
           <Button
@@ -1149,7 +1137,7 @@ export default function App() {
                       >
                         <NativeSelectOption value="">Select user</NativeSelectOption>
                         {users
-                          .filter((item) => !item.disabled)
+                          .filter((item) => item.role === 'user' && !item.disabled)
                           .map((item) => (
                             <NativeSelectOption key={item.id} value={item.id}>
                               {item.username}
@@ -1252,12 +1240,17 @@ export default function App() {
 }
 
 /** Shows the three admin sections and closes the mobile navigation drawer after selection. */
-function AdminNavigation({ tab, username, onSelect }: { tab: Tab; username: string; onSelect: (tab: Tab) => void }) {
+function AdminNavigation({ tab, user, onProfileUpdate, onSelect }: {
+  tab: Tab;
+  user: User;
+  onProfileUpdate: (user: User) => void;
+  onSelect: (tab: Tab) => void;
+}) {
   const { setOpenMobile } = useSidebar();
   return (
     <Sidebar variant="inset">
-      <SidebarHeader className="p-3">
-        <div className="flex items-center gap-3 px-2 py-1.5">
+      <SidebarHeader className="h-14 shrink-0 justify-center border-b px-5 py-0">
+        <div className="flex items-center gap-3">
           <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-primary text-primary-foreground">
             <KeyRoundIcon className="size-4" />
           </span>
@@ -1267,7 +1260,6 @@ function AdminNavigation({ tab, username, onSelect }: { tab: Tab; username: stri
           </div>
         </div>
       </SidebarHeader>
-      <SidebarSeparator />
       <SidebarContent>
         <SidebarGroup>
           <SidebarGroupLabel>Manage</SidebarGroupLabel>
@@ -1294,17 +1286,7 @@ function AdminNavigation({ tab, username, onSelect }: { tab: Tab; username: stri
           </SidebarMenu>
         </SidebarGroup>
       </SidebarContent>
-      <SidebarFooter className="border-t px-4 py-4">
-        <div className="flex min-w-0 items-center gap-2 text-sm">
-          <ShieldCheckIcon className="size-4 shrink-0 text-muted-foreground" />
-          <span className="truncate" title={username}>
-            {username}
-          </span>
-          <Badge variant="outline" className="ms-auto">
-            Admin
-          </Badge>
-        </div>
-      </SidebarFooter>
+      <AdminProfile user={user} onUpdate={onProfileUpdate} />
     </Sidebar>
   );
 }

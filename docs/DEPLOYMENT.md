@@ -34,7 +34,9 @@ ssh -L 8081:127.0.0.1:8081 user@your-nas
 # browser: http://localhost:8081/admin
 ```
 
-Enter the setup token and create the first admin account. The setup token cannot be used again.
+Enter the setup token, username, email address and password to create the first admin account. The setup token cannot be used again.
+
+Admin accounts are only for the Admin console. Create a separate user account and assign vault permissions to it for the Vault webclient or WebDAV.
 
 To allow admin access from LAN/VPN instead, edit `.env`:
 

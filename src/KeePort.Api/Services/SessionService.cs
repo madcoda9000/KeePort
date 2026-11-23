@@ -8,7 +8,9 @@ namespace KeePort.Api.Services;
 
 public sealed class SessionService
 {
-    public const string CookieName = "keeport_session";
+    public const string AdminApiPath = "/api/admin";
+    private const string VaultCookieName = "keeport_session";
+    private const string AdminCookieName = "keeport_admin_session";
     public const string SessionItemKey = "KeePort.Session";
     public const string UserItemKey = "KeePort.User";
 
@@ -22,6 +24,9 @@ public sealed class SessionService
         _sessionLifetime = TimeSpan.FromHours(Math.Clamp(hours, 1, 24 * 30));
     }
 
+    /// <summary>Returns the cookie name for the requested account role.</summary>
+    public static string GetCookieName(UserRole role) => role == UserRole.Admin ? AdminCookieName : VaultCookieName;
+
     public (SessionRecord Session, string Token, string CsrfToken) CreateSession(UserRecord user, HttpContext context)
     {
         var token = Base64Url(RandomNumberGenerator.GetBytes(32));
@@ -31,7 +36,7 @@ public sealed class SessionService
         {
             Id = Guid.NewGuid().ToString("N"),
             UserId = user.Id,
-            TokenHash = HashToken(token),
+            TokenHash = HashToken(token, user.Role),
             CsrfToken = csrfToken,
             CreatedAt = now,
             ExpiresAt = now.Add(_sessionLifetime),
@@ -43,15 +48,15 @@ public sealed class SessionService
         return (session, token, csrfToken);
     }
 
-    public SessionRecord? ValidateSessionToken(string? token, HttpContext context)
+    public SessionRecord? ValidateSessionToken(string? token, UserRole role)
     {
         if (string.IsNullOrWhiteSpace(token))
         {
             return null;
         }
 
-        var session = _db.GetSessionByTokenHash(HashToken(token));
-        if (session?.User is null || session.User.Disabled || session.ExpiresAt <= DateTimeOffset.UtcNow)
+        var session = _db.GetSessionByTokenHash(HashToken(token, role));
+        if (session?.User is null || session.User.Role != role || session.User.Disabled || session.ExpiresAt <= DateTimeOffset.UtcNow)
         {
             return null;
         }
@@ -70,26 +75,26 @@ public sealed class SessionService
         return session;
     }
 
-    public void SetSessionCookie(HttpContext context, string token, bool secure)
+    public void SetSessionCookie(HttpContext context, string token, UserRole role, bool secure)
     {
-        context.Response.Cookies.Append(CookieName, token, new CookieOptions
+        context.Response.Cookies.Append(GetCookieName(role), token, new CookieOptions
         {
             HttpOnly = true,
             Secure = secure,
             SameSite = SameSiteMode.Lax,
-            Path = "/",
+            Path = role == UserRole.Admin ? AdminApiPath : "/",
             Expires = DateTimeOffset.UtcNow.Add(_sessionLifetime)
         });
     }
 
-    public void ClearSessionCookie(HttpContext context, bool secure)
+    public void ClearSessionCookie(HttpContext context, UserRole role, bool secure)
     {
-        context.Response.Cookies.Delete(CookieName, new CookieOptions
+        context.Response.Cookies.Delete(GetCookieName(role), new CookieOptions
         {
             HttpOnly = true,
             Secure = secure,
             SameSite = SameSiteMode.Lax,
-            Path = "/"
+            Path = role == UserRole.Admin ? AdminApiPath : "/"
         });
     }
 
@@ -105,9 +110,11 @@ public sealed class SessionService
         return expected.Length == actual.Length && CryptographicOperations.FixedTimeEquals(expected, actual);
     }
 
-    public static string HashToken(string token)
+    /// <summary>Separates admin token hashes from existing Vault token hashes.</summary>
+    private static string HashToken(string token, UserRole role)
     {
-        var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(token));
+        var value = role == UserRole.Admin ? $"admin:{token}" : token;
+        var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(value));
         return Convert.ToHexString(bytes).ToLowerInvariant();
     }
 

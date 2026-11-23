@@ -92,17 +92,6 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 }
 
 export const api = {
-  async setupStatus() {
-    return request<{ requiresSetup: boolean; hasUsers: boolean }>('/api/auth/setup-status');
-  },
-  async setup(payload: { username: string; password: string; setupToken: string }) {
-    const result = await request<AuthResponse>('/api/auth/setup', {
-      method: 'POST',
-      body: JSON.stringify(payload)
-    });
-    setCsrfToken(result.csrfToken);
-    return result;
-  },
   async login(payload: { username: string; password: string }) {
     const result = await request<AuthResponse>('/api/auth/login', {
       method: 'POST',

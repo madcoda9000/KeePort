@@ -304,7 +304,7 @@ public static class WebDavEndpoints
         var username = decoded[..separator];
         var password = decoded[(separator + 1)..];
         var credential = db.GetWebDavCredentialByUsername(username);
-        if (credential?.User is null || credential.RevokedAt is not null || credential.User.Disabled)
+        if (credential?.User is null || credential.User.Role != UserRole.User || credential.RevokedAt is not null || credential.User.Disabled)
         {
             return null;
         }
