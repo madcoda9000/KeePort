@@ -332,24 +332,30 @@ export default function App() {
       </header>
 
       {showProfile ? (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }} onClick={() => setShowProfile(false)}>
-          <div className="card" style={{ width: 'min(420px, 92vw)' }} onClick={(event) => event.stopPropagation()}>
+        <div className="modal-overlay" onClick={() => setShowProfile(false)}>
+          <div className="modal card" onClick={(event) => event.stopPropagation()}>
             <div className="row">
               <h3>Profile — {user.username}</h3>
               <span className="spacer" />
               <button className="button ghost small" type="button" onClick={() => setShowProfile(false)}>Close</button>
             </div>
-            <form onSubmit={handleSaveAutoLock}>
-              <div className="field"><label>Auto-lock vault after (minutes)</label><input name="autoLockMinutes" type="number" min={1} max={1440} defaultValue={autoLockMinutes} /></div>
-              <button className="button primary small" disabled={busy === 'settings'}>{busy === 'settings' ? 'Saving…' : 'Save settings'}</button>
-            </form>
+            <div>
+              <h4>Preferences</h4>
+              <form onSubmit={handleSaveAutoLock}>
+                <div className="field"><label>Auto-lock vault after (minutes)</label><input name="autoLockMinutes" type="number" min={1} max={1440} defaultValue={autoLockMinutes} /></div>
+                <button className="button primary small" disabled={busy === 'settings'}>{busy === 'settings' ? 'Saving…' : 'Save settings'}</button>
+              </form>
+            </div>
             <hr />
-            <form onSubmit={handleChangePassword}>
-              <div className="field"><label>Current password</label><input name="currentPassword" type="password" autoComplete="current-password" required /></div>
-              <div className="field"><label>New password</label><input name="newPassword" type="password" autoComplete="new-password" required /></div>
-              <div className="field"><label>Confirm new password</label><input name="confirmPassword" type="password" autoComplete="new-password" required /></div>
-              <button className="button primary small" disabled={busy === 'password'}>{busy === 'password' ? 'Changing…' : 'Change password'}</button>
-            </form>
+            <div>
+              <h4>Security</h4>
+              <form onSubmit={handleChangePassword}>
+                <div className="field"><label>Current password</label><input name="currentPassword" type="password" autoComplete="current-password" required /></div>
+                <div className="field"><label>New password</label><input name="newPassword" type="password" autoComplete="new-password" required /></div>
+                <div className="field"><label>Confirm new password</label><input name="confirmPassword" type="password" autoComplete="new-password" required /></div>
+                <button className="button primary small" disabled={busy === 'password'}>{busy === 'password' ? 'Changing…' : 'Change password'}</button>
+              </form>
+            </div>
           </div>
         </div>
       ) : null}
