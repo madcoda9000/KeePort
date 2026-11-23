@@ -2,10 +2,67 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import type { Kdbx } from 'kdbxweb';
 import { api, ApiError } from './lib/api';
 import type { User, VaultFile } from './lib/api';
-import { applyEntryEdits, clearVaultCredentials, createEntry, entryMatches, listEntries, loadVault, saveVault } from './lib/kdbx';
+import {
+  applyEntryEdits,
+  clearVaultCredentials,
+  createEntry,
+  entryMatches,
+  listEntries,
+  loadVault,
+  saveVault
+} from './lib/kdbx';
 import type { EntryEdits, EntryView } from './lib/kdbx';
 import { parseOtpSecret, totpCode } from './lib/totp';
-import { toggleTheme } from './theme';
+import { getTheme, toggleTheme } from './theme';
+import {
+  CopyIcon,
+  DatabaseIcon,
+  KeyRoundIcon,
+  LockKeyholeIcon,
+  LockKeyholeOpenIcon,
+  LogOutIcon,
+  MoonIcon,
+  PlusIcon,
+  SearchIcon,
+  ShieldCheckIcon,
+  SunIcon,
+  UserRoundIcon
+} from 'lucide-react';
+import { AuthLayout } from '@/components/auth-layout';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger
+} from '@/components/ui/dialog';
+import { Field, FieldDescription, FieldGroup, FieldLabel } from '@/components/ui/field';
+import { Input } from '@/components/ui/input';
+import { Separator } from '@/components/ui/separator';
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupLabel,
+  SidebarHeader,
+  SidebarInset,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarProvider,
+  SidebarSeparator,
+  SidebarTrigger,
+  useSidebar
+} from '@/components/ui/sidebar';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Textarea } from '@/components/ui/textarea';
 
 type Message = { kind: 'notice' | 'error'; text: string } | null;
 
@@ -68,9 +125,10 @@ export default function App() {
   const [keyFile, setKeyFile] = useState<File | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<Message>(null);
-  const [theme, setTheme] = useState(() => (document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light'));
+  const [theme, setTheme] = useState(getTheme);
   const [autoLockMinutes, setAutoLockMinutes] = useState(DEFAULT_AUTO_LOCK_MINUTES);
   const [showProfile, setShowProfile] = useState(false);
+  const [profileMessage, setProfileMessage] = useState<Message>(null);
 
   const selectedFile = useMemo(() => files.find((file) => file.id === selectedId) ?? null, [files, selectedId]);
   const canWrite = permission === 'read-write';
@@ -88,6 +146,8 @@ export default function App() {
     setEntries([]);
     setSelectedEntry(null);
     setEdits(null);
+    setQuery('');
+    setTotp(null);
     setPassword('');
     setKeyFile(null);
     if (notify) setMessage({ kind: 'notice', text: 'Vault locked. Secrets were discarded from this browser tab.' });
@@ -162,12 +222,27 @@ export default function App() {
       setEtag(updated.etag);
       setEntries(nextEntries);
       setSelectedEntry(refreshed);
-      setEdits(refreshed ? { title: refreshed.title, username: refreshed.username, password: refreshed.password, url: refreshed.url, notes: refreshed.notes, otp: refreshed.otp } : null);
+      setEdits(
+        refreshed
+          ? {
+              title: refreshed.title,
+              username: refreshed.username,
+              password: refreshed.password,
+              url: refreshed.url,
+              notes: refreshed.notes,
+              otp: refreshed.otp
+            }
+          : null
+      );
       setMessage({ kind: 'notice', text: 'Vault saved.' });
     } catch (error) {
       if (error instanceof ApiError && error.status === 409) {
         setMessage({ kind: 'error', text: `${error.message} Close and reopen the vault to load the latest version.` });
-        try { await refreshFiles(); } catch { /* keep the original conflict message visible */ }
+        try {
+          await refreshFiles();
+        } catch {
+          /* keep the original conflict message visible */
+        }
       } else {
         setMessage({ kind: 'error', text: errorText(error, 'Unable to save vault.') });
       }
@@ -200,10 +275,15 @@ export default function App() {
 
   async function handleLogout() {
     lockVault(false);
+    setMessage(null);
     setSelectedId(null);
     setFiles([]);
     setUser(null);
-    try { await api.logout(); } catch { /* session may already be gone */ }
+    try {
+      await api.logout();
+    } catch {
+      /* session may already be gone */
+    }
   }
 
   async function handleChangePassword(event: FormEvent<HTMLFormElement>) {
@@ -214,17 +294,17 @@ export default function App() {
     const newPassword = String(data.get('newPassword') ?? '');
     const confirmPassword = String(data.get('confirmPassword') ?? '');
     if (newPassword !== confirmPassword) {
-      setMessage({ kind: 'error', text: 'New passwords do not match.' });
+      setProfileMessage({ kind: 'error', text: 'New passwords do not match.' });
       return;
     }
     setBusy('password');
-    setMessage(null);
+    setProfileMessage(null);
     try {
       await api.changePassword({ currentPassword, newPassword });
       form.reset();
-      setMessage({ kind: 'notice', text: 'Password changed.' });
+      setProfileMessage({ kind: 'notice', text: 'Password changed.' });
     } catch (error) {
-      setMessage({ kind: 'error', text: errorText(error, 'Unable to change password.') });
+      setProfileMessage({ kind: 'error', text: errorText(error, 'Unable to change password.') });
     } finally {
       setBusy(null);
     }
@@ -234,18 +314,18 @@ export default function App() {
     event.preventDefault();
     const minutes = Number(new FormData(event.currentTarget).get('autoLockMinutes'));
     if (!Number.isFinite(minutes) || minutes < 1 || minutes > 1440) {
-      setMessage({ kind: 'error', text: 'Auto-lock must be between 1 and 1440 minutes.' });
+      setProfileMessage({ kind: 'error', text: 'Auto-lock must be between 1 and 1440 minutes.' });
       return;
     }
     setBusy('settings');
-    setMessage(null);
+    setProfileMessage(null);
     try {
       const updated = await api.updateSettings({ autoLockMinutes: Math.round(minutes) });
       setUser(updated);
       setAutoLockMinutes(updated.autoLockMinutes ?? DEFAULT_AUTO_LOCK_MINUTES);
-      setMessage({ kind: 'notice', text: 'Settings saved.' });
+      setProfileMessage({ kind: 'notice', text: 'Settings saved.' });
     } catch (error) {
-      setMessage({ kind: 'error', text: errorText(error, 'Unable to save settings.') });
+      setProfileMessage({ kind: 'error', text: errorText(error, 'Unable to save settings.') });
     } finally {
       setBusy(null);
     }
@@ -269,7 +349,9 @@ export default function App() {
         if (!cancelled) setAuthChecked(true);
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -281,6 +363,8 @@ export default function App() {
       setEntries([]);
       setSelectedEntry(null);
       setEdits(null);
+      setQuery('');
+      setTotp(null);
       setPassword('');
       setKeyFile(null);
     };
@@ -299,170 +383,594 @@ export default function App() {
     };
   }, [db, autoLockMinutes]);
 
-  if (!authChecked) {
-    return <div className="login-wrap"><div className="card login"><div className="brand"><div className="logo">K</div>KeePort Vault</div><p className="muted">Restoring secure session…</p></div></div>;
+  /** Copies a single entry value without showing it in feedback. */
+  async function copyValue(value: string, label: string) {
+    try {
+      await navigator.clipboard.writeText(value);
+      setMessage({ kind: 'notice', text: `${label} copied.` });
+    } catch {
+      setMessage({ kind: 'error', text: 'Clipboard unavailable. Use HTTPS or localhost and allow clipboard access.' });
+    }
   }
 
-  if (!user) {
+  const themeAction = (
+    <Button
+      type="button"
+      variant="outline"
+      size="icon"
+      aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+      title={theme === 'dark' ? 'Light mode' : 'Dark mode'}
+      onClick={() => setTheme(toggleTheme())}
+    >
+      {theme === 'dark' ? <SunIcon /> : <MoonIcon />}
+    </Button>
+  );
+
+  if (!authChecked || !user) {
     return (
-      <div className="login-wrap">
-        <form className="card login" onSubmit={handleLogin}>
-          <div className="brand"><div className="logo">K</div>KeePort Vault</div>
-          <h1>Unlock your vault</h1>
-          <p className="muted">Sign in to see the KeePass files shared with your account. Vault contents are decrypted only in this browser.</p>
-          {message?.kind === 'error' ? <div className="error">{message.text}</div> : null}
-          <div className="field"><label htmlFor="username">Username</label><input id="username" name="username" autoComplete="username" required /></div>
-          <div className="field"><label htmlFor="password">Password</label><input id="password" name="password" type="password" autoComplete="current-password" required /></div>
-          <button className="button primary" disabled={busy === 'login'}>{busy === 'login' ? 'Signing in…' : 'Sign in'}</button>
-          <p className="muted">First run? The administrator creates the initial admin account in the admin UI.</p>
-        </form>
-      </div>
+      <AuthLayout area="Vault" themeAction={themeAction}>
+        {!authChecked ? (
+          <p role="status" className="text-sm text-muted-foreground">
+            Restoring secure session…
+          </p>
+        ) : (
+          <form className="grid gap-5" onSubmit={handleLogin}>
+            <div className="space-y-2">
+              <h1 className="text-3xl font-semibold tracking-tight">Welcome back</h1>
+              <p className="text-sm leading-relaxed text-muted-foreground">
+                Sign in to access the KeePass vaults shared with you.
+              </p>
+            </div>
+            {message?.kind === 'error' && (
+              <Alert variant="destructive">
+                <AlertDescription>{message.text}</AlertDescription>
+              </Alert>
+            )}
+            <FieldGroup className="gap-4">
+              <Field>
+                <FieldLabel htmlFor="username">Username</FieldLabel>
+                <Input id="username" name="username" autoComplete="username" required />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="password">Password</FieldLabel>
+                <Input id="password" name="password" type="password" autoComplete="current-password" required />
+              </Field>
+            </FieldGroup>
+            <Button type="submit" disabled={busy === 'login'}>
+              {busy === 'login' ? 'Signing in…' : 'Sign in'}
+            </Button>
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              First run? Ask your administrator to set up KeePort and create your account.
+            </p>
+          </form>
+        )}
+      </AuthLayout>
     );
   }
 
   return (
-    <div className="app">
-      <header className="topbar">
-        <div className="brand"><div className="logo">K</div>KeePort Vault</div>
-        <div className="topbar-actions">
-          <span className="user-chip" style={{ cursor: 'pointer' }} title="Open profile" onClick={() => setShowProfile(true)}>{user.username}</span>
-          <button className="button ghost small" onClick={() => { toggleTheme(); setTheme((value) => (value === 'dark' ? 'light' : 'dark')); }}>{theme === 'dark' ? 'Light mode' : 'Dark mode'}</button>
-          <button className="button ghost small" onClick={handleLogout}>Sign out</button>
-        </div>
-      </header>
-
-      {showProfile ? (
-        <div className="modal-overlay" onClick={() => setShowProfile(false)}>
-          <div className="modal card" onClick={(event) => event.stopPropagation()}>
-            <div className="row">
-              <h3>Profile — {user.username}</h3>
-              <span className="spacer" />
-              <button className="button ghost small" type="button" onClick={() => setShowProfile(false)}>Close</button>
-            </div>
-            <div>
-              <h4>Preferences</h4>
-              <form onSubmit={handleSaveAutoLock}>
-                <div className="field"><label>Auto-lock vault after (minutes)</label><input name="autoLockMinutes" type="number" min={1} max={1440} defaultValue={autoLockMinutes} /></div>
-                <button className="button primary small" disabled={busy === 'settings'}>{busy === 'settings' ? 'Saving…' : 'Save settings'}</button>
+    <SidebarProvider>
+      <VaultNavigation
+        files={files}
+        selectedId={selectedId}
+        disabled={busy === 'unlock' || busy === 'save'}
+        onSelect={selectFile}
+      />
+      <SidebarInset className="min-w-0">
+        <header className="sticky top-0 z-10 flex min-h-14 items-center gap-3 border-b bg-background/95 px-4 backdrop-blur sm:px-6">
+          <SidebarTrigger />
+          <Separator orientation="vertical" className="data-[orientation=vertical]:h-4" />
+          <span className="min-w-0 flex-1 truncate text-sm font-medium">Vault workspace</span>
+          <Dialog
+            open={showProfile}
+            onOpenChange={(open) => {
+              setShowProfile(open);
+              if (open) setProfileMessage(null);
+            }}
+          >
+            <DialogTrigger asChild>
+              <Button variant="ghost" size="sm" aria-label={`Open profile for ${user.username}`}>
+                <UserRoundIcon />
+                <span className="max-w-24 truncate max-sm:sr-only">{user.username}</span>
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-lg">
+              <DialogHeader>
+                <DialogTitle>Account settings</DialogTitle>
+                <DialogDescription>
+                  Manage how your vault locks and how you sign in as {user.username}.
+                </DialogDescription>
+              </DialogHeader>
+              {profileMessage && (
+                <Alert variant={profileMessage.kind === 'error' ? 'destructive' : 'default'}>
+                  <AlertDescription>{profileMessage.text}</AlertDescription>
+                </Alert>
+              )}
+              <form className="grid gap-4" onSubmit={handleSaveAutoLock}>
+                <h3 className="text-sm font-semibold">Vault preferences</h3>
+                <Field>
+                  <FieldLabel htmlFor="auto-lock">Auto-lock delay (minutes)</FieldLabel>
+                  <Input
+                    id="auto-lock"
+                    name="autoLockMinutes"
+                    className="max-w-32"
+                    type="number"
+                    min={1}
+                    max={1440}
+                    defaultValue={autoLockMinutes}
+                    required
+                    aria-describedby="auto-lock-help"
+                  />
+                  <FieldDescription id="auto-lock-help">
+                    How long to keep the vault unlocked after you leave this tab.
+                  </FieldDescription>
+                </Field>
+                <Button type="submit" size="sm" className="justify-self-start" disabled={busy !== null}>
+                  {busy === 'settings' ? 'Saving…' : 'Save preferences'}
+                </Button>
               </form>
-            </div>
-            <hr />
-            <div>
-              <h4>Security</h4>
-              <form onSubmit={handleChangePassword}>
-                <div className="field"><label>Current password</label><input name="currentPassword" type="password" autoComplete="current-password" required /></div>
-                <div className="field"><label>New password</label><input name="newPassword" type="password" autoComplete="new-password" required /></div>
-                <div className="field"><label>Confirm new password</label><input name="confirmPassword" type="password" autoComplete="new-password" required /></div>
-                <button className="button primary small" disabled={busy === 'password'}>{busy === 'password' ? 'Changing…' : 'Change password'}</button>
+              <Separator />
+              <form className="grid gap-4" onSubmit={handleChangePassword}>
+                <div className="space-y-1">
+                  <h3 className="text-sm font-semibold">Change account password</h3>
+                  <p className="text-sm text-muted-foreground">This does not change your vault master password.</p>
+                </div>
+                <FieldGroup className="gap-3">
+                  <Field>
+                    <FieldLabel htmlFor="current-password">Current password</FieldLabel>
+                    <Input
+                      id="current-password"
+                      name="currentPassword"
+                      type="password"
+                      autoComplete="current-password"
+                      required
+                    />
+                  </Field>
+                  <Field>
+                    <FieldLabel htmlFor="new-password">New password</FieldLabel>
+                    <Input id="new-password" name="newPassword" type="password" autoComplete="new-password" required />
+                  </Field>
+                  <Field>
+                    <FieldLabel htmlFor="confirm-password">Confirm new password</FieldLabel>
+                    <Input
+                      id="confirm-password"
+                      name="confirmPassword"
+                      type="password"
+                      autoComplete="new-password"
+                      required
+                    />
+                  </Field>
+                </FieldGroup>
+                <Button
+                  type="submit"
+                  variant="outline"
+                  size="sm"
+                  className="justify-self-start"
+                  disabled={busy !== null}
+                >
+                  {busy === 'password' ? 'Changing…' : 'Change password'}
+                </Button>
               </form>
+            </DialogContent>
+          </Dialog>
+          {themeAction}
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-label="Sign out"
+            title="Sign out"
+            disabled={busy !== null}
+            onClick={handleLogout}
+          >
+            <LogOutIcon />
+          </Button>
+        </header>
+
+        <div className="mx-auto grid w-full max-w-7xl gap-6 p-4 sm:p-6 lg:p-8">
+          <div className="flex flex-wrap items-end justify-between gap-4">
+            <div className="min-w-0 space-y-1">
+              <div className="text-xs font-medium tracking-widest text-muted-foreground uppercase">
+                {selectedFile ? 'Vault file' : 'Workspace'}
+              </div>
+              <h1 className="text-2xl font-semibold tracking-tight break-words sm:text-3xl">
+                {selectedFile?.name ?? 'Your vaults'}
+              </h1>
+              <p className="text-sm text-muted-foreground">
+                {selectedFile
+                  ? 'Manage the entries in this KeePass file.'
+                  : 'Open a shared KeePass file to view its entries.'}
+              </p>
             </div>
+            {selectedFile && (
+              <Badge variant={unlocked ? 'secondary' : 'outline'}>
+                {unlocked ? (
+                  <>
+                    <ShieldCheckIcon /> {canWrite ? 'Read-write' : 'Read-only'}
+                  </>
+                ) : (
+                  <>
+                    <LockKeyholeIcon /> Locked
+                  </>
+                )}
+              </Badge>
+            )}
           </div>
-        </div>
-      ) : null}
+          {message && !edits && (
+            <Alert variant={message.kind === 'error' ? 'destructive' : 'default'}>
+              <AlertDescription>{message.text}</AlertDescription>
+            </Alert>
+          )}
 
-      <main className="layout">
-        <aside className="card sidebar">
-          <h2>Vault files</h2>
-          {message ? <div className={message.kind === 'error' ? 'error' : 'notice'}>{message.text}</div> : null}
-          <div className="file-list">
-            {files.length === 0 ? <div className="empty">No vault files are shared with your account yet.</div> : null}
-            {files.map((file) => (
-              <button key={file.id} className={`file-item ${file.id === selectedId ? 'active' : ''}`} onClick={() => selectFile(file)}>
-                <strong>{file.name}</strong>
-                <span className="file-meta">
-                  <span className="badge write">{file.permission}</span>
-                  <span>{formatBytes(file.size)}</span>
-                  <span>rev {file.revision}</span>
-                </span>
-                <span className="muted">Updated {formatDate(file.updatedAt)}</span>
-              </button>
-            ))}
-          </div>
-        </aside>
-
-        <section className="main">
           {!selectedFile ? (
-            <div className="card empty">
-              <h2>Select a vault file</h2>
-              <p className="muted">Choose a shared .kdbx file from the left. You will unlock it locally with your master password or key file.</p>
-            </div>
+            <Card className="min-h-64 justify-center text-center">
+              <CardHeader className="justify-items-center gap-2">
+                <div className="mb-2 grid size-11 place-items-center rounded-lg border bg-muted">
+                  <DatabaseIcon className="size-5 text-muted-foreground" />
+                </div>
+                <CardTitle>{files.length ? 'Select a vault file' : 'No shared vaults yet'}</CardTitle>
+                <CardDescription>
+                  {files.length
+                    ? 'Choose a vault from the sidebar to unlock it.'
+                    : 'Vaults appear here after an administrator grants you access.'}
+                </CardDescription>
+              </CardHeader>
+            </Card>
           ) : !unlocked ? (
-            <form className="card login" onSubmit={handleUnlock}>
-              <div>
-                <h1>{selectedFile.name}</h1>
-                <p className="muted">{selectedFile.permission === 'read-write' ? 'Read-write access' : 'Read-only access'} · {formatBytes(selectedFile.size)} · revision {selectedFile.revision}</p>
-              </div>
-              {message?.kind === 'error' ? <div className="error">{message.text}</div> : message?.kind === 'notice' ? <div className="notice">{message.text}</div> : null}
-              <div className="field"><label htmlFor="master-password">Master password</label><input id="master-password" type="password" autoComplete="off" value={password} onChange={(event) => setPassword(event.target.value)} /></div>
-              <div className="field"><label htmlFor="key-file">Key file</label><input id="key-file" type="file" onChange={(event) => setKeyFile(event.target.files?.[0] ?? null)} /></div>
-              <div className="row">
-                <button className="button primary" disabled={busy === 'unlock'}>{busy === 'unlock' ? 'Unlocking…' : 'Unlock vault'}</button>
-                <button className="button ghost" type="button" onClick={() => selectFile(selectedFile)}>Reload file list</button>
-              </div>
-              <p className="muted">The password and key file are used only in this browser tab. They are never sent to KeePort.</p>
-            </form>
+            <Card key={selectedFile.id} className="w-full max-w-lg">
+              <CardHeader>
+                <CardTitle>Unlock vault</CardTitle>
+                <CardDescription>
+                  Use the master password, a key file or both. They stay in this browser.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <form className="grid gap-5" onSubmit={handleUnlock}>
+                  <FieldGroup className="gap-4">
+                    <Field>
+                      <FieldLabel htmlFor="master-password">Master password</FieldLabel>
+                      <Input
+                        id="master-password"
+                        type="password"
+                        autoComplete="off"
+                        value={password}
+                        onChange={(event) => setPassword(event.target.value)}
+                      />
+                    </Field>
+                    <Field>
+                      <FieldLabel htmlFor="key-file">Key file</FieldLabel>
+                      <Input
+                        id="key-file"
+                        type="file"
+                        onChange={(event) => setKeyFile(event.target.files?.[0] ?? null)}
+                      />
+                    </Field>
+                  </FieldGroup>
+                  <Button type="submit" className="justify-self-start" disabled={busy === 'unlock'}>
+                    <LockKeyholeOpenIcon />
+                    {busy === 'unlock' ? 'Unlocking…' : 'Unlock vault'}
+                  </Button>
+                </form>
+              </CardContent>
+            </Card>
           ) : (
             <>
-              <div className="card toolbar" style={{ padding: 14 }}>
-                <div className="field search" style={{ margin: 0 }}>
-                  <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search title, username, URL, notes, tags…" />
-                </div>
-                <span className={`badge ${canWrite ? 'write' : 'read'}`}>{canWrite ? 'read-write' : 'read-only'}</span>
-                <span className="muted">{visibleEntries.length} entries</span>
-                <span className="spacer" />
-                {canWrite ? <button className="button primary small" onClick={startNewEntry}>Add entry</button> : null}
-                <button className="button danger small" onClick={() => lockVault(true)}>Lock vault</button>
+              <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
+                <Card size="sm">
+                  <CardHeader>
+                    <CardDescription>Entries</CardDescription>
+                    <CardTitle className="text-xl tabular-nums">{entries.length}</CardTitle>
+                  </CardHeader>
+                </Card>
+                <Card size="sm">
+                  <CardHeader>
+                    <CardDescription>Vault size</CardDescription>
+                    <CardTitle className="text-xl tabular-nums">{formatBytes(selectedFile.size)}</CardTitle>
+                  </CardHeader>
+                </Card>
+                <Card size="sm" className="col-span-2 lg:col-span-1">
+                  <CardHeader>
+                    <CardDescription>Last updated</CardDescription>
+                    <CardTitle className="text-base">{formatDate(selectedFile.updatedAt)}</CardTitle>
+                    <CardDescription>Revision {selectedFile.revision}</CardDescription>
+                  </CardHeader>
+                </Card>
               </div>
-
-              <div className="entries">
-                {visibleEntries.length === 0 ? <div className="card empty">No entries match your search.</div> : null}
-                {visibleEntries.map((entry) => (
-                  <button key={entry.id} className="entry-row card" onClick={() => { setSelectedEntry(entry); setEdits({ title: entry.title, username: entry.username, password: entry.password, url: entry.url, notes: entry.notes, otp: entry.otp }); }}>
-                    <span className="entry-main">
-                      <span className="entry-title">{entry.title}</span>
-                      <span className="entry-sub">{entry.groupPath}</span>
-                    </span>
-                    <span className="entry-sub">{entry.username || '—'}</span>
-                    <span className="entry-sub entry-pass">{entry.password ? '••••••••' : '—'}</span>
-                    <span className="entry-sub">{entry.url || '—'}</span>
-                  </button>
-                ))}
-              </div>
-
-              {edits ? (
-                <form className="card detail" onSubmit={handleSave}>
-                  <div className="row">
-                    <h3>{selectedEntry ? selectedEntry.title : 'New entry'}</h3>
-                    <span className="spacer" />
-                    <button className="button ghost small" type="button" onClick={() => { setSelectedEntry(null); setEdits(null); }}>Close</button>
-                  </div>
-                  {!canWrite ? <div className="notice">Read-only access: you can view this entry but cannot save changes.</div> : null}
-                  {totp ? (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
-                      <span style={{ fontSize: '1.25rem', fontFamily: 'monospace', letterSpacing: '0.15em' }}>{totp.code}</span>
-                      <span style={{ opacity: 0.7 }}>{totp.secondsLeft}s</span>
-                      <button className="button ghost small" type="button" onClick={() => navigator.clipboard?.writeText(totp.code).then(() => setMessage({ kind: 'notice', text: 'TOTP code copied.' })).catch(() => undefined)}>Copy code</button>
+              <Card className="gap-0 overflow-hidden py-0">
+                <CardHeader className="gap-4 border-b py-5">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="space-y-1">
+                      <CardTitle>Vault entries</CardTitle>
+                      <CardDescription>
+                        {visibleEntries.length} of {entries.length} entries
+                      </CardDescription>
                     </div>
-                  ) : null}
-                  <div className="form-grid">
-                    <div className="field"><label>Title</label><input value={edits.title} disabled={!canWrite} onChange={(event) => setEdits({ ...edits, title: event.target.value })} /></div>
-                    <div className="field"><label>Username</label><input value={edits.username} disabled={!canWrite} onChange={(event) => setEdits({ ...edits, username: event.target.value })} /></div>
-                    <div className="field"><label>Password</label><input type="password" value={edits.password} disabled={!canWrite} onChange={(event) => setEdits({ ...edits, password: event.target.value })} /></div>
-                    <div className="field"><label>URL</label><input value={edits.url} disabled={!canWrite} onChange={(event) => setEdits({ ...edits, url: event.target.value })} /></div>
-                    <div className="field full"><label>Notes</label><textarea value={edits.notes} disabled={!canWrite} onChange={(event) => setEdits({ ...edits, notes: event.target.value })} /></div>
-                    <div className="field full"><label>TOTP (otpauth URI or base32 secret)</label><input value={edits.otp} disabled={!canWrite} onChange={(event) => setEdits({ ...edits, otp: event.target.value })} placeholder="otpauth://totp/…" /></div>
+                    <div className="flex flex-wrap gap-2">
+                      <Button variant="outline" size="sm" disabled={busy === 'save'} onClick={() => lockVault(true)}>
+                        <LockKeyholeIcon /> Lock vault
+                      </Button>
+                      {canWrite && (
+                        <Button size="sm" disabled={busy === 'save'} onClick={startNewEntry}>
+                          <PlusIcon /> Add entry
+                        </Button>
+                      )}
+                    </div>
                   </div>
-                  <div className="row">
-                    {canWrite ? <button className="button primary" disabled={busy === 'save'}>{busy === 'save' ? 'Saving…' : selectedEntry ? 'Save entry' : 'Create entry'}</button> : null}
-                    <button className="button ghost" type="button" onClick={() => navigator.clipboard?.writeText(edits.username).then(() => setMessage({ kind: 'notice', text: 'Username copied.' })).catch(() => undefined)}>Copy username</button>
-                    <button className="button ghost" type="button" onClick={() => navigator.clipboard?.writeText(edits.password).then(() => setMessage({ kind: 'notice', text: 'Password copied.' })).catch(() => undefined)}>Copy password</button>
+                  <div className="relative w-full sm:max-w-sm">
+                    <SearchIcon
+                      aria-hidden="true"
+                      className="pointer-events-none absolute start-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+                    />
+                    <Input
+                      className="ps-9"
+                      type="search"
+                      aria-label="Search entries"
+                      value={query}
+                      onChange={(event) => setQuery(event.target.value)}
+                      placeholder="Search vault entries…"
+                    />
                   </div>
-                </form>
-              ) : null}
+                </CardHeader>
+                <Table>
+                  <TableHeader className="bg-muted/45">
+                    <TableRow>
+                      <TableHead className="ps-6">Title</TableHead>
+                      <TableHead>Username</TableHead>
+                      <TableHead className="hidden sm:table-cell">Password</TableHead>
+                      <TableHead className="hidden md:table-cell">Website</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {!visibleEntries.length && (
+                      <TableRow>
+                        <TableCell colSpan={4} className="h-28 text-center text-muted-foreground">
+                          {query.trim() ? 'No entries match your search.' : 'This vault has no entries yet.'}
+                        </TableCell>
+                      </TableRow>
+                    )}
+                    {visibleEntries.map((entry) => (
+                      <TableRow key={entry.id}>
+                        <TableCell className="py-2 ps-3">
+                          <Button
+                            variant="ghost"
+                            className="h-auto max-w-44 items-start gap-2 px-3 py-1.5 text-start sm:max-w-72"
+                            onClick={() => {
+                              setMessage(null);
+                              setSelectedEntry(entry);
+                              setEdits({
+                                title: entry.title,
+                                username: entry.username,
+                                password: entry.password,
+                                url: entry.url,
+                                notes: entry.notes,
+                                otp: entry.otp
+                              });
+                            }}
+                          >
+                            <KeyRoundIcon className="mt-0.5 shrink-0 text-muted-foreground" />
+                            <span className="min-w-0">
+                              <span className="block truncate font-medium">{entry.title}</span>
+                              <span className="block truncate text-xs font-normal text-muted-foreground">
+                                {entry.groupPath}
+                              </span>
+                            </span>
+                          </Button>
+                        </TableCell>
+                        <TableCell className="max-w-32 truncate text-muted-foreground sm:max-w-52">
+                          {entry.username || '—'}
+                        </TableCell>
+                        <TableCell className="hidden font-mono tracking-wider text-muted-foreground sm:table-cell">
+                          {entry.password ? '••••••••' : '—'}
+                        </TableCell>
+                        <TableCell className="hidden max-w-56 truncate text-muted-foreground md:table-cell">
+                          {entry.url || '—'}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </Card>
+
+              <Sheet
+                open={edits !== null}
+                onOpenChange={(open) => {
+                  if (!open && busy !== 'save') {
+                    setSelectedEntry(null);
+                    setEdits(null);
+                  }
+                }}
+              >
+                {edits && (
+                  <SheetContent className="w-full gap-0 overflow-y-auto sm:max-w-xl">
+                    <SheetHeader className="border-b p-6 pe-12">
+                      <SheetTitle className="break-words">
+                        {selectedEntry ? selectedEntry.title : 'New entry'}
+                      </SheetTitle>
+                      <SheetDescription>
+                        {canWrite
+                          ? 'Changes are encrypted in your browser before saving.'
+                          : 'You can view and copy this entry, but you cannot edit it.'}
+                      </SheetDescription>
+                    </SheetHeader>
+                    <form className="grid gap-5 p-6" onSubmit={handleSave}>
+                      {message && (
+                        <Alert variant={message.kind === 'error' ? 'destructive' : 'default'}>
+                          <AlertDescription>{message.text}</AlertDescription>
+                        </Alert>
+                      )}
+                      <FieldGroup className="gap-4">
+                        <Field>
+                          <FieldLabel htmlFor="entry-title">Title</FieldLabel>
+                          <Input
+                            id="entry-title"
+                            value={edits.title}
+                            readOnly={!canWrite}
+                            onChange={(event) => setEdits({ ...edits, title: event.target.value })}
+                          />
+                        </Field>
+                        <Field>
+                          <FieldLabel htmlFor="entry-username">Username</FieldLabel>
+                          <Input
+                            id="entry-username"
+                            value={edits.username}
+                            readOnly={!canWrite}
+                            onChange={(event) => setEdits({ ...edits, username: event.target.value })}
+                          />
+                        </Field>
+                        <Field>
+                          <FieldLabel htmlFor="entry-password">Password</FieldLabel>
+                          <Input
+                            id="entry-password"
+                            type="password"
+                            autoComplete="off"
+                            value={edits.password}
+                            readOnly={!canWrite}
+                            onChange={(event) => setEdits({ ...edits, password: event.target.value })}
+                          />
+                        </Field>
+                        <Field>
+                          <FieldLabel htmlFor="entry-url">Website</FieldLabel>
+                          <Input
+                            id="entry-url"
+                            value={edits.url}
+                            readOnly={!canWrite}
+                            onChange={(event) => setEdits({ ...edits, url: event.target.value })}
+                          />
+                        </Field>
+                        <Field>
+                          <FieldLabel htmlFor="entry-notes">Notes</FieldLabel>
+                          <Textarea
+                            id="entry-notes"
+                            value={edits.notes}
+                            readOnly={!canWrite}
+                            onChange={(event) => setEdits({ ...edits, notes: event.target.value })}
+                          />
+                        </Field>
+                        <Field>
+                          <FieldLabel htmlFor="entry-otp">TOTP secret</FieldLabel>
+                          <Input
+                            id="entry-otp"
+                            type="password"
+                            autoComplete="off"
+                            value={edits.otp}
+                            readOnly={!canWrite}
+                            onChange={(event) => setEdits({ ...edits, otp: event.target.value })}
+                            aria-describedby="otp-help"
+                          />
+                          <FieldDescription id="otp-help">Use an otpauth URI or a Base32 secret.</FieldDescription>
+                        </Field>
+                      </FieldGroup>
+                      {totp && (
+                        <div className="flex flex-wrap items-center gap-3 rounded-lg border bg-muted/40 p-3">
+                          <span className="font-mono text-lg tracking-widest">{totp.code}</span>
+                          <Badge variant="secondary">{totp.secondsLeft}s</Badge>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="ms-auto"
+                            type="button"
+                            onClick={() => void copyValue(totp.code, 'TOTP code')}
+                          >
+                            <CopyIcon /> Copy code
+                          </Button>
+                        </div>
+                      )}
+                      <Separator />
+                      <div className="flex flex-wrap gap-2">
+                        {canWrite && (
+                          <Button type="submit" disabled={busy === 'save'}>
+                            {busy === 'save' ? 'Saving…' : selectedEntry ? 'Save entry' : 'Create entry'}
+                          </Button>
+                        )}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          type="button"
+                          disabled={!edits.username}
+                          onClick={() => void copyValue(edits.username, 'Username')}
+                        >
+                          <CopyIcon /> Copy username
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          type="button"
+                          disabled={!edits.password}
+                          onClick={() => void copyValue(edits.password, 'Password')}
+                        >
+                          <CopyIcon /> Copy password
+                        </Button>
+                      </div>
+                    </form>
+                  </SheetContent>
+                )}
+              </Sheet>
             </>
           )}
-        </section>
-      </main>
-    </div>
+        </div>
+      </SidebarInset>
+    </SidebarProvider>
+  );
+}
+
+/** Lists the available vault files and dismisses the navigation drawer on mobile selection. */
+function VaultNavigation({
+  files,
+  selectedId,
+  disabled,
+  onSelect
+}: {
+  files: VaultFile[];
+  selectedId: string | null;
+  disabled: boolean;
+  onSelect: (file: VaultFile) => void;
+}) {
+  const { setOpenMobile } = useSidebar();
+  return (
+    <Sidebar variant="inset">
+      <SidebarHeader className="p-3">
+        <div className="flex items-center gap-3 px-2 py-1.5">
+          <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-primary text-primary-foreground">
+            <KeyRoundIcon className="size-4" />
+          </span>
+          <div>
+            <p className="text-sm font-semibold">KeePort</p>
+            <p className="text-xs text-muted-foreground">Personal vault</p>
+          </div>
+        </div>
+      </SidebarHeader>
+      <SidebarSeparator />
+      <SidebarContent>
+        <SidebarGroup>
+          <SidebarGroupLabel>Shared vaults</SidebarGroupLabel>
+          {!files.length && <p className="px-2 py-1 text-sm text-muted-foreground">No files available.</p>}
+          <SidebarMenu>
+            {files.map((file) => (
+              <SidebarMenuItem key={file.id}>
+                <SidebarMenuButton
+                  type="button"
+                  isActive={file.id === selectedId}
+                  aria-current={file.id === selectedId ? 'true' : undefined}
+                  disabled={disabled}
+                  title={file.name}
+                  onClick={() => {
+                    if (file.id !== selectedId) onSelect(file);
+                    setOpenMobile(false);
+                  }}
+                >
+                  <DatabaseIcon />
+                  <span>{file.name}</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            ))}
+          </SidebarMenu>
+        </SidebarGroup>
+      </SidebarContent>
+      <SidebarFooter className="border-t px-4 py-4">
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <ShieldCheckIcon className="size-4" /> Decryption stays in this browser
+        </div>
+      </SidebarFooter>
+    </Sidebar>
   );
 }
