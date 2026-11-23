@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import type { Kdbx } from 'kdbxweb';
 import { api, ApiError } from './lib/api';
 import type { User, VaultFile } from './lib/api';
@@ -30,6 +30,7 @@ import {
 } from 'lucide-react';
 import { AuthLayout } from '@/components/auth-layout';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -471,12 +472,8 @@ export default function App() {
         selectedId={selectedId}
         disabled={busy === 'unlock' || busy === 'save'}
         onSelect={selectFile}
-      />
-      <SidebarInset className="min-w-0">
-        <header className="sticky top-0 z-10 flex min-h-14 items-center gap-3 border-b bg-background/95 px-4 backdrop-blur sm:px-6">
-          <SidebarTrigger />
-          <Separator orientation="vertical" className="data-[orientation=vertical]:h-4" />
-          <span className="min-w-0 flex-1 truncate text-sm font-medium">Vault workspace</span>
+        user={user}
+        profile={
           <Dialog
             open={showProfile}
             onOpenChange={(open) => {
@@ -485,10 +482,10 @@ export default function App() {
             }}
           >
             <DialogTrigger asChild>
-              <Button variant="ghost" size="sm" aria-label={`Open profile for ${user.username}`}>
+              <SidebarMenuButton type="button" variant="outline">
                 <UserRoundIcon />
-                <span className="max-w-24 truncate max-sm:sr-only">{user.username}</span>
-              </Button>
+                <span>Profile</span>
+              </SidebarMenuButton>
             </DialogTrigger>
             <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-lg">
               <DialogHeader>
@@ -589,6 +586,13 @@ export default function App() {
               </form>
             </DialogContent>
           </Dialog>
+        }
+      />
+      <SidebarInset className="min-w-0">
+        <header className="sticky top-0 z-10 flex min-h-14 items-center gap-3 border-b bg-background/95 px-4 backdrop-blur sm:px-6">
+          <SidebarTrigger />
+          <Separator orientation="vertical" className="data-[orientation=vertical]:h-4" />
+          <span className="min-w-0 flex-1 truncate text-sm font-medium">Vault workspace</span>
           {themeAction}
           <Button
             type="button"
@@ -949,17 +953,21 @@ export default function App() {
   );
 }
 
-/** Lists the available vault files and dismisses the navigation drawer on mobile selection. */
+/** Renders vault navigation and the signed-in account's profile action. */
 function VaultNavigation({
   files,
   selectedId,
   disabled,
-  onSelect
+  onSelect,
+  user,
+  profile
 }: {
   files: VaultFile[];
   selectedId: string | null;
   disabled: boolean;
   onSelect: (file: VaultFile) => void;
+  user: Pick<User, 'username' | 'email'>;
+  profile: ReactNode;
 }) {
   const { setOpenMobile } = useSidebar();
   return (
@@ -1002,10 +1010,30 @@ function VaultNavigation({
           </SidebarMenu>
         </SidebarGroup>
       </SidebarContent>
-      <SidebarFooter className="border-t px-4 py-4">
+      <SidebarFooter className="gap-3 border-t px-4 py-4">
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <ShieldCheckIcon className="size-4" /> Decryption stays in this browser
+          <ShieldCheckIcon className="size-4 shrink-0" /> Decryption stays in this browser
         </div>
+        <div className="flex min-w-0 items-center gap-2.5">
+          <Avatar aria-hidden="true">
+            <AvatarFallback className="bg-primary font-medium text-primary-foreground">
+              {user.username.charAt(0).toUpperCase()}
+            </AvatarFallback>
+          </Avatar>
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold" title={user.username}>
+              {user.username}
+            </p>
+            {user.email && (
+              <p className="truncate text-xs text-muted-foreground" title={user.email}>
+                {user.email}
+              </p>
+            )}
+          </div>
+        </div>
+        <SidebarMenu>
+          <SidebarMenuItem>{profile}</SidebarMenuItem>
+        </SidebarMenu>
       </SidebarFooter>
     </Sidebar>
   );
