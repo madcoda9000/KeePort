@@ -106,15 +106,137 @@ public class KeePortApiTests : IDisposable
         var etag2 = firstWrite.Headers.GetValues("ETag").Single();
         Assert.NotEqual(etag1, etag2);
 
-        var staleWrite = await SendAsync(_user, HttpMethod.Put, $"/api/vault/files/{vault.Id}/content", bytes: KdbxBytes("three"), csrf: csrf, etag: etag1);
+        using var staleWrite = await SendAsync(_user, HttpMethod.Put, $"/api/vault/files/{vault.Id}/content", bytes: KdbxBytes("three"), csrf: csrf, etag: etag1);
         Assert.Equal(HttpStatusCode.Conflict, staleWrite.StatusCode);
+        var conflict = await staleWrite.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(etag2, conflict.GetProperty("currentETag").GetString());
+        Assert.Contains("saved as a conflict copy", conflict.GetProperty("message").GetString());
 
-        var currentGet = await SendAsync(_user, HttpMethod.Get, $"/api/vault/files/{vault.Id}/content");
+        var credentials = await CreateWebDavCredentialAsync(_admin, adminCsrf, userId);
+        using var missingWebDavPrecondition = await SendAsync(_user, HttpMethod.Put, "/webdav/etag.kdbx", bytes: KdbxBytes("zero"), basic: credentials.BasicAuth);
+        Assert.Equal(HttpStatusCode.PreconditionRequired, missingWebDavPrecondition.StatusCode);
+        using var staleWebDavWrite = await SendAsync(_user, HttpMethod.Put, "/webdav/etag.kdbx", bytes: KdbxBytes("four"), etag: etag1, basic: credentials.BasicAuth);
+        Assert.Equal(HttpStatusCode.PreconditionFailed, staleWebDavWrite.StatusCode);
+        Assert.Equal(etag2, staleWebDavWrite.Headers.GetValues("ETag").Single());
+        Assert.Contains("saved as a conflict copy", (await staleWebDavWrite.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("message").GetString());
+
+        using var invalidStaleWrite = await SendAsync(_user, HttpMethod.Put, $"/api/vault/files/{vault.Id}/content", bytes: Encoding.UTF8.GetBytes("invalid"), csrf: csrf, etag: etag1);
+        Assert.Equal(HttpStatusCode.BadRequest, invalidStaleWrite.StatusCode);
+
+        using var currentGet = await SendAsync(_user, HttpMethod.Get, $"/api/vault/files/{vault.Id}/content");
         Assert.Equal(KdbxBytes("two"), await currentGet.Content.ReadAsByteArrayAsync());
+        Assert.Equal(etag2, currentGet.Headers.GetValues("ETag").Single());
+
+        var files = await GetJsonAsync(_admin, "/api/admin/files?includeDeleted=false");
+        Assert.Equal(3, files.GetArrayLength());
+        var copies = files.EnumerateArray().Where(file => file.GetProperty("id").GetString() != vault.Id).ToArray();
+        var userFiles = await GetJsonAsync(_user, "/api/vault/files");
+        Assert.Equal(vault.Id, Assert.Single(userFiles.EnumerateArray()).GetProperty("id").GetString());
+        using var listing = await SendAsync(_user, new HttpMethod("PROPFIND"), "/webdav/", basic: credentials.BasicAuth);
+        Assert.Equal(HttpStatusCode.MultiStatus, listing.StatusCode);
+        var listingText = await listing.Content.ReadAsStringAsync();
+        Assert.Contains("etag.kdbx", listingText);
+        Assert.DoesNotContain(".conflict-", listingText);
+        foreach (var copy in copies)
+        {
+            var copyId = copy.GetProperty("id").GetString();
+            var name = copy.GetProperty("name").GetString()!;
+            Assert.StartsWith("etag.conflict-", name);
+            var expected = name.Contains("-rest-", StringComparison.Ordinal) ? "three" : "four";
+            Assert.Contains(expected == "three" ? "-rest-" : "-webdav-", name);
+            using var read = await _admin.GetAsync($"/api/admin/files/{copyId}/content");
+            read.EnsureSuccessStatusCode();
+            Assert.Equal(KdbxBytes(expected), await read.Content.ReadAsByteArrayAsync());
+            Assert.Empty((await GetJsonAsync(_admin, $"/api/admin/files/{copyId}/permissions")).EnumerateArray());
+            using var denied = await _user.GetAsync($"/api/vault/files/{copyId}/content");
+            Assert.Equal(HttpStatusCode.Forbidden, denied.StatusCode);
+        }
 
         var vaultDir = Path.Combine(_dataDir, "vault");
         Assert.Empty(Directory.GetFiles(vaultDir, "*.tmp-*"));
-        Assert.Single(Directory.GetFiles(vaultDir, "*.kdbx"));
+        Assert.Equal(3, Directory.GetFiles(vaultDir, "*.kdbx").Length);
+    }
+
+    /// <summary>Checks that concurrent writes from one revision cannot both replace the original vault.</summary>
+    [Fact]
+    public async Task Concurrent_Writes_Create_A_Conflict_Copy_With_A_Valid_Name()
+    {
+        var adminCsrf = await SetupAdminAsync(_admin);
+        var (userId, _) = await CreateUserAsync(_admin, adminCsrf, "alice", "user");
+        var originalName = new string('x', 195) + ".kdbx";
+        var vault = await UploadVaultAsync(_admin, adminCsrf, originalName, "original");
+        await SetPermissionsAsync(_admin, adminCsrf, vault.Id, userId, "read-write");
+        var (csrf, _) = await LoginAsync(_user, "alice", "User passphrase 123");
+        var url = $"/api/vault/files/{vault.Id}/content";
+        var submissions = new[] { KdbxBytes("first"), KdbxBytes("second") };
+        var writes = submissions.Select(bytes => SendAsync(_user, HttpMethod.Put, url, bytes: bytes, csrf: csrf, etag: vault.ETag));
+        var responses = await Task.WhenAll(writes);
+        using var first = responses[0];
+        using var second = responses[1];
+        Assert.Single(responses, response => response.StatusCode == HttpStatusCode.OK);
+        Assert.Single(responses, response => response.StatusCode == HttpStatusCode.Conflict);
+        var winner = first.StatusCode == HttpStatusCode.OK ? 0 : 1;
+        using var original = await _user.GetAsync(url);
+        Assert.Equal(submissions[winner], await original.Content.ReadAsByteArrayAsync());
+        Assert.Equal("2", original.Headers.GetValues("X-KeePort-Revision").Single());
+
+        var files = await GetJsonAsync(_admin, "/api/admin/files?includeDeleted=false");
+        var copy = Assert.Single(files.EnumerateArray().Where(file => file.GetProperty("id").GetString() != vault.Id));
+        var name = copy.GetProperty("name").GetString()!;
+        Assert.True(name.Length <= 200);
+        Assert.Contains(".conflict-", name);
+        using var copied = await _admin.GetAsync($"/api/admin/files/{copy.GetProperty("id").GetString()}/content");
+        Assert.Equal(submissions[1 - winner], await copied.Content.ReadAsByteArrayAsync());
+    }
+
+    /// <summary>Checks that the shared setup/login quota leaves authenticated session operations available.</summary>
+    [Fact]
+    public async Task Credential_Rate_Limit_Does_Not_Block_Existing_Sessions()
+    {
+        var csrf = await SetupAdminAsync(_admin);
+        var payload = new { username = "unknown", password = "unused passphrase" };
+        for (var attempt = 0; attempt < 9; attempt++)
+        {
+            var path = attempt % 2 == 0 ? "/api/auth/login" : $"{AdminAuthPath}/login";
+            using var rejected = await _user.PostAsJsonAsync(path, payload);
+            Assert.Equal(HttpStatusCode.Unauthorized, rejected.StatusCode);
+        }
+        using var limited = await _user.PostAsJsonAsync("/api/auth/login", payload);
+        Assert.Equal(HttpStatusCode.TooManyRequests, limited.StatusCode);
+        Assert.NotNull(limited.Headers.RetryAfter?.Delta);
+        Assert.Equal("rate_limited", (await limited.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("error").GetString());
+
+        var profiles = await Task.WhenAll(Enumerable.Range(0, 12).Select(_ => _admin.GetAsync($"{AdminAuthPath}/me")));
+        foreach (var profile in profiles)
+        {
+            using (profile)
+            {
+                Assert.Equal(HttpStatusCode.OK, profile.StatusCode);
+            }
+        }
+        Assert.Equal(csrf, (await GetJsonAsync(_admin, $"{AdminAuthPath}/csrf")).GetProperty("csrfToken").GetString());
+        using var logout = await SendAsync(_admin, HttpMethod.Post, $"{AdminAuthPath}/logout", csrf: csrf);
+        Assert.Equal(HttpStatusCode.NoContent, logout.StatusCode);
+    }
+
+    /// <summary>Checks that requests across WebDAV paths and methods use a separate configurable quota before authentication.</summary>
+    [Fact]
+    public async Task WebDav_Rate_Limit_Applies_Before_Authentication()
+    {
+        using var factory = _factory.WithWebHostBuilder(host => host.ConfigureAppConfiguration((_, configuration) =>
+            configuration.AddInMemoryCollection(new Dictionary<string, string?> { ["KeePort:RateLimits:WebDavPerMinute"] = "2" })));
+        using var client = factory.CreateClient();
+        using var collection = await client.GetAsync("/webdav/");
+        using var unsupported = await SendAsync(client, new HttpMethod("REPORT"), "/webdav/example.kdbx");
+        Assert.Equal(HttpStatusCode.Unauthorized, collection.StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, unsupported.StatusCode);
+
+        using var limited = await SendAsync(client, HttpMethod.Options, "/WEBDAV");
+        Assert.Equal(HttpStatusCode.TooManyRequests, limited.StatusCode);
+        Assert.NotNull(limited.Headers.RetryAfter?.Delta);
+        Assert.Empty(limited.Headers.WwwAuthenticate);
+        using var vaultLogin = await client.PostAsJsonAsync("/api/auth/login", new { username = "unknown", password = "unused passphrase" });
+        Assert.Equal(HttpStatusCode.Unauthorized, vaultLogin.StatusCode);
     }
 
     /// <summary>Checks that sign-in, session restoration and sign-out are isolated between the two applications.</summary>

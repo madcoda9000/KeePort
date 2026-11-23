@@ -9,10 +9,12 @@ namespace KeePort.Api.Endpoints;
 
 public static class AuthEndpoints
 {
+    public const string CredentialRateLimitPolicy = "auth-credentials";
+
     public static void MapAuthEndpoints(this IEndpointRouteBuilder app)
     {
-        var admin = app.MapGroup(SessionService.AdminApiPath + "/auth").RequireRateLimiting("auth");
-        var vault = app.MapGroup("/api/auth").RequireRateLimiting("auth");
+        var admin = app.MapGroup(SessionService.AdminApiPath + "/auth");
+        var vault = app.MapGroup("/api/auth");
         MapAccountEndpoints(admin, UserRole.Admin);
         MapAccountEndpoints(vault, UserRole.User);
 
@@ -74,7 +76,7 @@ public static class AuthEndpoints
             var (_, token, csrfToken) = sessions.CreateSession(user, context);
             sessions.SetSessionCookie(context, token, UserRole.Admin, configuration.GetValue("KeePort:CookieSecure", true));
             return Results.Ok(new AuthResponse(ToDto(user), csrfToken));
-        });
+        }).RequireRateLimiting(CredentialRateLimitPolicy);
 
         vault.MapPut("/settings", (UpdateSettingsRequest request, HttpContext context, KeePortDb db) =>
         {
@@ -107,7 +109,7 @@ public static class AuthEndpoints
             var (_, token, csrfToken) = sessions.CreateSession(user, context);
             sessions.SetSessionCookie(context, token, role, configuration.GetValue("KeePort:CookieSecure", true));
             return Results.Ok(new AuthResponse(ToDto(user), csrfToken));
-        });
+        }).RequireRateLimiting(CredentialRateLimitPolicy);
 
         group.MapPost("/logout", (HttpContext context, KeePortDb db, SessionService sessions, IConfiguration configuration) =>
         {

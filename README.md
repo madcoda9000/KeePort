@@ -12,7 +12,7 @@ The server stores vault **files** and **metadata**, but never vault secrets. KDB
 - Strict roles: `Admin` and `User`.
 - Per-vault ACLs: `read` and `read-write`, enforced identically in the REST API, Vault webclient, and WebDAV.
 - Users cannot create or delete `.kdbx` files; admins manage files, users, ACLs, and WebDAV app passwords.
-- ETag/revision preconditions for writes: stale saves return `409`/`412` instead of silently overwriting.
+- ETag/revision preconditions for writes: stale saves return `409`/`412` and preserve the submitted KDBX as a conflict copy visible only to admins by default.
 - Atomic vault writes: temp file, flush/fsync, atomic rename.
 - First-run setup with a one-time token printed in the container logs.
 - Session cookies (`HttpOnly`, `SameSite=Lax`, optional `Secure`), CSRF protection, Argon2id password hashing, and login rate limiting.
@@ -73,6 +73,7 @@ The Vault UI is served at `/`, the Admin UI at `/admin`, and WebDAV at `/webdav`
 - The backend stores KDBX files as opaque binary objects; it does not parse vault contents.
 - Vault writes require the current ETag (`If-Match` or `X-Expected-ETag`) so concurrent clients cannot overwrite each other silently.
 - WebDAV credentials are separate app passwords stored as Argon2id hashes.
+- WebDAV does not enforce server-side locks. `LOCK` returns a non-persistent token and `UNLOCK` returns `204` for authorized requests. Use the current ETag with `If-Match` for conflict protection.
 - Admin endpoints are hidden unless the request arrives on an admin port when `KeePort:AdminPorts` is configured.
 
 Do not expose the admin port to the public internet. Use HTTPS for any public exposure of the vault client and WebDAV.

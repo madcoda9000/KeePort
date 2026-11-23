@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Security.Cryptography;
 using KeePort.Api.Data;
 
@@ -7,6 +8,8 @@ public enum VaultWriteStatus
 {
     Success,
     PreconditionRequired,
+    NotFound,
+    Forbidden,
     Conflict
 }
 
@@ -14,7 +17,11 @@ public sealed record VaultWriteResult(VaultWriteStatus Status, VaultFileRecord? 
 
 public sealed class VaultService
 {
+    internal const string ConflictCopyMessage = "The vault changed on the server. Your submitted version was saved as a conflict copy for an administrator.";
+    private const int MaxNameLength = 200;
+
     private readonly KeePortDb _db;
+    private readonly SemaphoreSlim[] _writeLocks = Enumerable.Range(0, 64).Select(_ => new SemaphoreSlim(1, 1)).ToArray();
 
     public VaultService(KeePortDb db)
     {
@@ -61,7 +68,8 @@ public sealed class VaultService
 
     public bool CanWrite(UserRecord user, VaultFileRecord file) => GetEffectivePermission(user, file) == "read-write";
 
-    public VaultFileRecord Create(string name, byte[] content, UserRecord user)
+    /// <summary>Stores encrypted content as a new vault without assigning any permissions.</summary>
+    public async Task<VaultFileRecord> CreateAsync(string name, byte[] content, UserRecord user, CancellationToken cancellationToken)
     {
         var cleanName = ValidateName(name);
         ValidateKdbxContent(content);
@@ -91,7 +99,7 @@ public sealed class VaultService
 
         var path = GetContentPath(record);
         Directory.CreateDirectory(_db.VaultDirectory);
-        WriteAtomic(path, content);
+        await WriteAtomicAsync(path, content, cancellationToken);
         try
         {
             _db.CreateVaultFile(record);
@@ -121,44 +129,76 @@ public sealed class VaultService
 
     public void Restore(VaultFileRecord file) => _db.RestoreVaultFile(file.Id);
 
+    /// <summary>Checks the latest revision under a write lock and saves stale submissions as separate vaults.</summary>
     public async Task<VaultWriteResult> WriteContentAsync(
-        VaultFileRecord file,
+        string fileId,
         byte[] content,
         string? expectedETag,
         UserRecord user,
-        CancellationToken cancellationToken = default)
+        string client,
+        CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(expectedETag))
+        var writeLock = _writeLocks[(uint)StringComparer.Ordinal.GetHashCode(fileId) % _writeLocks.Length];
+        await writeLock.WaitAsync(cancellationToken);
+        try
         {
-            return new VaultWriteResult(VaultWriteStatus.PreconditionRequired, file, file.ETag);
+            var file = Get(fileId);
+            if (file is null)
+            {
+                return new VaultWriteResult(VaultWriteStatus.NotFound, null, null);
+            }
+            if (!CanWrite(user, file))
+            {
+                return new VaultWriteResult(VaultWriteStatus.Forbidden, null, null);
+            }
+            if (string.IsNullOrWhiteSpace(expectedETag))
+            {
+                return new VaultWriteResult(VaultWriteStatus.PreconditionRequired, file, file.ETag);
+            }
+            if (!ETagMatches(expectedETag, file.ETag))
+            {
+                await CreateAsync(ConflictCopyName(file.Name, client), content, user, cancellationToken);
+                return new VaultWriteResult(VaultWriteStatus.Conflict, file, file.ETag);
+            }
+
+            ValidateKdbxContent(content);
+            var path = GetContentPath(file);
+            Directory.CreateDirectory(_db.VaultDirectory);
+            await WriteAtomicAsync(path, content, cancellationToken);
+
+            var sha256 = ComputeSha256(content);
+            var revision = file.Revision + 1;
+            var etag = BuildETag(sha256, revision);
+            _db.UpdateVaultFileContent(file.Id, content.LongLength, sha256, revision, etag, user.Id);
+
+            var updated = file with
+            {
+                Size = content.LongLength,
+                Sha256 = sha256,
+                Revision = revision,
+                ETag = etag,
+                UpdatedAt = DateTimeOffset.UtcNow,
+                UpdatedBy = user.Id
+            };
+            return new VaultWriteResult(VaultWriteStatus.Success, updated, null);
         }
-
-        if (!ETagMatches(expectedETag, file.ETag))
+        finally
         {
-            return new VaultWriteResult(VaultWriteStatus.Conflict, file, file.ETag);
+            writeLock.Release();
         }
+    }
 
-        ValidateKdbxContent(content);
-
-        var path = GetContentPath(file);
-        Directory.CreateDirectory(_db.VaultDirectory);
-        await WriteAtomicAsync(path, content, cancellationToken);
-
-        var sha256 = ComputeSha256(content);
-        var revision = file.Revision + 1;
-        var etag = BuildETag(sha256, revision);
-        _db.UpdateVaultFileContent(file.Id, content.LongLength, sha256, revision, etag, user.Id);
-
-        var updated = file with
+    /// <summary>Builds a unique, valid display name for a conflict copy.</summary>
+    private static string ConflictCopyName(string original, string client)
+    {
+        var timestamp = DateTimeOffset.UtcNow.ToString("yyyyMMdd'T'HHmmssfff'Z'", CultureInfo.InvariantCulture);
+        var suffix = $".conflict-{timestamp}-{client}-{Guid.NewGuid():N}.kdbx";
+        var stem = original[..Math.Min(original.Length - ".kdbx".Length, MaxNameLength - suffix.Length)];
+        if (stem.Length > 0 && char.IsHighSurrogate(stem[^1]))
         {
-            Size = content.LongLength,
-            Sha256 = sha256,
-            Revision = revision,
-            ETag = etag,
-            UpdatedAt = DateTimeOffset.UtcNow,
-            UpdatedBy = user.Id
-        };
-        return new VaultWriteResult(VaultWriteStatus.Success, updated, null);
+            stem = stem[..^1];
+        }
+        return stem.TrimEnd('.') + suffix;
     }
 
     public IReadOnlyList<VaultPermissionRecord> ListPermissions(string fileId) => _db.ListPermissionsForFile(fileId);
@@ -174,7 +214,7 @@ public sealed class VaultService
         }
 
         var clean = name.Trim();
-        if (clean.Length > 200)
+        if (clean.Length > MaxNameLength)
         {
             throw new VaultValidationException("Vault name is too long.");
         }
@@ -231,27 +271,26 @@ public sealed class VaultService
         var tempPath = $"{path}.tmp-{Guid.NewGuid():N}";
         try
         {
-            await using var stream = new FileStream(
+            await using (var stream = new FileStream(
                 tempPath,
-                FileMode.Create,
+                FileMode.CreateNew,
                 FileAccess.Write,
                 FileShare.None,
                 bufferSize: 81920,
-                FileOptions.WriteThrough | FileOptions.Asynchronous);
-            await stream.WriteAsync(content, cancellationToken);
-            await stream.FlushAsync(cancellationToken);
-            stream.Flush(true);
+                FileOptions.WriteThrough | FileOptions.Asynchronous))
+            {
+                await stream.WriteAsync(content, cancellationToken);
+                await stream.FlushAsync(cancellationToken);
+                stream.Flush(true);
+            }
+            File.Move(tempPath, path, overwrite: true);
         }
         catch
         {
             TryDelete(tempPath);
             throw;
         }
-
-        File.Move(tempPath, path, overwrite: true);
     }
-
-    private void WriteAtomic(string path, byte[] content) => WriteAtomicAsync(path, content, CancellationToken.None).GetAwaiter().GetResult();
 
     private static void TryDelete(string path)
     {

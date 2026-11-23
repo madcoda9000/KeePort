@@ -169,7 +169,7 @@ public static class WebDavEndpoints
         VaultWriteResult result;
         try
         {
-            result = await vault.WriteContentAsync(file, content, expectedETag, user, cancellationToken);
+            result = await vault.WriteContentAsync(file.Id, content, expectedETag, user, "webdav", cancellationToken);
         }
         catch (VaultValidationException ex)
         {
@@ -182,7 +182,10 @@ public static class WebDavEndpoints
             VaultWriteStatus.PreconditionRequired => Results.Json(
                 new ErrorResponse("precondition_required", "Expected ETag is required.", result.CurrentETag),
                 statusCode: StatusCodes.Status428PreconditionRequired),
-            _ => ConflictPut(context, result.CurrentETag)
+            VaultWriteStatus.NotFound => Results.NotFound(new ErrorResponse("not_found", "Vault file not found.")),
+            VaultWriteStatus.Forbidden => Results.Json(new ErrorResponse("forbidden", "You do not have write access to this vault."), statusCode: StatusCodes.Status403Forbidden),
+            VaultWriteStatus.Conflict => ConflictPut(context, result.CurrentETag),
+            _ => throw new InvalidOperationException("Unexpected vault write status.")
         };
     }
 
@@ -200,7 +203,7 @@ public static class WebDavEndpoints
             context.Response.Headers.ETag = currentETag;
         }
         return Results.Json(
-            new ErrorResponse("conflict", "The vault changed on the server. Reload and retry.", currentETag),
+            new ErrorResponse("conflict", VaultService.ConflictCopyMessage, currentETag),
             statusCode: StatusCodes.Status412PreconditionFailed);
     }
 

@@ -121,6 +121,19 @@ KEEPORT_COOKIE_SECURE=true
 
 Keep `/api/admin/*` and `/admin/*` off the public vault domain. If you must share one hostname, route `/admin` and `/api/admin` to the admin backend port and add IP allowlists or VPN-only access at the proxy.
 
+### Request limits
+
+Admin and Vault sign-in and first-run setup share a limit of 10 requests per minute per IP. Session checks (`me`, `csrf`) and sign-out are not part of that quota. WebDAV has a separate limit of 60 requests per minute per IP, including unauthenticated requests. A `429 Too Many Requests` response includes `Retry-After` when the limiter can estimate the wait.
+
+Override the limits with positive integers in `.env` when using Compose, then recreate the container:
+
+```dotenv
+KEEPORT_AUTH_REQUESTS_PER_MINUTE=10
+KEEPORT_WEBDAV_REQUESTS_PER_MINUTE=60
+```
+
+For other deployments, set `KeePort__RateLimits__AuthPerMinute` and `KeePort__RateLimits__WebDavPerMinute` on the application process. Clients behind NAT or a proxy may share a quota if KeePort sees the same source IP. Set per-client limits at the proxy if it is the only component that sees individual client addresses.
+
 ## 5. WebDAV for mobile/desktop KeePass clients
 
 1. Sign in to the Admin UI.
@@ -141,15 +154,17 @@ Mobile examples:
 - Android: KeePassDX supports WebDAV sync. Use the same URL/credentials.
 - Other clients: any KeePass-compatible client with WebDAV support can use the same endpoint.
 
-WebDAV users can only write files they are allowed to modify. KeePass clients should send `If-Match`/ETag for safe writes; KeePort returns `412` on stale versions instead of overwriting silently.
+WebDAV users can only write files they are allowed to modify. Send the current ETag in `If-Match` for safe writes. If no precondition is supplied, KeePort returns `428` and creates no copy. For a stale ETag, KeePort returns `412` and keeps the original unchanged. The submitted encrypted KDBX is saved as `<name>.conflict-<UTC timestamp>-webdav-<id>.kdbx` without access grants. An administrator can download, share, or delete it from the Admin file list. The Vault REST API follows the same rules but returns `409` for a stale ETag.
+
+KeePort does not enforce server-side WebDAV locks. For authorized requests, `LOCK` returns a token that is not saved and `UNLOCK` returns `204 No Content` without changing any lock state. A lock token is not a substitute for an ETag.
 
 ## 6. Troubleshooting
 
 - **No setup token in logs**: the admin already exists or setup is complete. Sign in at `/admin` or reset users via the admin UI.
 - **Admin UI returns 404 on port 8080**: expected. Use port `8081`/admin bind or the admin reverse-proxy route.
 - **Cannot write `/data`**: check volume permissions and UID/GID `1000:1000`.
-- **WebDAV `412 Precondition Failed`**: the vault changed elsewhere. Re-download/reload in the client and retry.
-- **Login rate limited**: auth endpoints allow 10 requests per minute per IP by default.
+- **WebDAV `412 Precondition Failed`**: reload the current vault and merge your changes before saving again. Ask an administrator for the conflict copy if you need the submitted version.
+- **`429 Too Many Requests`**: wait for the `Retry-After` interval and check the request limits above if this happens often.
 
 ## 7. What the server can and cannot see
 

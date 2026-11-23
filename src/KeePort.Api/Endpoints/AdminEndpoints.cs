@@ -166,7 +166,7 @@ public static class AdminEndpoints
             try
             {
                 var user = ApiAuth.GetUser(context)!;
-                var created = vault.Create(displayName, content, user);
+                var created = await vault.CreateAsync(displayName, content, user, cancellationToken);
                 return Results.Ok(ToAdminFileDto(created));
             }
             catch (VaultValidationException ex)

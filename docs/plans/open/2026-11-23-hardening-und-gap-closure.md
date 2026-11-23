@@ -41,9 +41,11 @@ Die Analyse vom 2026-11-23 hat ergeben, dass alle Kernanforderungen des Ursprung
 
 ## AP3 – Konfliktkopie bei Versionskonflikt (M)
 
+**Status:** Erledigt. REST und WebDAV speichern gültige Konfliktkopien ohne ACLs; Tests decken parallele Writes, unverändertes Original, fehlende ETags und Sichtbarkeit ab.
+
 **Befund:** Bei ETag-Konflikt wird der Schreibzugriff korrekt abgelehnt (409/412), aber verworfene Client-Daten gehen verloren. Der Prompt erlaubte „ablehnen **und/oder** Konfliktkopie“ – eine Kopie ist der sicherere Default.
 
-**Änderung:** Bei Konflikt (nicht bei fehlendem ETag) speichert der Server die eingehende Version als `<name>.conflict-<UTC-Timestamp>-<client>.kdbx` im Vault-Verzeichnis (gleiches atomisches Schreibmuster). **Entscheidung (2026-11-23, Sascha):** Die Konfliktkopie erscheint als normale Datei in der Admin-Liste – kein extra Datenmodell, kein separater Status; sie erhält keine ACL-Einträge, ist also für normale User unsichtbar und für Admins (implizites read-write) sichtbar und löschbar. Response enthält Hinweis auf die Kopie. WebDAV analog.
+**Änderung:** Bei Konflikt (nicht bei fehlendem ETag) speichert der Server die eingehende Version als `<name>.conflict-<UTC-Timestamp>-<client>-<id>.kdbx` im Vault-Verzeichnis (gleiches atomisches Schreibmuster). **Entscheidung (2026-11-23, Sascha):** Die Konfliktkopie erscheint als normale Datei in der Admin-Liste – kein extra Datenmodell, kein separater Status; sie erhält keine ACL-Einträge, ist also für normale User unsichtbar und für Admins (implizites read-write) sichtbar und löschbar. Response enthält Hinweis auf die Kopie. WebDAV analog.
 
 **Betroffene Dateien:** `VaultService.cs`, `VaultEndpoints.cs`, `WebDavEndpoints.cs`, Tests. Kein Schema-Change nötig (normale `vault_files`-Zeile ohne `vault_permissions`-Einträge).
 
@@ -63,6 +65,8 @@ Die Analyse vom 2026-11-23 hat ergeben, dass alle Kernanforderungen des Ursprung
 
 ## AP5 – LOCK/UNLOCK: dokumentierte No-Locks-Entscheidung (S)
 
+**Status:** Erledigt. README und Deployment-Doku beschreiben das Verhalten und verweisen auf ETags als Konfliktschutz.
+
 **Befund:** `LOCK` gibt einen Token zurück, ohne ihn zu persistieren; `UNLOCK` ist immer 204. Das ist ein Stub, der „sauberes Handling“ nur minimal erfüllt.
 
 **Entscheidung (2026-11-23, Sascha): Option B** – KeePort führt absichtlich keine serverseitigen WebDAV-Locks. Begründung: KeePass-Clients (KeePassXC, KeePassium, KeePassDX, Strongbox) brauchen echte Locks praktisch nie; ETag/`If-Match` ist das wirksame Konfliktschutzmittel.
@@ -75,13 +79,15 @@ Die Analyse vom 2026-11-23 hat ergeben, dass alle Kernanforderungen des Ursprung
 
 ## AP6 – Rate-Limiting differenzieren (S)
 
+**Status:** Erledigt. Konfigurierbare Kontingente für Login/Setup und WebDAV; Session-Endpunkte sind vom Login-Kontingent ausgenommen.
+
 **Befund:** Das Limit (10/Min/IP) gilt für **alle** `/api/auth`-Endpoints inkl. `GET /me`, `GET /csrf`, `POST /logout` – hinter NAT können legitime Nutzer blockiert werden. WebDAV-Basic-Auth hat gar kein Limit.
 
 **Änderung:** Limit nur auf mutierende Auth-Endpunkte (`setup`, `login`); Session-Endpunkte (`me`, `csrf`, `logout`) ausnehmen oder höheres Limit. Zusätzlich eine eigene, großzügigere Rate-Limit-Policy für `/webdav` (z. B. 60/Min/IP) gegen Brute-Force auf App-Passwörter.
 
 **Betroffene Dateien:** `src/KeePort.Api/Program.cs` (Policies), ggf. `AuthEndpoints.cs` (Policy-Zuordnung), Tests.
 
-**Akzeptanz:** 10 Fehl-Logins/Min → 429; parallele `/me`-Aufrufe nicht betroffen; WebDAV-Limit aktiv und konfigurierbar.
+**Akzeptanz:** Nach 10 Login-/Setup-Anfragen im selben Zeitfenster folgt für weitere Anfragen HTTP 429; parallele `/me`-Aufrufe sind nicht betroffen; das separate WebDAV-Limit ist vor Authentifizierung aktiv und konfigurierbar.
 
 ---
 

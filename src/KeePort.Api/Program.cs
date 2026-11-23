@@ -38,15 +38,25 @@ builder.Services.AddSingleton<VaultService>();
 
 builder.Services.AddRateLimiter(options =>
 {
+    var authLimit = builder.Configuration.GetValue("KeePort:RateLimits:AuthPerMinute", 10);
+    var webDavLimit = builder.Configuration.GetValue("KeePort:RateLimits:WebDavPerMinute", 60);
+    ArgumentOutOfRangeException.ThrowIfNegativeOrZero(authLimit);
+    ArgumentOutOfRangeException.ThrowIfNegativeOrZero(webDavLimit);
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-    options.AddPolicy("auth", httpContext => RateLimitPartition.GetFixedWindowLimiter(
-        httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
-        _ => new FixedWindowRateLimiterOptions
+    options.AddPolicy(AuthEndpoints.CredentialRateLimitPolicy, context => PerIpLimit(context, authLimit));
+    options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
+        context.Request.Path.StartsWithSegments("/webdav", StringComparison.OrdinalIgnoreCase)
+            ? PerIpLimit(context, webDavLimit)
+            : RateLimitPartition.GetNoLimiter("non-webdav"));
+    options.OnRejected = async (rejection, cancellationToken) =>
+    {
+        if (rejection.Lease.TryGetMetadata(MetadataName.RetryAfter, out var retryAfter))
         {
-            PermitLimit = 10,
-            Window = TimeSpan.FromMinutes(1),
-            QueueLimit = 0
-        }));
+            rejection.HttpContext.Response.Headers.RetryAfter = Math.Max(1, Math.Ceiling(retryAfter.TotalSeconds)).ToString(CultureInfo.InvariantCulture);
+        }
+        await rejection.HttpContext.Response.WriteAsJsonAsync(
+            new ErrorResponse("rate_limited", "Too many requests. Wait and try again."), cancellationToken);
+    };
 });
 
 var corsOrigins = builder.Configuration.GetSection("KeePort:CorsOrigins").Get<string[]>() ?? [];
@@ -161,5 +171,11 @@ app.Use(async (context, next) =>
 });
 
 app.Run();
+
+/// <summary>Creates an independent one-minute quota for each client address.</summary>
+static RateLimitPartition<string> PerIpLimit(HttpContext context, int limit)
+    => RateLimitPartition.GetFixedWindowLimiter(
+        context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        _ => new FixedWindowRateLimiterOptions { PermitLimit = limit, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 });
 
 public partial class Program;

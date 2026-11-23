@@ -87,7 +87,7 @@ public static class VaultEndpoints
             VaultWriteResult result;
             try
             {
-                result = await vault.WriteContentAsync(file, content, expectedETag, user, cancellationToken);
+                result = await vault.WriteContentAsync(file.Id, content, expectedETag, user, "rest", cancellationToken);
             }
             catch (VaultValidationException ex)
             {
@@ -100,9 +100,12 @@ public static class VaultEndpoints
                 VaultWriteStatus.PreconditionRequired => Results.Json(
                     new ErrorResponse("precondition_required", "Expected ETag is required.", result.CurrentETag),
                     statusCode: StatusCodes.Status428PreconditionRequired),
-                _ => Results.Json(
-                    new ErrorResponse("conflict", "The vault changed on the server. Reload and retry.", result.CurrentETag),
-                    statusCode: StatusCodes.Status409Conflict)
+                VaultWriteStatus.NotFound => Results.NotFound(new ErrorResponse("not_found", "Vault file not found.")),
+                VaultWriteStatus.Forbidden => Results.Json(new ErrorResponse("forbidden", "You do not have write access to this vault."), statusCode: StatusCodes.Status403Forbidden),
+                VaultWriteStatus.Conflict => Results.Json(
+                    new ErrorResponse("conflict", VaultService.ConflictCopyMessage, result.CurrentETag),
+                    statusCode: StatusCodes.Status409Conflict),
+                _ => throw new InvalidOperationException("Unexpected vault write status.")
             };
         });
     }
