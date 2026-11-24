@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.Json;
 using KeePort.Api.Data;
 using KeePort.Api.Security;
 using KeePort.Api.Services;
@@ -26,6 +27,23 @@ public static class AdminEndpoints
                 return forbidden;
             }
             return Results.Ok(settings.Current.Settings);
+        });
+
+        // Reports where KeePort keeps its data (host folder, Docker volume or not mounted) to an administrator.
+        // <param name="context">The current HTTP request and response context.</param>
+        // <param name="storage">The data storage detected at startup.</param>
+        group.MapGet("/settings/storage", (HttpContext context, DataStorageInfo storage) =>
+        {
+            if (ApiAuth.RequireAdmin(context) is { } forbidden)
+            {
+                return forbidden;
+            }
+            return Results.Ok(new DataStorageDto(
+                JsonNamingPolicy.CamelCase.ConvertName(storage.Kind.ToString()),
+                storage.DataDir,
+                storage.Source,
+                storage.VolumeName,
+                storage.NeedsAttention));
         });
 
         // Validates the limits, persists both values, and activates the changed policies.

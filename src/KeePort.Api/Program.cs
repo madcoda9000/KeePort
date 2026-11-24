@@ -33,6 +33,9 @@ catch (Exception ex)
     throw;
 }
 
+// Where /data comes from (host folder, Docker volume or not mounted), detected once at startup.
+var dataStorage = DataLocation.DetectCurrent(dataDir);
+builder.Services.AddSingleton(dataStorage);
 builder.Services.AddSingleton<KeePortDb>();
 builder.Services.AddSingleton<PasswordHasher>();
 builder.Services.AddSingleton<SessionService>();
@@ -192,6 +195,21 @@ app.Use(async (context, next) =>
         : "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'";
     await next();
 });
+
+switch (dataStorage.Kind)
+{
+    case DataStorageKind.HostFolder:
+        app.Logger.LogInformation("Data directory {DataDir} is the host folder {Source} (on a NAS possibly relative to its storage volume).", dataStorage.DataDir, dataStorage.Source);
+        break;
+    case DataStorageKind.DockerVolume:
+        app.Logger.LogWarning(
+            "Data is stored in the Docker volume {Volume}. NAS backup tools such as Hyper Backup or Hybrid Backup Sync don't include it, and File Station doesn't show it. Set KEEPORT_DATA to a folder to back it up with them (DEPLOYMENT.md, \"Move data from the Docker volume to a folder\").",
+            dataStorage.VolumeName);
+        break;
+    case DataStorageKind.NotMounted:
+        app.Logger.LogWarning("Data directory {DataDir} is not mounted: all data is lost when the container is recreated. Mount a folder or volume to {DataDir} (KEEPORT_DATA).", dataStorage.DataDir, dataStorage.DataDir);
+        break;
+}
 
 if (adminCertificate is not null)
 {

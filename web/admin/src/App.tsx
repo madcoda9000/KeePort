@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { api, ApiError } from './lib/api';
-import type { AdminFile, User, WebDavCredential } from './lib/api';
+import type { AdminFile, DataStorage, User, WebDavCredential } from './lib/api';
 import { createKdbxBytes } from './lib/kdbx';
 import { getTheme, toggleTheme } from './theme';
 import {
@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { AdminProfile } from '@/components/admin-profile';
 import { AuthLayout } from '@/components/auth-layout';
+import { DataStorageBanner, DataStoragePanel } from '@/components/data-storage';
 import { RateLimitSettingsPanel } from '@/components/rate-limit-settings';
 import { WebDavLogsPanel } from '@/components/webdav-logs';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -674,6 +675,7 @@ export default function App() {
   const [files, setFiles] = useState<AdminFile[]>([]);
   const [includeDeleted, setIncludeDeleted] = useState(false);
   const [credentials, setCredentials] = useState<WebDavCredential[]>([]);
+  const [storage, setStorage] = useState<DataStorage | null>(null);
   const usernamesById = useMemo(/** Builds a lookup of account names for credential rows. */ () => new Map(users.map(/**
    * Pairs each account ID with its display username.
    * @param item - One account whose ID is mapped to its username.
@@ -705,6 +707,11 @@ export default function App() {
     setFiles(await api.listFiles(includeDeleted));
   }
 
+  /** Loads where KeePort keeps its data; a failure only hides the storage warning. */
+  async function refreshStorage() {
+    setStorage(await api.getDataStorage().catch(/** Ignores a failed storage check. */ () => null));
+  }
+
   /** Reloads the WebDAV credential inventory. */
   async function refreshWebDav() {
     setCredentials(await api.listWebDavCredentials());
@@ -712,7 +719,7 @@ export default function App() {
 
   /** Refreshes accounts and WebDAV credentials in parallel. */
   async function refreshAll() {
-    await Promise.all([refreshUsers(), refreshWebDav()]);
+    await Promise.all([refreshUsers(), refreshWebDav(), refreshStorage()]);
   }
 
   /** Initializes the admin console and ignores responses after unmount. */
@@ -859,6 +866,7 @@ export default function App() {
     setUsers([]);
     setFiles([]);
     setCredentials([]);
+    setStorage(null);
     setPermFile(null);
     try {
       await api.logout();
@@ -1106,13 +1114,28 @@ export default function App() {
             <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">{currentSection.title}</h1>
             <p className="text-sm text-muted-foreground">{currentSection.description}</p>
           </div>
+          {storage?.needsAttention && (
+            <DataStorageBanner
+              storage={storage}
+              onOpenSettings={/** Opens the settings page with the storage details. */ () => {
+                setTab('settings');
+                setPermFile(null);
+                setMessage(null);
+              }}
+            />
+          )}
           {message && (
             <Alert variant={message.kind === 'error' ? 'destructive' : 'default'}>
               <AlertDescription>{message.text}</AlertDescription>
             </Alert>
           )}
 
-          {tab === 'settings' && <RateLimitSettingsPanel />}
+          {tab === 'settings' && (
+            <>
+              <RateLimitSettingsPanel />
+              <DataStoragePanel storage={storage} />
+            </>
+          )}
 
           {tab === 'webdav-logs' && <WebDavLogsPanel />}
 

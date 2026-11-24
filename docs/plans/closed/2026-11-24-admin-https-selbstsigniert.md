@@ -1,9 +1,10 @@
 # Plan: Admin-Konsole standardmäßig über HTTPS mit selbstsigniertem Zertifikat
 
-- **Status:** umgesetzt, Abnahme auf der NAS offen. Geprüft:
+- **Status:** closed (2026-11-24). Ausgeliefert in 0.5.0.
   - Tests: 61/61 Backend, 13/13 Frontend.
-  - Browser: „Create KDBX“ über `https://<IP>` mit selbstsigniertem Zertifikat funktioniert, die Anmeldeseite des Web-Vaults warnt über `http://<IP>`.
-  - Docker-Image (Alpine): HTTPS-Admin-Port `200`, reines HTTP dorthin scheitert, Fingerabdruck im Log stimmt mit `openssl` überein, Zertifikatsdatei mit Rechten `600`, Container „healthy“.
+  - Browser und Docker-Image (Alpine): HTTPS-Admin-Port funktioniert, Fingerabdruck stimmt, Zertifikatsdatei mit Rechten `600`.
+  - Abnahme durch Sascha auf der Synology: Admin-Konsole über `https://<NAS-IP>:8021/admin` erreichbar, „Create KDBX“ funktioniert, der Web-Vault warnt über `http://<IP>`.
+  - Erkenntnis aus der Abnahme: Eine DSM-Reverse-Proxy-Regel, die versehentlich auf den Admin-Port statt auf den Web-Vault-Port zeigt, fällt seit 0.5.0 sofort auf, weil DSM per HTTP auf den HTTPS-Port nicht durchkommt. Vorher hätte sie die Admin-Konsole ins Internet veröffentlicht.
 - **Erstellt:** 2026-11-24
 - **Zielversion:** 0.5.0 (neue Funktion, Changelog `## [0.5.0] - <Datum>`)
 

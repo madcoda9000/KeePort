@@ -230,6 +230,14 @@ public sealed record WebDavRequestLogDto(
     string? Destination,
     string? Overwrite);
 
+/// <summary>Describes where KeePort keeps its data, for the admin console.</summary>
+/// <param name="Kind">hostFolder, dockerVolume, notMounted or unknown.</param>
+/// <param name="DataDir">The data directory inside the container.</param>
+/// <param name="Source">The source path on the host's file system, if known (on a NAS possibly relative to the storage volume).</param>
+/// <param name="VolumeName">The Docker volume name when the data is stored in a volume.</param>
+/// <param name="NeedsAttention">Whether NAS backup tools are likely to miss the data.</param>
+public sealed record DataStorageDto(string Kind, string DataDir, string? Source, string? VolumeName, bool NeedsAttention);
+
 /// <summary>Represents an API error and, for write conflicts, the current ETag when known.</summary>
 /// <param name="Error">The machine-readable API error code.</param>
 /// <param name="Message">Optional human-readable detail about the error.</param>

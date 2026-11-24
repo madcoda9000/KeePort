@@ -857,6 +857,23 @@ public class KeePortApiTests : IDisposable
         Assert.Equal("203.0.113.13", (await FindWebDavLogAsync(admin, "/webdav/chain")).GetProperty("remoteIp").GetString());
     }
 
+    /// <summary>Verifies that the data storage report is available to administrators only.</summary>
+    [Fact]
+    public async Task Data_Storage_Report_Is_Admin_Only()
+    {
+        var csrf = await SetupAdminAsync(_admin);
+        var storage = await GetJsonAsync(_admin, "/api/admin/settings/storage");
+        // The tests run outside Docker, so the storage kind cannot be determined and needs no attention.
+        Assert.Equal("unknown", storage.GetProperty("kind").GetString());
+        Assert.False(storage.GetProperty("needsAttention").GetBoolean());
+        Assert.Equal(Path.GetFullPath(_dataDir).TrimEnd('/'), storage.GetProperty("dataDir").GetString());
+
+        await CreateUserAsync(_admin, csrf, "alice", "user");
+        await LoginAsync(_user, "alice", "User passphrase 123");
+        using var userAccess = await _user.GetAsync("/api/admin/settings/storage");
+        Assert.Equal(HttpStatusCode.Unauthorized, userAccess.StatusCode);
+    }
+
     /// <summary>Verifies that session cookies are Secure over HTTPS even when KEEPORT_COOKIE_SECURE is false.</summary>
     [Fact]
     public async Task Session_Cookies_Are_Secure_Over_Https()

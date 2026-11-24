@@ -132,7 +132,9 @@ git checkout v0.6.0          # the release you want, see the Releases page
 docker compose up -d --build
 ```
 
-Your data stays in the `keeport-data` volume (or the folder set in `KEEPORT_DATA`). Read the [changelog](CHANGELOG.md) before updating and [make a backup](docs/DEPLOYMENT.md#-backup--restore) first. NAS update steps are in the [deployment guide](docs/DEPLOYMENT.md#-updating).
+On a NAS, the update script does all of this for you, including a backup and an automatic rollback: `sudo bash keeport/scripts/keeport-update.sh` ([details](docs/DEPLOYMENT.md#-updating)).
+
+Your data stays in the `keeport-data` volume (or the folder set in `KEEPORT_DATA`; **Admin → Settings → Data storage** shows which). Read the [changelog](CHANGELOG.md) before updating and [make a backup](docs/DEPLOYMENT.md#-backup--restore) first. NAS update steps are in the [deployment guide](docs/DEPLOYMENT.md#-updating).
 
 ## 🧩 How it works
 

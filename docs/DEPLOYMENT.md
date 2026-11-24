@@ -143,6 +143,8 @@ With a Docker volume, use the backup command from [Backup & restore](#-backup--r
 
 Open **`https://192.168.1.20:8081/admin`** — note the `https` — and accept the [certificate warning](#the-admin-certificate-warning) once. Enter the setup token and continue with [first steps](#-first-steps-in-the-admin-console).
 
+Afterwards check **Admin → Settings → Data storage**: it must show **Host folder** with `/docker/keeport-data`. If it shows *Docker volume*, `KEEPORT_DATA` was not picked up — fix `.env` and [move the data](#move-data-from-the-docker-volume-to-a-folder).
+
 The web vault is at `http://192.168.1.20:8080` for a first look. To **unlock vaults** in the web vault you need HTTPS ([why](#-secure-connection-required)) — set it up in the next step.
 
 ### 4. HTTPS with the DSM reverse proxy
@@ -224,7 +226,7 @@ If `docker` is not found, open Container Station once so it finishes its setup, 
 
 ### 3. Open the admin console
 
-Open **`https://192.168.1.30:8081/admin`**, accept the [certificate warning](#the-admin-certificate-warning) once, enter the setup token and continue with [first steps](#-first-steps-in-the-admin-console). The web vault is at `http://192.168.1.30:8090`; unlocking vaults there needs HTTPS through the reverse proxy below ([why](#-secure-connection-required)). The container also shows up in Container Station, where you can see its logs and restart it.
+Open **`https://192.168.1.30:8081/admin`**, accept the [certificate warning](#the-admin-certificate-warning) once, enter the setup token and continue with [first steps](#-first-steps-in-the-admin-console). Then check that **Admin → Settings → Data storage** shows **Host folder** (`/Container/keeport-data` or similar). The web vault is at `http://192.168.1.30:8090`; unlocking vaults there needs HTTPS through the reverse proxy below ([why](#-secure-connection-required)). The container also shows up in Container Station, where you can see its logs and restart it.
 
 ### 4. HTTPS with the QTS reverse proxy
 
@@ -423,7 +425,26 @@ Users now sign in to the web vault with their account and unlock vaults with the
 
 Read the [changelog](../CHANGELOG.md) and make a [backup](#-backup--restore) first. Your `.env` and data are kept.
 
-**Synology / QNAP** (replace the version and path as needed):
+**Synology / QNAP — with the update script (recommended):**
+
+```bash
+cd /volume1/docker                         # QNAP: cd /share/Container
+sudo bash keeport/scripts/keeport-update.sh          # latest release
+sudo bash keeport/scripts/keeport-update.sh v0.6.0   # or a specific one
+```
+
+On QNAP, prefix the command with `BASE_DIR=/share/Container`. The script:
+
+1. Finds the latest release on GitHub (including pre-releases), or uses the version you pass.
+2. Reads `KEEPORT_DATA` from your `.env` and warns if your data is in a Docker volume ([why that matters](#move-data-from-the-docker-volume-to-a-folder)).
+3. Stops KeePort and backs up the data to `keeport-backups/keeport-data-v<old>-<time>.tgz`.
+4. Moves the old version to `keeport-old-v<old>-<time>`, unpacks the new release as `keeport`, and keeps your `.env` and data.
+5. Rebuilds and starts KeePort and waits until it reports healthy. **If the build fails or the container does not become healthy, it restores the previous version automatically.**
+
+It never deletes anything — it prints the cleanup commands at the end. Set `YES=1` to skip the confirmation prompt, e.g. in a scheduled task (for a password manager, updating by hand after reading the changelog is the safer habit).
+
+<details>
+<summary><b>Synology / QNAP — by hand</b></summary>
 
 ```bash
 cd /volume1/docker                # QNAP: cd /share/Container
@@ -436,6 +457,7 @@ sudo docker compose up -d --build # QNAP: without sudo
 ```
 
 Delete `keeport-old` once everything works. If you installed via Container Manager without SSH, upload the new release folder the same way and rebuild the project.
+</details>
 
 **Linux server:**
 
@@ -448,7 +470,7 @@ docker compose up -d --build
 
 ## 💾 Backup & restore
 
-KeePort keeps everything in `/data`:
+KeePort keeps everything in `/data`. **Admin → Settings → Data storage** shows where that is on the host: a **host folder** (set via `KEEPORT_DATA`, included in NAS backups) or a **Docker volume** (the default without `KEEPORT_DATA`, which NAS backup tools don't see). While the data is in a Docker volume or not mounted at all, the admin console shows a warning on every page, and the container log warns on every start.
 
 | Path | Contents |
 |---|---|
@@ -473,12 +495,46 @@ To restore, stop KeePort, put the files back into the data folder or a fresh vol
 > [!TIP]
 > Your `.kdbx` files are ordinary KeePass files. Downloading them now and then from **Vault files** gives you an extra copy that any KeePass app can open.
 
+### Move data from the Docker volume to a folder
+
+If **Admin → Settings → Data storage** shows *Docker volume* — typically because `KEEPORT_DATA` was missing from `.env` during installation — move the data into a folder so Hyper Backup or Hybrid Backup Sync can include it. Example for Synology (QNAP: `/share/Container/…`, without `sudo`):
+
+```bash
+cd /volume1/docker/keeport
+
+# 1. Stop KeePort
+sudo docker compose stop
+
+# 2. Copy the volume's contents into the folder and hand it to the container user
+sudo mkdir -p /volume1/docker/keeport-data
+sudo docker run --rm -v keeport_keeport-data:/from:ro -v /volume1/docker/keeport-data:/to alpine sh -c 'cp -a /from/. /to/'
+sudo chown -R 1000:1000 /volume1/docker/keeport-data
+sudo ls -la /volume1/docker/keeport-data      # keeport.db, vault/ and tls/ must be there
+```
+
+3. Set the folder in `.env` (an absolute path, without `#` in front):
+
+   ```dotenv
+   KEEPORT_DATA=/volume1/docker/keeport-data
+   ```
+
+4. Start KeePort and check that the folder is used — the output must read `bind /volume1/docker/keeport-data -> /data`:
+
+   ```bash
+   sudo docker compose up -d
+   sudo docker inspect -f '{{range .Mounts}}{{.Type}} {{.Source}} -> {{.Destination}}{{"\n"}}{{end}}' keeport
+   ```
+
+5. Check that users, vaults and WebDAV credentials are still there and that a KeePass app still syncs. **Only then** remove the old volume: `sudo docker volume rm keeport_keeport-data`.
+
+Use an absolute path for `KEEPORT_DATA`. A relative path such as `./keeport-data` is relative to the folder with `docker-compose.yml` and therefore ends up **inside** the KeePort folder, not next to it.
+
 ## ⚙️ Configuration reference
 
 | Variable in `.env` | Default | Purpose |
 |---|---|---|
 | `KEEPORT_HTTP_HOST_PORT` | `8080` | Host port for the web vault and WebDAV. Use e.g. `8090` on QNAP. |
-| `KEEPORT_DATA` | `keeport-data` | Docker volume name, or a folder path for a bind mount (must belong to UID 1000). |
+| `KEEPORT_DATA` | `keeport-data` | Docker volume name, or a folder for a bind mount (must belong to UID 1000). Use an absolute path; `./…` is relative to the KeePort folder. Check the result in **Admin → Settings → Data storage**. |
 | `KEEPORT_ADMIN_BIND` | `0.0.0.0` | Host address for the admin port — every network of the host by default; `127.0.0.1` or a VPN IP on servers with a public IP. See [who can reach the admin console](#who-can-reach-the-admin-console). |
 | `KEEPORT_ADMIN_HTTPS` | `true` | Serve the admin console over HTTPS with a self-signed certificate. `false` if a reverse proxy does TLS. |
 | `KEEPORT_ADMIN_TLS_HOSTS` | *(empty)* | Extra names/IPs for the admin certificate, comma-separated, e.g. `192.168.1.20, nas.local`. |
@@ -499,6 +555,7 @@ Limits apply per client address. Behind a reverse proxy, [trust the proxy](#-tru
 | Symptom | What to do |
 |---|---|
 | "Secure connection required" or `randomBytes is not a function` | The page was opened over plain `http://` with an IP or host name. Use HTTPS or an SSH tunnel to `localhost` ([details](#-secure-connection-required)). |
+| Data folder is empty in File Station, but the admin console shows vaults | The data is in a Docker volume because `KEEPORT_DATA` is not set. **Admin → Settings → Data storage** confirms it; [move it to a folder](#move-data-from-the-docker-volume-to-a-folder). |
 | Container restarts again and again | Read the first lines of the log (`sudo docker compose logs keeport`, or **Container Manager → Container → keeport → Log**). A line starting with `KeePort cannot start:` names the setting in `.env` to fix. |
 | No `setup token` in the log | An administrator already exists. Sign in at `/admin`. |
 | `KeePort cannot write to data directory` on start | The data folder must belong to UID/GID `1000:1000` (`chown -R 1000:1000 <folder>`). |

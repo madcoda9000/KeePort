@@ -37,6 +37,14 @@ export interface RateLimitSettings {
   webDavPerMinute: number;
 }
 
+export interface DataStorage {
+  kind: 'hostFolder' | 'dockerVolume' | 'notMounted' | 'unknown';
+  dataDir: string;
+  source: string | null;
+  volumeName: string | null;
+  needsAttention: boolean;
+}
+
 export interface WebDavRequestLogEntry {
   id: number;
   occurredAt: string;
@@ -326,6 +334,14 @@ export const api = {
    */
   async revokeWebDavCredential(id: string) {
     await request<void>(`/api/admin/webdav-credentials/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  },
+
+  /**
+   * Reports where KeePort keeps its data: host folder, Docker volume or not mounted.
+   * @param signal - An optional signal that aborts the request when the caller no longer needs it.
+   */
+  async getDataStorage(signal?: AbortSignal) {
+    return request<DataStorage>('/api/admin/settings/storage', { signal });
   },
 
   /**
