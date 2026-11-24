@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- After an update, browsers kept showing the previous web vault and admin console (e.g. the old version badge) until a hard reload, because `index.html` was served without caching instructions. Entry pages are now sent with `Cache-Control: no-cache`, so a new release appears on the next page load; content-hashed files under `assets/` are cached for a year.
 - The data storage card and the Synology guide show the real path format on DSM (`/@syno/docker/keeport-data` for `/volume1/docker/keeport-data`) instead of a shortened example.
 
 ## [0.6.0] - 2026-11-24

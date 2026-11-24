@@ -258,7 +258,12 @@ app.MapAdminEndpoints();
 app.MapWebDavEndpoints();
 
 app.UseDefaultFiles();
-app.UseStaticFiles();
+app.UseStaticFiles(new StaticFileOptions
+{
+    // Revalidates index.html on every load so a new release shows up right after an update; hashed assets are immutable.
+    // <param name="file">The static file response being prepared.</param>
+    OnPrepareResponse = file => StaticFileCaching.Apply(file.Context)
+});
 // Serves the appropriate frontend entry point for eligible unmatched routes.
 // <param name="context">The current HTTP request and response context.</param>
 // <param name="next">The next middleware in the request pipeline.</param>
@@ -284,6 +289,7 @@ app.Use(async (context, next) =>
 
     context.Response.StatusCode = StatusCodes.Status200OK;
     context.Response.ContentType = "text/html; charset=utf-8";
+    context.Response.Headers.CacheControl = StaticFileCaching.Revalidate;
     context.Response.ContentLength = new FileInfo(indexPath).Length;
     await context.Response.SendFileAsync(indexPath, context.RequestAborted);
 });
