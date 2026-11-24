@@ -1,8 +1,8 @@
 # KeePort – Plan: Schließen der Analyse-Lücken (v0.2.0)
 
-- **Status:** open
-- **Erstellt:** 2026-11-23 (aus der Code-Analyse des Stands `c49b3a4`)
-- **Zielversion:** 0.2.0 (SemVer; alle Pakete werden in der `CHANGELOG.md` unter `## [Unreleased]` → `0.2.0` dokumentiert)
+- **Status:** closed (2026-11-24)
+- **Erstellt:** 2026-11-23 (aus der Code-Analyse des ersten Stands; Commit-Hashes im Text beziehen sich auf die Historie vor dem Umschreiben auf die noreply-Adresse)
+- **Zielversion:** ursprünglich 0.2.0. Ausgeliefert als erstes Beta-Release **0.1.0** (2026-11-24); alle Pakete stehen in der `CHANGELOG.md` unter `## [0.1.0] - 2026-11-24`.
 
 ## Hintergrund
 
@@ -113,7 +113,7 @@ HTTP-Verhalten am 2026-11-24 mit isoliertem Kestrel und zwei echten KDBX-Stände
 
 ## AP7 – GitHub-Repository anlegen und pushen (S)
 
-**Status:** Offen. Release `v0.1.0` ist lokal getaggt (2026-11-24); Anlegen des öffentlichen Repositorys und Push stehen noch aus. Der README-Platzhalter ist bereits in AP8 entfernt worden.
+**Status:** Erledigt (2026-11-24). Öffentliches Repository https://github.com/madcoda9000/KeePort angelegt, `main` und Tag `v0.1.0` gepusht, GitHub-Release „KeePort 0.1.0 (Beta)“ als Pre-release veröffentlicht. Vor dem Push wurden alle Commits auf die GitHub-noreply-Adresse umgeschrieben (GitHub blockiert die private Adresse). Der README-Platzhalter ist bereits in AP8 entfernt worden.
 
 **Befund:** Prompt verlangt ein GitHub-Repository; aktuell nur lokaler `main` ohne Remote.
 
@@ -139,7 +139,7 @@ HTTP-Verhalten am 2026-11-24 mit isoliertem Kestrel und zwei echten KDBX-Stände
 
 ## AP9 – CHANGELOG- und Plan-Pflege (laufend)
 
-**Status:** Erledigt (2026-11-24). Der Changelog ist als `[0.1.0] - 2026-11-24` (erstes Beta-Release) versioniert und lokal als `v0.1.0` getaggt. Ab jetzt wird er ohne `[Unreleased]` mit datierten Versionsabschnitten geführt (Regel in `AGENTS.md`). Der Plan wird nach Abschluss von AP7 geschlossen.
+**Status:** Erledigt (2026-11-24). Der Changelog ist als `[0.1.0] - 2026-11-24` (erstes Beta-Release) versioniert und als `v0.1.0` getaggt und veröffentlicht. Ab jetzt wird er ohne `[Unreleased]` mit datierten Versionsabschnitten geführt (Regel in `AGENTS.md`).
 
 Nach jedem Paket: `CHANGELOG.md`-Eintrag unter `## [Unreleased]` (Sektionen `Added`/`Changed`/`Fixed`/`Security`); bei Abschluss des Plans Eintrag `## [0.2.0] - <Datum>` und Plan-Status auf `done` setzen.
 
@@ -200,7 +200,7 @@ Nach jedem Paket: `CHANGELOG.md`-Eintrag unter `## [Unreleased]` (Sektionen `Add
 
 ## Noch offen
 
-- **AP7:** Öffentliches Repository `madcoda9000/KeePort` anlegen, `main` und Tag `v0.1.0` pushen, danach den Plan nach `docs/plans/closed` verschieben.
+- Nichts. Alle Arbeitspakete sind erledigt.
 
 ## Risiken
 
