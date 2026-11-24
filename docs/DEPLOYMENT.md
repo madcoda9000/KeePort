@@ -4,7 +4,7 @@
 
 **From zero to synced KeePass vaults on your Synology, QNAP or Linux server.**
 
-[Synology](#-synology-dsm) · [QNAP](#-qnap-qts--quts-hero) · [Linux server](#-linux-server-caddy--nginx) · [Trusted proxies](#-trust-your-reverse-proxy) · [First steps](#-first-steps-in-the-admin-console) · [KeePass apps](#-connect-keepass-apps) · [Updates](#-updating) · [Backups](#-backup--restore) · [Troubleshooting](#-troubleshooting)
+[Synology](#-synology-dsm) · [QNAP](#-qnap-qts--quts-hero) · [Linux server](#-linux-server-caddy--nginx) · [Trusted proxies](#-trust-your-reverse-proxy) · [HTTPS required](#-secure-connection-required) · [First steps](#-first-steps-in-the-admin-console) · [KeePass apps](#-connect-keepass-apps) · [Updates](#-updating) · [Backups](#-backup--restore) · [Troubleshooting](#-troubleshooting)
 
 </div>
 
@@ -132,6 +132,9 @@ With a Docker volume, use the backup command from [Backup & restore](#-backup--r
 
 Open `http://192.168.1.20:8081/admin` in your browser, enter the setup token and continue with [first steps](#-first-steps-in-the-admin-console). The web vault is at `http://192.168.1.20:8080`.
 
+> [!NOTE]
+> Over plain `http://` with an IP address the browser refuses KeePort's encryption functions, so **Create KDBX** in the admin console and **unlocking vaults** in the web vault are disabled there. Sign-in, users, permissions and uploads work. Set up HTTPS in the next step, or use an SSH tunnel for now: `ssh -L 8081:127.0.0.1:8081 your-user@192.168.1.20`, then open `http://localhost:8081/admin` ([why](#-secure-connection-required)).
+
 ### 4. HTTPS with the DSM reverse proxy
 
 Needed as soon as you use KeePort outside your LAN — and recommended inside it.
@@ -148,7 +151,18 @@ Needed as soon as you use KeePort outside your LAN — and recommended inside it
 4. In `.env`, set `KEEPORT_COOKIE_SECURE=true`, then run `sudo docker compose up -d`.
 5. Set `KEEPORT_TRUSTED_PROXIES=gateway` in `.env` and run `sudo docker compose up -d`, so KeePort sees each device's own IP address instead of the proxy's ([details](#-trust-your-reverse-proxy)).
 
-Create a reverse proxy rule **only for port 8080**. Keep the admin console on the LAN IP or reach it through VPN (DSM offers **VPN Server** in Package Center).
+#### Admin console over HTTPS, reachable only from your LAN
+
+Creating vaults in the admin console needs HTTPS (see [above](#-secure-connection-required)). Publish it under its own host name and block everyone outside your network:
+
+1. **Control Panel → Login Portal → Advanced → Access Control Profile → Create**, e.g. `lan-only`:
+   - Rule 1: **Allow**, IP range `192.168.1.0` / subnet mask `255.255.255.0` (your LAN).
+   - Rule 2: **Deny**, **All**. The allow rule must be listed first.
+2. **Reverse Proxy → Create**: source `HTTPS` / `keeport-admin.example.com` / `443`, destination `HTTP` / `localhost` / `8081`. Select the access control profile `lan-only`.
+3. Add the host name to your certificate (or create one for it) and assign it in **Certificate → Settings**.
+4. Test it: on your phone **with Wi-Fi off**, `https://keeport-admin.example.com/admin` must be refused (`403`). In your LAN it loads and **Create KDBX** works.
+
+Never assign the profile to the vault rule — KeePass apps must reach `vault.example.com` from anywhere. If the admin page is refused inside your LAN too, your router forwards the request from another address (NAT loopback); check the source IP in DSM's **Log Center** and allow it in the profile. A VPN (DSM **VPN Server**) is an alternative to publishing the admin console.
 
 ### 5. Backups with Hyper Backup
 
@@ -212,7 +226,7 @@ If `docker` is not found, open Container Station once so it finishes its setup, 
 
 ### 3. Open the admin console
 
-Open `http://192.168.1.30:8081/admin`, enter the setup token and continue with [first steps](#-first-steps-in-the-admin-console). The web vault is at `http://192.168.1.30:8090`. The container also shows up in Container Station, where you can see its logs and restart it.
+Open `http://192.168.1.30:8081/admin`, enter the setup token and continue with [first steps](#-first-steps-in-the-admin-console). Over plain `http://` with an IP, **Create KDBX** and unlocking vaults are disabled — use HTTPS or an SSH tunnel to `localhost` ([why](#-secure-connection-required)). The web vault is at `http://192.168.1.30:8090`. The container also shows up in Container Station, where you can see its logs and restart it.
 
 ### 4. HTTPS with the QTS reverse proxy
 
@@ -300,6 +314,25 @@ server {
 Keep `/admin` and `/api/admin` off the public vault host. If you must share one hostname, route those paths to port `8081` and restrict them with IP allowlists or VPN-only access.
 
 ---
+
+## 🔐 Secure connection required
+
+KeePort encrypts and decrypts vaults in the browser with the Web Crypto API. Browsers only provide it in a **secure context**: pages served over **HTTPS**, or from **`http://localhost`**. Over plain `http://` with an IP address or host name (e.g. `http://192.168.1.20:8081`) it is missing, so KeePort disables these actions and shows a "Secure connection required" notice:
+
+| Needs a secure connection | Works over plain HTTP |
+|---|---|
+| Create KDBX (admin console) | Sign-in, users, permissions, WebDAV credentials, settings, logs |
+| Unlock, edit and save vaults (web vault) | Uploading and downloading `.kdbx` files |
+
+KeePass apps syncing via WebDAV are not affected — they encrypt on the device.
+
+Ways to get a secure connection:
+
+| Option | How |
+|---|---|
+| **HTTPS through your reverse proxy** (recommended) | Web vault: see the HTTPS steps for [Synology](#4-https-with-the-dsm-reverse-proxy), [QNAP](#4-https-with-the-qts-reverse-proxy) or [Caddy/nginx](#-linux-server-caddy--nginx). Admin console: on Synology publish it with a LAN-only access control profile ([steps](#admin-console-over-https-reachable-only-from-your-lan)); elsewhere restrict it to LAN/VPN at the proxy. |
+| **SSH tunnel to `localhost`** | `ssh -L 8081:127.0.0.1:<admin host port> user@<nas-ip>`, then open `http://localhost:8081/admin`. `localhost` counts as secure. |
+| **Create the vault elsewhere** | Create the `.kdbx` in KeePassXC or a mobile KeePass app and upload it under **Vault files → Upload a vault**. |
 
 ## 🛰️ Trust your reverse proxy
 
@@ -463,6 +496,7 @@ Limits apply per client address. Behind a reverse proxy, [trust the proxy](#-tru
 
 | Symptom | What to do |
 |---|---|
+| "Secure connection required" or `randomBytes is not a function` | The page was opened over plain `http://` with an IP or host name. Use HTTPS or an SSH tunnel to `localhost` ([details](#-secure-connection-required)). |
 | Container restarts again and again | Read the first lines of the log (`sudo docker compose logs keeport`, or **Container Manager → Container → keeport → Log**). A line starting with `KeePort cannot start:` names the setting in `.env` to fix. |
 | No `setup token` in the log | An administrator already exists. Sign in at `/admin`. |
 | `KeePort cannot write to data directory` on start | The data folder must belong to UID/GID `1000:1000` (`chown -R 1000:1000 <folder>`). |

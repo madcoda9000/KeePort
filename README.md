@@ -123,7 +123,7 @@ ssh -L 8081:127.0.0.1:8081 user@your-nas
 **First steps in the admin console:** create the administrator → create a user → create or upload a vault and grant access → create a WebDAV app password per device.
 
 > [!TIP]
-> To reach the admin console from your LAN or VPN instead, set `KEEPORT_ADMIN_BIND` in `.env` to the host's LAN or VPN IP and run `docker compose up -d` again. Avoid `0.0.0.0`: it opens the admin console on every network the host is connected to — your whole subnet and, on a server with a public IP, the internet ([details](docs/DEPLOYMENT.md#who-can-reach-the-admin-console)). Never expose port `8081` to the internet.
+> To reach the admin console from your LAN or VPN instead, set `KEEPORT_ADMIN_BIND` in `.env` to the host's LAN or VPN IP and run `docker compose up -d` again. Avoid `0.0.0.0`: it opens the admin console on every network the host is connected to — your whole subnet and, on a server with a public IP, the internet ([details](docs/DEPLOYMENT.md#who-can-reach-the-admin-console)). Never expose port `8081` to the internet. Creating vaults in the admin console and unlocking them in the web vault need HTTPS or `http://localhost`, because browsers only offer their encryption functions there ([details](docs/DEPLOYMENT.md#-secure-connection-required)).
 
 ### Updating to a new release
 

@@ -62,6 +62,7 @@ import {
 } from '@/components/ui/sidebar';
 import { TableCell, TableRow } from '@/components/ui/table';
 import { VersionBadge } from '@shared/app-version';
+import { InsecureContextAlert, hasBrowserCrypto } from '@shared/secure-context';
 import { DataTable, type TableColumn } from '@shared/data-table';
 import { Textarea } from '@/components/ui/textarea';
 
@@ -770,6 +771,11 @@ export default function App() {
                 </CardDescription>
               </CardHeader>
               <CardContent>
+                {!hasBrowserCrypto() && (
+                  <div className="mb-5">
+                    <InsecureContextAlert action="Unlocking a vault" />
+                  </div>
+                )}
                 <form className="grid gap-5" onSubmit={handleUnlock}>
                   <FieldGroup className="gap-4">
                     <Field>
@@ -797,7 +803,7 @@ export default function App() {
                       />
                     </Field>
                   </FieldGroup>
-                  <Button type="submit" className="justify-self-start" disabled={busy !== null}>
+                  <Button type="submit" className="justify-self-start" disabled={busy !== null || !hasBrowserCrypto()}>
                     <LockKeyholeOpenIcon />
                     {busy === 'unlock' ? 'Unlocking…' : 'Unlock vault'}
                   </Button>

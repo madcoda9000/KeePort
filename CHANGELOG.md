@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.1] - 2026-11-24
+
+### Fixed
+
+- Opening the admin console or web vault over plain `http://` with an IP address (e.g. `http://192.168.1.20:8081`) made **Create KDBX** fail with `randomBytes is not a function`, and unlocking vaults failed the same way: browsers only provide the Web Crypto API over HTTPS or `localhost`. Both pages now detect this, disable the action and explain how to get a secure connection.
+
+### Changed
+
+- The deployment guide explains which actions need HTTPS or `localhost`, adds steps to publish the admin console on Synology over HTTPS restricted to the LAN with an access control profile, and mentions the SSH tunnel and upload alternatives.
+
 ## [0.4.0] - 2026-11-24
 
 ### Added
@@ -127,6 +137,7 @@ First beta release.
 - Login and setup share a configurable per-IP rate limit; session checks and sign-out are exempt. WebDAV has a separate configurable limit applied before authentication.
 - Admin accounts can only sign in to the Admin console; Vault and WebDAV require a separate user account. Admin sessions are scoped to the Admin API, so existing admins need to sign in again after updating.
 
+[0.4.1]: https://github.com/madcoda9000/KeePort/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/madcoda9000/KeePort/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/madcoda9000/KeePort/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/madcoda9000/KeePort/compare/v0.2.0...v0.2.1

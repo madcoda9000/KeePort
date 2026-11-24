@@ -70,6 +70,7 @@ import {
 } from '@/components/ui/sidebar';
 import { TableCell, TableRow } from '@/components/ui/table';
 import { VersionBadge } from '@shared/app-version';
+import { InsecureContextAlert, hasBrowserCrypto } from '@shared/secure-context';
 import { DataTable, type TableColumn } from '@shared/data-table';
 import { matchesTableSearch, timestampSortValue } from '@shared/table-data';
 
@@ -1063,6 +1064,8 @@ export default function App() {
     );
   }
 
+  // Browsers only offer the Web Crypto API needed for KDBX encryption over HTTPS or on localhost.
+  const browserCrypto = hasBrowserCrypto();
   const currentSection = ADMIN_SECTIONS[tab];
   return (
     <SidebarProvider>
@@ -1122,6 +1125,11 @@ export default function App() {
                     <CardDescription>New vaults are encrypted in your browser before upload.</CardDescription>
                   </CardHeader>
                   <CardContent>
+                    {!browserCrypto && (
+                      <div className="mb-4">
+                        <InsecureContextAlert action="Creating a vault" />
+                      </div>
+                    )}
                     <form
                       className="grid gap-4"
                       onSubmit={/**
@@ -1161,7 +1169,7 @@ export default function App() {
                           />
                         </Field>
                       </FieldGroup>
-                      <Button type="submit" size="sm" className="justify-self-start" disabled={busy !== null}>
+                      <Button type="submit" size="sm" className="justify-self-start" disabled={busy !== null || !browserCrypto}>
                         <PlusIcon />
                         {busy === 'create-vault' ? 'Creating…' : 'Create KDBX'}
                       </Button>
