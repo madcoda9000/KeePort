@@ -11,9 +11,12 @@ services:
       # The container always serves the admin console on 8081; change KEEPORT_ADMIN_HOST_PORT to move it on the host.
       KeePort__AdminPorts__0: "8081"
       KeePort__TrustedProxies: ${KEEPORT_TRUSTED_PROXIES:-}
+      # HTTPS with a self-signed certificate on the admin port; set KEEPORT_ADMIN_HTTPS=false to keep plain HTTP.
+      KeePort__AdminHttps: ${KEEPORT_ADMIN_HTTPS:-true}
+      KeePort__AdminTlsHosts: ${KEEPORT_ADMIN_TLS_HOSTS:-}
     ports:
       - "${KEEPORT_HTTP_HOST_PORT:-8080}:8080"
-      - "${KEEPORT_ADMIN_BIND:-127.0.0.1}:${KEEPORT_ADMIN_HOST_PORT:-8081}:8081"
+      - "${KEEPORT_ADMIN_BIND:-0.0.0.0}:${KEEPORT_ADMIN_HOST_PORT:-8081}:8081"
     volumes:
       # A named volume by default; set KEEPORT_DATA to a folder (e.g. ./data) to use a bind mount.
       - ${KEEPORT_DATA:-keeport-data}:/data

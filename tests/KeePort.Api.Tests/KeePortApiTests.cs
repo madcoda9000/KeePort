@@ -857,6 +857,39 @@ public class KeePortApiTests : IDisposable
         Assert.Equal("203.0.113.13", (await FindWebDavLogAsync(admin, "/webdav/chain")).GetProperty("remoteIp").GetString());
     }
 
+    /// <summary>Verifies that session cookies are Secure over HTTPS even when KEEPORT_COOKIE_SECURE is false.</summary>
+    [Fact]
+    public async Task Session_Cookies_Are_Secure_Over_Https()
+    {
+        using var https = _factory.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost") });
+        await https.GetAsync("/api/health");
+        using var setup = await https.PostAsJsonAsync($"{AdminAuthPath}/setup", new { setupToken = ReadSetupToken(), username = "admin", password = AdminPassword, email = AdminEmail });
+        setup.EnsureSuccessStatusCode();
+        var cookies = setup.Headers.GetValues("Set-Cookie").ToArray();
+        Assert.NotEmpty(cookies);
+        Assert.All(cookies, /* Checks one session cookie for the Secure attribute.
+         * <param name="cookie">One Set-Cookie header value.</param>
+         */ cookie => Assert.Contains("secure", cookie, StringComparison.OrdinalIgnoreCase));
+
+        // Plain HTTP keeps following KEEPORT_COOKIE_SECURE (false in these tests).
+        var (_, _) = await CreateUserAsync(_admin, await LoginAdminAsync(_admin), "alice", "user");
+        using var http = await _user.PostAsJsonAsync("/api/auth/login", new { username = "alice", password = "User passphrase 123" });
+        http.EnsureSuccessStatusCode();
+        Assert.All(http.Headers.GetValues("Set-Cookie"), /* Checks one plain-HTTP session cookie.
+         * <param name="cookie">One Set-Cookie header value.</param>
+         */ cookie => Assert.DoesNotContain("secure", cookie, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>Signs in the administrator created by an earlier setup and returns the CSRF token.</summary>
+    /// <param name="client">The test HTTP client for the request.</param>
+    private static async Task<string> LoginAdminAsync(HttpClient client)
+    {
+        var response = await client.PostAsJsonAsync($"{AdminAuthPath}/login", new { username = "admin", password = AdminPassword });
+        response.EnsureSuccessStatusCode();
+        var json = await response.Content.ReadFromJsonAsync<JsonElement>();
+        return json.GetProperty("csrfToken").GetString()!;
+    }
+
     /// <summary>Sends an unauthenticated WebDAV GET as if it arrived from a proxy, and returns the status code.</summary>
     /// <param name="factory">The test application to send the request to.</param>
     /// <param name="sender">The address of the connecting proxy or client.</param>

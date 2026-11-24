@@ -77,6 +77,38 @@ builder.Services.AddRateLimiter(options =>
     };
 });
 
+// The admin console is served over HTTPS with a self-signed certificate by default, so browsers allow
+// creating vaults (Web Crypto API) without a reverse proxy. KEEPORT_ADMIN_HTTPS=false keeps plain HTTP.
+var adminPorts = builder.Configuration.GetSection("KeePort:AdminPorts").Get<int[]>() ?? [];
+bool adminHttps;
+try
+{
+    adminHttps = ConfigFlags.Read(builder.Configuration, "KeePort:AdminHttps", "KEEPORT_ADMIN_HTTPS", defaultValue: true);
+}
+catch (InvalidOperationException ex)
+{
+    Console.Error.WriteLine($"KeePort cannot start: {ex.Message}");
+    throw;
+}
+
+System.Security.Cryptography.X509Certificates.X509Certificate2? adminCertificate = null;
+var adminCertificateCreated = false;
+var listenerUrls = builder.Configuration["urls"];
+if (adminHttps && adminPorts.Length > 0 && !string.IsNullOrWhiteSpace(listenerUrls))
+{
+    var tlsHosts = (builder.Configuration["KeePort:AdminTlsHosts"] ?? string.Empty)
+        .Split([',', ';', ' '], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+    (adminCertificate, adminCertificateCreated) = AdminTls.LoadOrCreate(dataDir, tlsHosts, DateTimeOffset.UtcNow);
+    builder.WebHost.UseUrls(AdminTls.RewriteUrls(listenerUrls, adminPorts));
+    var certificate = adminCertificate;
+    // Uses the self-signed admin certificate for every HTTPS listener.
+    // <param name="options">The Kestrel server options.</param>
+    builder.WebHost.ConfigureKestrel(options => options.ConfigureHttpsDefaults(
+        // Assigns the admin certificate to HTTPS endpoints.
+        // <param name="https">The HTTPS connection adapter options.</param>
+        https => https.ServerCertificate = certificate));
+}
+
 TrustedProxyList trustedProxies;
 try
 {
@@ -161,7 +193,17 @@ app.Use(async (context, next) =>
     await next();
 });
 
-var adminPorts = app.Configuration.GetSection("KeePort:AdminPorts").Get<int[]>() ?? [];
+if (adminCertificate is not null)
+{
+    app.Logger.LogInformation(
+        "Admin console uses HTTPS on port(s) {AdminPorts} with a {State} self-signed certificate (SHA-256 fingerprint {Fingerprint}, valid until {NotAfter:yyyy-MM-dd}). Open it with https://; your browser asks once to accept the certificate.",
+        string.Join(", ", adminPorts), adminCertificateCreated ? "new" : "stored", AdminTls.Fingerprint(adminCertificate), adminCertificate.NotAfter);
+}
+else if (adminPorts.Length > 0 && !adminHttps)
+{
+    app.Logger.LogWarning("Admin console uses plain HTTP (KEEPORT_ADMIN_HTTPS=false). Creating vaults needs HTTPS or localhost; use a reverse proxy with HTTPS or an SSH tunnel.");
+}
+
 if (adminPorts.Length > 0)
 {
     // Restricts access to admin routes to the configured listener ports.

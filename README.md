@@ -109,21 +109,19 @@ docker compose logs keeport | grep -i "setup token"
 
 | What | Where |
 |---|---|
-| 🌐 Web vault | `http://<host>:8080` |
+| 🌐 Web vault | `http://<host>:8080` — use HTTPS via your reverse proxy to unlock vaults |
 | 📂 WebDAV | `http://<host>:8080/webdav` |
-| 🛠️ Admin console | `http://127.0.0.1:8081/admin` (local only, see below) |
+| 🛠️ Admin console | **`https://<host>:8081/admin`** (self-signed certificate, LAN only) |
 
-The admin console is bound to `127.0.0.1` by default, so it is not reachable from your network. Open it through an SSH tunnel:
-
-```bash
-ssh -L 8081:127.0.0.1:8081 user@your-nas
-# then open http://localhost:8081/admin and enter the setup token
-```
+Open the admin console with **`https://`**. Your browser warns once about the self-signed certificate — accept it ([details](docs/DEPLOYMENT.md#the-admin-certificate-warning)). HTTPS is what lets the browser create encrypted vaults.
 
 **First steps in the admin console:** create the administrator → create a user → create or upload a vault and grant access → create a WebDAV app password per device.
 
-> [!TIP]
-> To reach the admin console from your LAN or VPN instead, set `KEEPORT_ADMIN_BIND` in `.env` to the host's LAN or VPN IP and run `docker compose up -d` again. Avoid `0.0.0.0`: it opens the admin console on every network the host is connected to — your whole subnet and, on a server with a public IP, the internet ([details](docs/DEPLOYMENT.md#who-can-reach-the-admin-console)). Never expose port `8081` to the internet. Creating vaults in the admin console and unlocking them in the web vault need HTTPS or `http://localhost`, because browsers only offer their encryption functions there ([details](docs/DEPLOYMENT.md#-secure-connection-required)).
+> [!CAUTION]
+> The admin console listens on every network of the host by default — fine for a NAS behind your home router, but **never forward port `8081` or publish it through a reverse proxy**. On a server with a public IP (VPS), set `KEEPORT_ADMIN_BIND=127.0.0.1` in `.env` and use an SSH tunnel (`ssh -L 8081:127.0.0.1:8081 user@server`, then `https://localhost:8081/admin`) — Docker publishes ports past host firewalls such as `ufw` ([details](docs/DEPLOYMENT.md#who-can-reach-the-admin-console)).
+
+> [!NOTE]
+> Unlocking vaults in the web vault needs HTTPS (or `http://localhost`), because browsers only offer their encryption functions there. Publish the web vault through a reverse proxy with HTTPS; over plain `http://<ip>` KeePort shows a warning instead ([details](docs/DEPLOYMENT.md#-secure-connection-required)).
 
 ### Updating to a new release
 
@@ -180,7 +178,7 @@ Setup instructions per client are in the [deployment guide](docs/DEPLOYMENT.md#-
 - **Separate WebDAV credentials:** one app password per device, stored as an Argon2id hash and revocable at any time.
 - **Hardened sessions:** `HttpOnly`/`SameSite` cookies, CSRF tokens, Argon2id password hashing and configurable per-IP rate limits for sign-in and WebDAV.
 - **Explicit proxy trust:** client addresses from `X-Forwarded-For` are only accepted from reverse proxies you list; catch-all entries are refused.
-- **Admin isolation:** admin endpoints only answer on the admin port when `KeePort:AdminPorts` is configured.
+- **Admin isolation:** admin endpoints only answer on the admin port, which is served over HTTPS with a self-signed certificate created on first start.
 - **Privacy-aware logging:** WebDAV logs record method, path, status and headers such as `If-Match` — never passwords or file contents.
 
 Use HTTPS (for example behind a reverse proxy) before exposing the web vault or WebDAV beyond your LAN. The [deployment guide](docs/DEPLOYMENT.md) covers HTTPS with the Synology and QNAP reverse proxies as well as Caddy and nginx.
@@ -193,7 +191,9 @@ Copy `.env.example` to `.env` and adjust as needed:
 |---|---|---|
 | `KEEPORT_HTTP_HOST_PORT` | `8080` | Host port of the web vault and WebDAV (e.g. `8090` on QNAP, where QTS uses 8080). |
 | `KEEPORT_DATA` | `keeport-data` | Docker volume name, or a folder path for a bind mount owned by UID 1000. |
-| `KEEPORT_ADMIN_BIND` | `127.0.0.1` | Host address the admin port is published on. |
+| `KEEPORT_ADMIN_BIND` | `0.0.0.0` | Host address the admin port is published on; `127.0.0.1` on a VPS. |
+| `KEEPORT_ADMIN_HTTPS` | `true` | HTTPS with a self-signed certificate for the admin console; `false` if a reverse proxy does TLS. |
+| `KEEPORT_ADMIN_TLS_HOSTS` | *(empty)* | Extra names/IPs for the admin certificate, e.g. `192.168.1.20, nas.local`. |
 | `KEEPORT_ADMIN_HOST_PORT` | `8081` | Host port of the admin console (the container side is always `8081`). |
 | `KEEPORT_COOKIE_SECURE` | `false` | Set to `true` when KeePort is served over HTTPS. |
 | `KEEPORT_TRUSTED_PROXIES` | *(empty)* | `gateway` for a reverse proxy on the same host (NAS proxy, Caddy, nginx), or the proxy's IP/network, so KeePort sees each device's own address ([details](docs/DEPLOYMENT.md#-trust-your-reverse-proxy)). |

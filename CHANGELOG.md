@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-11-24
+
+### Added
+
+- The admin console is served over **HTTPS with a self-signed certificate** by default, so creating vaults works in the browser without a reverse proxy, SSH tunnel or hosts entry. KeePort creates the certificate on first start (`/data/tls/admin.pfx`, ECDSA P-256, valid 5 years, renewed automatically) and logs its SHA-256 fingerprint. Browsers warn once; accept the certificate.
+- `KEEPORT_ADMIN_HTTPS` (default `true`) turns this off when a reverse proxy terminates TLS, and `KEEPORT_ADMIN_TLS_HOSTS` adds names or IPs to the certificate.
+- The web vault's sign-in page warns when it is opened over plain `http://` with an IP or host name, because unlocking vaults needs HTTPS.
+
+### Changed
+
+- **`KEEPORT_ADMIN_BIND` defaults to `0.0.0.0`**, so the admin console is reachable in the LAN at `https://<host>:8081/admin`. Never forward the admin port or publish it through a reverse proxy; on a server with a public IP set `KEEPORT_ADMIN_BIND=127.0.0.1`. Existing `.env` files keep their value.
+- **Open the admin console with `https://`.** Plain `http://` to the admin port no longer works. A reverse proxy that forwards to the admin port via `http://` must switch to `https://` or set `KEEPORT_ADMIN_HTTPS=false`.
+- Session cookies are always `Secure` when the request uses HTTPS.
+- The deployment guide replaces the SSH tunnel and access-control-profile steps for the admin console with the built-in HTTPS and explains the certificate warning and fingerprint check.
+
 ## [0.4.1] - 2026-11-24
 
 ### Fixed
@@ -137,6 +152,7 @@ First beta release.
 - Login and setup share a configurable per-IP rate limit; session checks and sign-out are exempt. WebDAV has a separate configurable limit applied before authentication.
 - Admin accounts can only sign in to the Admin console; Vault and WebDAV require a separate user account. Admin sessions are scoped to the Admin API, so existing admins need to sign in again after updating.
 
+[0.5.0]: https://github.com/madcoda9000/KeePort/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/madcoda9000/KeePort/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/madcoda9000/KeePort/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/madcoda9000/KeePort/compare/v0.2.1...v0.3.0

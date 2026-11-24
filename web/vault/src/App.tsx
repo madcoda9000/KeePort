@@ -541,6 +541,7 @@ export default function App() {
                 Sign in to access the KeePass vaults shared with you.
               </p>
             </div>
+            {!hasBrowserCrypto() && <InsecureContextAlert action="Unlocking vaults" />}
             {message?.kind === 'error' && (
               <Alert variant="destructive">
                 <AlertDescription>{message.text}</AlertDescription>
