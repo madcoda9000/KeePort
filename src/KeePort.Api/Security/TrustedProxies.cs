@@ -16,23 +16,40 @@ public sealed class TrustedProxyConfigurationException(string message) : Excepti
 /// </summary>
 /// <param name="Proxies">Single trusted proxy addresses.</param>
 /// <param name="Networks">Trusted proxy networks in CIDR notation.</param>
-public sealed record TrustedProxyList(IReadOnlyList<IPAddress> Proxies, IReadOnlyList<ProxyNetwork> Networks)
+/// <param name="Gateway">The container's default gateway when the keyword "gateway" was used, otherwise null.</param>
+public sealed record TrustedProxyList(IReadOnlyList<IPAddress> Proxies, IReadOnlyList<ProxyNetwork> Networks, IPAddress? Gateway = null)
 {
+    /// <summary>The keyword that trusts the container's current default gateway (a proxy on the Docker host).</summary>
+    public const string GatewayKeyword = "gateway";
+
     private static readonly char[] Separators = [',', ';', ' ', '\t', '\r', '\n'];
 
     /// <summary>
     /// Parses a list of IP addresses and CIDR networks separated by commas, semicolons or whitespace.
+    /// The keyword "gateway" stands for the container's current default gateway, which is where a reverse proxy on
+    /// the Docker host (for example the Synology or QNAP proxy) connects from; it follows changes of the Docker network.
     /// An empty value trusts only loopback. Catch-all networks and unspecified addresses are rejected because
     /// they would let any client spoof its address and bypass per-IP rate limits.
     /// </summary>
-    /// <param name="value">The configured value, for example "172.18.0.1, 10.10.0.0/16".</param>
-    /// <exception cref="TrustedProxyConfigurationException">An entry is not a valid, specific address or network.</exception>
-    public static TrustedProxyList Parse(string? value)
+    /// <param name="value">The configured value, for example "gateway" or "172.18.0.1, 10.10.0.0/16".</param>
+    /// <param name="gatewayResolver">Returns the default gateway, or null if none is found; defaults to reading /proc/net/route.</param>
+    /// <exception cref="TrustedProxyConfigurationException">An entry is not a valid, specific address or network, or the gateway cannot be determined.</exception>
+    public static TrustedProxyList Parse(string? value, Func<IPAddress?>? gatewayResolver = null)
     {
         var proxies = new List<IPAddress>();
         var networks = new List<ProxyNetwork>();
+        IPAddress? gateway = null;
         foreach (var entry in (value ?? string.Empty).Split(Separators, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
         {
+            if (string.Equals(entry, GatewayKeyword, StringComparison.OrdinalIgnoreCase))
+            {
+                gateway = (gatewayResolver ?? DefaultGateway.Read)()
+                    ?? throw new TrustedProxyConfigurationException(
+                        "'gateway' was set, but no default gateway was found. It only works inside a Docker container; otherwise list the proxy's address.");
+                proxies.Add(gateway);
+                continue;
+            }
+
             var slash = entry.IndexOf('/');
             if (slash < 0)
             {
@@ -52,7 +69,7 @@ public sealed record TrustedProxyList(IReadOnlyList<IPAddress> Proxies, IReadOnl
             }
             networks.Add(new ProxyNetwork(MaskAddress(address, prefix), prefix));
         }
-        return new TrustedProxyList(proxies, networks);
+        return new TrustedProxyList(proxies, networks, gateway);
     }
 
     /// <summary>Adds the trusted proxies to the forwarded-header options, keeping the default loopback entries.</summary>
@@ -72,9 +89,9 @@ public sealed record TrustedProxyList(IReadOnlyList<IPAddress> Proxies, IReadOnl
     /// <summary>Describes the trusted sources for the startup log.</summary>
     public string Describe()
     {
-        var entries = Proxies.Select(/* Formats a single trusted proxy address.
+        var entries = Proxies.Select(/* Formats a single trusted proxy address and marks the resolved gateway.
          * <param name="p">The trusted proxy address.</param>
-         */ p => p.ToString())
+         */ p => Gateway is not null && p.Equals(Gateway) ? $"{p} (gateway)" : p.ToString())
             .Concat(Networks.Select(/* Formats a trusted network in CIDR notation.
              * <param name="n">The trusted proxy network.</param>
              */ n => $"{n.Prefix}/{n.PrefixLength}"))
@@ -114,6 +131,58 @@ public sealed record TrustedProxyList(IReadOnlyList<IPAddress> Proxies, IReadOnl
             bytes[i] &= (byte)(0xFF << (8 - bits));
         }
         return new IPAddress(bytes);
+    }
+}
+
+/// <summary>Finds the default IPv4 gateway of the container, which is the address of the Docker host on its network.</summary>
+public static class DefaultGateway
+{
+    private const string RouteTablePath = "/proc/net/route";
+    private const int RouteFlagGateway = 0x2;
+
+    /// <summary>Reads the default gateway from /proc/net/route, or returns null when the file or a default route is missing.</summary>
+    public static IPAddress? Read()
+    {
+        try
+        {
+            return File.Exists(RouteTablePath) ? ParseRouteTable(File.ReadAllText(RouteTablePath)) : null;
+        }
+        catch (IOException)
+        {
+            return null;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Parses the Linux route table and returns the gateway of the first default route (destination 0.0.0.0 with the
+    /// gateway flag). The kernel prints addresses as hexadecimal in host byte order, e.g. "0116A8C0" for 192.168.22.1.
+    /// </summary>
+    /// <param name="routeTable">The contents of /proc/net/route.</param>
+    public static IPAddress? ParseRouteTable(string routeTable)
+    {
+        foreach (var line in routeTable.Split('\n').Skip(1))
+        {
+            var columns = line.Split(['\t', ' '], StringSplitOptions.RemoveEmptyEntries);
+            if (columns.Length < 4 || columns[1] != "00000000")
+            {
+                continue;
+            }
+            if (!int.TryParse(columns[3], System.Globalization.NumberStyles.HexNumber, null, out var flags) || (flags & RouteFlagGateway) == 0)
+            {
+                continue;
+            }
+            if (!uint.TryParse(columns[2], System.Globalization.NumberStyles.HexNumber, null, out var raw) || raw == 0)
+            {
+                continue;
+            }
+            // The kernel prints the address's in-memory bytes as a host-order integer; GetBytes restores those bytes.
+            return new IPAddress(BitConverter.GetBytes(raw));
+        }
+        return null;
     }
 }
 

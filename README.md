@@ -196,7 +196,7 @@ Copy `.env.example` to `.env` and adjust as needed:
 | `KEEPORT_ADMIN_BIND` | `127.0.0.1` | Host address the admin port is published on. |
 | `KEEPORT_ADMIN_HOST_PORT` | `8081` | Host port of the admin console (the container side is always `8081`). |
 | `KEEPORT_COOKIE_SECURE` | `false` | Set to `true` when KeePort is served over HTTPS. |
-| `KEEPORT_TRUSTED_PROXIES` | *(empty)* | Your reverse proxy's IP or network, so KeePort sees each device's own address ([details](docs/DEPLOYMENT.md#-trust-your-reverse-proxy)). |
+| `KEEPORT_TRUSTED_PROXIES` | *(empty)* | `gateway` for a reverse proxy on the same host (NAS proxy, Caddy, nginx), or the proxy's IP/network, so KeePort sees each device's own address ([details](docs/DEPLOYMENT.md#-trust-your-reverse-proxy)). |
 
 Sign-in and WebDAV rate limits are changed at runtime in **Admin → Settings**. Everything else — NAS setup, backups, reverse proxy examples, troubleshooting — is in the [deployment guide](docs/DEPLOYMENT.md).
 

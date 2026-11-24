@@ -69,6 +69,43 @@ public class TrustedProxyListTests
          */ n => n.Contains(IPAddress.Loopback));
     }
 
+    /// <summary>Verifies that the keyword "gateway" trusts the resolved Docker gateway next to other entries.</summary>
+    [Fact]
+    public void Gateway_Keyword_Trusts_The_Resolved_Gateway()
+    {
+        var list = TrustedProxyList.Parse("Gateway, 192.168.2.245", /* Returns a fixed gateway. */ () => IPAddress.Parse("172.22.0.1"));
+
+        Assert.Equal(new[] { "172.22.0.1", "192.168.2.245" }, list.Proxies.Select(/* Formats a parsed proxy address.
+         * <param name="p">The parsed proxy address.</param>
+         */ p => p.ToString()));
+        Assert.Equal(IPAddress.Parse("172.22.0.1"), list.Gateway);
+        Assert.Equal("loopback, 172.22.0.1 (gateway), 192.168.2.245", list.Describe());
+    }
+
+    /// <summary>Verifies that "gateway" stops the startup when no gateway can be found, e.g. outside Docker.</summary>
+    [Fact]
+    public void Gateway_Keyword_Without_Gateway_Is_Rejected()
+    {
+        var error = Assert.Throws<TrustedProxyConfigurationException>(/* Parses the keyword without a resolvable gateway. */
+            () => TrustedProxyList.Parse("gateway", /* Finds no gateway. */ () => null));
+        Assert.Contains("gateway", error.Message);
+    }
+
+    /// <summary>Verifies the parsing of /proc/net/route, including the host-order hexadecimal address format.</summary>
+    [Fact]
+    public void Reads_The_Default_Gateway_From_The_Route_Table()
+    {
+        const string routeTable =
+            "Iface\tDestination\tGateway \tFlags\tRefCnt\tUse\tMetric\tMask\t\tMTU\tWindow\tIRTT\n" +
+            "eth0\t000016AC\t00000000\t0001\t0\t0\t0\t0000FFFF\t0\t0\t0\n" +
+            "eth0\t00000000\t010016AC\t0003\t0\t0\t0\t00000000\t0\t0\t0\n";
+        var expected = BitConverter.IsLittleEndian ? "172.22.0.1" : "1.0.22.172";
+
+        Assert.Equal(expected, DefaultGateway.ParseRouteTable(routeTable)?.ToString());
+        Assert.Null(DefaultGateway.ParseRouteTable("Iface\tDestination\tGateway\tFlags\neth0\t000016AC\t00000000\t0001\n"));
+        Assert.Null(DefaultGateway.ParseRouteTable(string.Empty));
+    }
+
     /// <summary>Verifies that IPv4 clients of dual-stack sockets are formatted as plain IPv4.</summary>
     [Fact]
     public void Formats_Client_Addresses_Consistently()

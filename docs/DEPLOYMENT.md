@@ -146,7 +146,7 @@ Needed as soon as you use KeePort outside your LAN — and recommended inside it
 
 3. **Control Panel → Security → Certificate → Settings**: assign the certificate to `vault.example.com`.
 4. In `.env`, set `KEEPORT_COOKIE_SECURE=true`, then run `sudo docker compose up -d`.
-5. [Trust the reverse proxy](#-trust-your-reverse-proxy) so KeePort sees each device's own IP address.
+5. Set `KEEPORT_TRUSTED_PROXIES=gateway` in `.env` and run `sudo docker compose up -d`, so KeePort sees each device's own IP address instead of the proxy's ([details](#-trust-your-reverse-proxy)).
 
 Create a reverse proxy rule **only for port 8080**. Keep the admin console on the LAN IP or reach it through VPN (DSM offers **VPN Server** in Package Center).
 
@@ -225,7 +225,7 @@ Open `http://192.168.1.30:8081/admin`, enter the setup token and continue with [
    | Destination | `HTTP`, `localhost`, port `8090` |
 
 3. In `.env`, set `KEEPORT_COOKIE_SECURE=true`, then run `docker compose up -d`.
-4. [Trust the reverse proxy](#-trust-your-reverse-proxy) so KeePort sees each device's own IP address.
+4. Set `KEEPORT_TRUSTED_PROXIES=gateway` in `.env` and run `docker compose up -d`, so KeePort sees each device's own IP address instead of the proxy's ([details](#-trust-your-reverse-proxy)).
 
 As on Synology: no reverse proxy rule for the admin port. Use the LAN IP or QNAP's **QVPN Service**.
 
@@ -256,7 +256,7 @@ ssh -L 8081:127.0.0.1:8081 user@your-server
 
 To keep data in a folder instead of a Docker volume, set `KEEPORT_DATA=/srv/keeport/data` in `.env` and prepare it with `sudo mkdir -p /srv/keeport/data && sudo chown -R 1000:1000 /srv/keeport/data`.
 
-Terminate TLS in a reverse proxy, forward the vault host to `127.0.0.1:8080`, set `KEEPORT_COOKIE_SECURE=true` and [trust the reverse proxy](#-trust-your-reverse-proxy).
+Terminate TLS in a reverse proxy, forward the vault host to `127.0.0.1:8080`, set `KEEPORT_COOKIE_SECURE=true` and — for a proxy on the same host — `KEEPORT_TRUSTED_PROXIES=gateway` ([details](#-trust-your-reverse-proxy)).
 
 <details>
 <summary><b>Caddy</b> — automatic HTTPS</summary>
@@ -305,34 +305,48 @@ Keep `/admin` and `/api/admin` off the public vault host. If you must share one 
 
 A reverse proxy forwards every request to KeePort itself and passes the device's real address in the `X-Forwarded-For` header. KeePort only believes that header from proxies you list in `KEEPORT_TRUSTED_PROXIES`. Without the entry, KeePort sees the **proxy's** address for every device: the WebDAV log shows that address, and all devices share one rate-limit quota.
 
-The proxy usually does **not** connect from `127.0.0.1`, even when it runs on the same NAS or server: requests reach the container through Docker's network, for example from `172.18.0.1`.
+The proxy usually does **not** connect from `127.0.0.1`, even when it runs on the same NAS or server: requests reach the container through Docker's network, from the network's gateway address (for example `172.22.0.1`). That address can change whenever the network is recreated, e.g. after `docker compose down`.
 
-1. Set up the reverse proxy and open KeePort once through it (for example sync a KeePass app).
-2. In **Admin → Logs → WebDAV logs**, read the **Client IP** of that request. That is your proxy's address. The container log also says so:
+### Proxy on the same NAS or server (Synology, QNAP, Caddy/nginx on the host)
+
+Use the keyword `gateway`. KeePort looks up its current Docker gateway on every start and trusts exactly that one address — no need to look it up or update it later.
+
+```dotenv
+KEEPORT_TRUSTED_PROXIES=gateway
+```
+
+```bash
+docker compose up -d   # with sudo on Synology
+```
+
+Check the container log: it shows the resolved address,
+
+```text
+Accepting X-Forwarded-For/-Proto from: loopback, 172.22.0.1 (gateway)
+```
+
+and after a sync, **Admin → Logs → WebDAV logs** shows each device's own address instead of `172.x.0.1`.
+
+### Proxy on another machine or in another container
+
+List the address the proxy connects from:
+
+1. Open KeePort once through the proxy (for example sync a KeePass app).
+2. Read the **Client IP** of that request in **Admin → Logs → WebDAV logs**. The container log names it, too:
 
    ```text
-   Ignored X-Forwarded-For from 172.18.0.1: it is not a trusted proxy … add it to KEEPORT_TRUSTED_PROXIES.
+   Ignored X-Forwarded-For from 192.168.1.10: it is not a trusted proxy … add it to KEEPORT_TRUSTED_PROXIES.
    ```
 
-3. Add it to `.env` and apply the change:
+3. Add it to `.env`, e.g. `KEEPORT_TRUSTED_PROXIES=192.168.1.10`, and run `docker compose up -d`.
 
-   ```dotenv
-   KEEPORT_TRUSTED_PROXIES=172.18.0.1
-   ```
-
-   ```bash
-   docker compose up -d   # with sudo on Synology
-   ```
-
-4. Check the WebDAV log again: new requests now show each device's own address. On startup, the container log lists the trusted proxies (`Accepting X-Forwarded-For/-Proto from: loopback, 172.18.0.1`).
-
-Several entries are separated by commas, and networks use CIDR notation, e.g. `172.18.0.1, 192.168.1.10, 10.10.0.0/16`. Loopback is always trusted.
+Several entries are separated by commas and can be combined with `gateway`; networks use CIDR notation, e.g. `gateway, 192.168.1.10, 10.10.0.0/16`. Loopback is always trusted.
 
 > [!WARNING]
 > List only your proxy, not whole networks such as your LAN or `172.16.0.0/12`. Every trusted address can claim any client address — a device in a trusted network could fake its IP and bypass the rate limits that slow down password guessing. KeePort refuses to start with `0.0.0.0/0` or `::/0`.
 
 > [!NOTE]
-> The Docker gateway address can change if the Compose network is recreated (for example after `docker compose down`). If devices suddenly share one address again, look up the new proxy address in the WebDAV log and update `.env`. Chained proxies (e.g. Cloudflare in front of the NAS proxy) are not supported yet; only the last hop is evaluated.
+> Chained proxies (e.g. Cloudflare in front of the NAS proxy) are not supported yet; only the last hop is evaluated. `gateway` only works inside the Docker container; outside Docker KeePort refuses to start with it.
 
 ---
 
@@ -435,7 +449,7 @@ To restore, stop KeePort, put the files back into the data folder or a fresh vol
 | `KEEPORT_ADMIN_BIND` | `127.0.0.1` | Host address for the admin port — `127.0.0.1` or a LAN/VPN IP. `0.0.0.0` exposes it on every network of the host, see [who can reach the admin console](#who-can-reach-the-admin-console). |
 | `KEEPORT_ADMIN_HOST_PORT` | `8081` | Host port for the admin console. The container side is always `8081`. |
 | `KEEPORT_COOKIE_SECURE` | `false` | Set to `true` once KeePort is served over HTTPS (`yes`/`no` also work). |
-| `KEEPORT_TRUSTED_PROXIES` | *(empty: loopback only)* | Reverse proxies whose `X-Forwarded-For` is accepted — IPs or CIDR networks, comma-separated. See [Trust your reverse proxy](#-trust-your-reverse-proxy). |
+| `KEEPORT_TRUSTED_PROXIES` | *(empty: loopback only)* | Reverse proxies whose `X-Forwarded-For` is accepted — `gateway` for a proxy on the same host, or IPs/CIDR networks, comma-separated. See [Trust your reverse proxy](#-trust-your-reverse-proxy). |
 
 After changing `.env`, run `docker compose up -d` (with `sudo` on Synology).
 
@@ -460,8 +474,8 @@ Limits apply per client address. Behind a reverse proxy, [trust the proxy](#-tru
 | `412 Precondition Failed` | Someone saved in between. In KeePass2Android choose **Merge**; an admin can provide the conflict copy if needed. |
 | `428 Precondition Required` | Reopen the vault from the server in the app, then save again. |
 | `429 Too Many Requests` | Wait for `Retry-After`. If all devices show the same address in the WebDAV log, [trust your reverse proxy](#-trust-your-reverse-proxy); otherwise raise the limits in **Admin → Settings**. |
-| All devices show the same Client IP in the WebDAV log | That is your reverse proxy. Add it to `KEEPORT_TRUSTED_PROXIES` ([how](#-trust-your-reverse-proxy)). |
-| `KeePort cannot start: invalid KEEPORT_TRUSTED_PROXIES` | Fix the named entry: use single IPs or CIDR networks such as `10.10.0.0/16`; catch-all entries like `0.0.0.0/0` are refused. |
+| All devices show the same Client IP in the WebDAV log | That is your reverse proxy. Set `KEEPORT_TRUSTED_PROXIES=gateway` if it runs on the same host, otherwise add its address ([how](#-trust-your-reverse-proxy)). |
+| `KeePort cannot start: invalid KEEPORT_TRUSTED_PROXIES` | Fix the named entry: use `gateway` (only inside Docker), single IPs or CIDR networks such as `10.10.0.0/16`; catch-all entries like `0.0.0.0/0` are refused. |
 
 ## 🔍 What the server can and cannot see
 

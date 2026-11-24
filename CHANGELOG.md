@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-11-24
+
+### Added
+
+- `KEEPORT_TRUSTED_PROXIES=gateway` trusts the container's current Docker gateway, which is where a reverse proxy on the same host connects from (Synology or QNAP reverse proxy, Caddy/nginx on the host). KeePort reads the gateway from `/proc/net/route` on every start, so the setting keeps working when the Docker network is recreated and gets a new address (e.g. after `docker compose down`). The keyword can be combined with IPs and networks; outside Docker it stops the startup with a clear message. The startup log shows the resolved address.
+
+### Changed
+
+- The deployment guide recommends `gateway` for proxies on the same host and keeps the manual address lookup for proxies elsewhere.
+
 ## [0.3.0] - 2026-11-24
 
 ### Added
@@ -117,6 +127,7 @@ First beta release.
 - Login and setup share a configurable per-IP rate limit; session checks and sign-out are exempt. WebDAV has a separate configurable limit applied before authentication.
 - Admin accounts can only sign in to the Admin console; Vault and WebDAV require a separate user account. Admin sessions are scoped to the Admin API, so existing admins need to sign in again after updating.
 
+[0.4.0]: https://github.com/madcoda9000/KeePort/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/madcoda9000/KeePort/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/madcoda9000/KeePort/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/madcoda9000/KeePort/compare/v0.1.1...v0.2.0
