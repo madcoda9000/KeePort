@@ -1,110 +1,277 @@
-# KeePort deployment guide
+<div align="center">
 
-This guide is for NAS/home-server deployments with Docker Compose. It assumes Docker and Docker Compose v2 are installed.
+# 🚀 KeePort Deployment Guide
 
-## 1. Start KeePort
+**From zero to synced KeePass vaults on your Synology, QNAP or Linux server.**
+
+[Synology](#-synology-dsm) · [QNAP](#-qnap-qts--quts-hero) · [Linux server](#-linux-server-caddy--nginx) · [First steps](#-first-steps-in-the-admin-console) · [KeePass apps](#-connect-keepass-apps) · [Updates](#-updating) · [Backups](#-backup--restore) · [Troubleshooting](#-troubleshooting)
+
+</div>
+
+---
+
+## 🧭 Choose your path
+
+| You run… | Follow | Effort |
+|---|---|---|
+| 🟦 **Synology NAS** with DSM 7.2 or later | [Synology DSM](#-synology-dsm) | ~15 minutes, SSH or Container Manager |
+| 🟩 **QNAP NAS** with QTS 5 or QuTS hero | [QNAP](#-qnap-qts--quts-hero) | ~15 minutes, SSH |
+| 🐧 **Linux server or VPS** with Docker | [Linux server](#-linux-server-caddy--nginx) | ~10 minutes, plus Caddy or nginx |
+
+All paths use the same `docker-compose.yml` and end with the same [first steps in the admin console](#-first-steps-in-the-admin-console).
+
+> [!IMPORTANT]
+> Always install a **release** (for example `v0.1.1`), not the development branch. The latest version is listed on the [Releases page](https://github.com/madcoda9000/KeePort/releases). The examples below use `v0.1.1`.
+
+## 🧩 How the pieces fit together
+
+```mermaid
+flowchart LR
+    subgraph Clients
+        P["📱 KeePass apps"]
+        W["🌐 Browser"]
+        A["🛠️ Admin browser<br/><i>LAN / VPN only</i>"]
+    end
+    RP["🔒 Reverse proxy<br/>DSM · QTS · Caddy · nginx<br/>HTTPS :443"]
+    subgraph Container["KeePort container"]
+        V[":8080<br/>web vault + WebDAV"]
+        AD[":8081<br/>admin console"]
+        D[("/data<br/>keeport.db + vault/")]
+    end
+    P --> RP
+    W --> RP
+    RP --> V
+    A --> AD
+    V --- D
+    AD --- D
+```
+
+| Port | Serves | Who should reach it |
+|---|---|---|
+| `8080` (host port configurable) | Web vault, WebDAV, health check | Your devices — through HTTPS if anything leaves your LAN |
+| `8081` | Admin console and admin API | Only you, from the NAS itself, your LAN or a VPN. **Never the internet.** |
+
+The admin port is bound to `127.0.0.1` by default. On a NAS you will usually set it to the NAS's LAN address (shown in each guide).
+
+---
+
+## 🟦 Synology DSM
+
+> Tested layout for DSM 7.2+ with **Container Manager**. Menu names can differ slightly between DSM versions.
+
+### 1. Prepare DSM
+
+1. **Package Center** → install **Container Manager**. This also creates the shared folder `docker`.
+2. **Control Panel → Terminal & SNMP** → enable **SSH service** (you can turn it off again afterwards).
+3. Note your NAS's LAN IP, for example `192.168.1.20`.
+
+### 2. Install KeePort
+
+Connect with an account in the *administrators* group:
 
 ```bash
-git clone --branch v0.1.0 https://github.com/madcoda9000/KeePort.git
+ssh your-user@192.168.1.20
+cd /volume1/docker
+
+# Download and unpack the release
+curl -L https://github.com/madcoda9000/KeePort/archive/refs/tags/v0.1.1.tar.gz | tar xz
+mv KeePort-0.1.1 keeport
+
+# Data folder outside the app folder, writable by the container user (UID 1000)
+sudo mkdir -p /volume1/docker/keeport-data
+sudo chown -R 1000:1000 /volume1/docker/keeport-data
+
+cd keeport
+cp .env.example .env
+vi .env
+```
+
+Set these values in `.env` (adjust the IP):
+
+```dotenv
+KEEPORT_DATA=/volume1/docker/keeport-data
+KEEPORT_ADMIN_BIND=192.168.1.20
+KEEPORT_HTTP_HOST_PORT=8080
+```
+
+Build and start (the first build takes a few minutes):
+
+```bash
+sudo docker compose up -d --build
+sudo docker compose logs keeport | grep -i "setup token"
+```
+
+> [!NOTE]
+> On older DSM versions the command may be `sudo docker-compose` instead of `sudo docker compose`.
+
+<details>
+<summary><b>Prefer clicking? Install with Container Manager instead of SSH</b></summary>
+
+1. Download `Source code (tar.gz)` of the release from the [Releases page](https://github.com/madcoda9000/KeePort/releases), unpack it on your computer and rename the folder to `keeport`.
+2. In `keeport`, copy `.env.example` to `.env` and set `KEEPORT_ADMIN_BIND` to your NAS IP. Leave `KEEPORT_DATA` at its default — the GUI cannot set the folder owner to UID 1000, so the data stays in a Docker volume.
+3. **File Station** → upload the `keeport` folder into the shared folder `docker`.
+4. **Container Manager → Project → Create**: project name `keeport`, path `/docker/keeport`, choose the existing `docker-compose.yml`, then **Next → Done**. Container Manager builds the image and starts the container.
+5. **Container Manager → Container → keeport → Log**: look for the line with `setup token`.
+
+With a Docker volume, use the backup command from [Backup & restore](#-backup--restore) instead of Hyper Backup.
+</details>
+
+### 3. Open the admin console
+
+Open `http://192.168.1.20:8081/admin` in your browser, enter the setup token and continue with [first steps](#-first-steps-in-the-admin-console). The web vault is at `http://192.168.1.20:8080`.
+
+### 4. HTTPS with the DSM reverse proxy
+
+Needed as soon as you use KeePort outside your LAN — and recommended inside it.
+
+1. **Control Panel → Security → Certificate**: add a Let's Encrypt certificate for your domain, e.g. `vault.example.com` (requires that the domain points to your router and port 80/443 are forwarded).
+2. **Control Panel → Login Portal → Advanced → Reverse Proxy → Create**:
+
+   | Field | Value |
+   |---|---|
+   | Source protocol / hostname / port | `HTTPS` / `vault.example.com` / `443` |
+   | Destination protocol / hostname / port | `HTTP` / `localhost` / `8080` |
+
+3. **Control Panel → Security → Certificate → Settings**: assign the certificate to `vault.example.com`.
+4. In `.env`, set `KEEPORT_COOKIE_SECURE=true`, then run `sudo docker compose up -d`.
+
+Create a reverse proxy rule **only for port 8080**. Keep the admin console on the LAN IP or reach it through VPN (DSM offers **VPN Server** in Package Center).
+
+### 5. Backups with Hyper Backup
+
+Add the folder `docker/keeport-data` to a **Hyper Backup** task. For a fully consistent copy, stop KeePort while the backup runs — for example with two scheduled tasks in **Control Panel → Task Scheduler** (as `root`):
+
+```bash
+# before the backup window
+docker stop keeport
+# after the backup window
+docker start keeport
+```
+
+---
+
+## 🟩 QNAP QTS / QuTS hero
+
+> Written for QTS 5.x / QuTS hero with **Container Station 3**. Menu names can differ slightly between firmware versions.
+
+> [!WARNING]
+> QTS uses port **8080** for its own web interface by default. Pick another host port for KeePort, such as `8090`, as shown below.
+
+### 1. Prepare QTS
+
+1. **App Center** → install **Container Station**. It creates the shared folder `Container`.
+2. **Control Panel → Network & File Services → Telnet / SSH** → enable SSH.
+3. Note your NAS's LAN IP, for example `192.168.1.30`.
+
+### 2. Install KeePort
+
+```bash
+ssh admin@192.168.1.30
+cd /share/Container
+
+curl -L https://github.com/madcoda9000/KeePort/archive/refs/tags/v0.1.1.tar.gz | tar xz
+mv KeePort-0.1.1 keeport
+
+mkdir -p /share/Container/keeport-data
+chown -R 1000:1000 /share/Container/keeport-data
+
+cd keeport
+cp .env.example .env
+vi .env
+```
+
+Set these values in `.env`:
+
+```dotenv
+KEEPORT_DATA=/share/Container/keeport-data
+KEEPORT_HTTP_HOST_PORT=8090
+KEEPORT_ADMIN_BIND=192.168.1.30
+```
+
+Build and start:
+
+```bash
+docker compose up -d --build
+docker compose logs keeport | grep -i "setup token"
+```
+
+If `docker` is not found, open Container Station once so it finishes its setup, then reconnect via SSH.
+
+### 3. Open the admin console
+
+Open `http://192.168.1.30:8081/admin`, enter the setup token and continue with [first steps](#-first-steps-in-the-admin-console). The web vault is at `http://192.168.1.30:8090`. The container also shows up in Container Station, where you can see its logs and restart it.
+
+### 4. HTTPS with the QTS reverse proxy
+
+1. Set up a certificate for your domain in the QTS certificate settings (Let's Encrypt is supported; in QTS 5 under **Control Panel → Security → SSL Certificate & Private Key**).
+2. **Control Panel → Network & File Services → Network Access → Reverse Proxy → Add**:
+
+   | Field | Value |
+   |---|---|
+   | Source | `HTTPS`, domain `vault.example.com`, port `443` |
+   | Destination | `HTTP`, `localhost`, port `8090` |
+
+3. In `.env`, set `KEEPORT_COOKIE_SECURE=true`, then run `docker compose up -d`.
+
+As on Synology: no reverse proxy rule for the admin port. Use the LAN IP or QNAP's **QVPN Service**.
+
+### 5. Backups with Hybrid Backup Sync
+
+Add `Container/keeport-data` to a **Hybrid Backup Sync** job. For a fully consistent copy, run `docker stop keeport` before and `docker start keeport` after the job (for example via a cron entry on the NAS).
+
+---
+
+## 🐧 Linux server (Caddy / nginx)
+
+For a home server or VPS with Docker Engine and the Compose v2 plugin.
+
+```bash
+git clone --branch v0.1.1 https://github.com/madcoda9000/KeePort.git
 cd KeePort
 cp .env.example .env
 docker compose up -d --build
-docker compose logs -f keeport
+docker compose logs keeport | grep -i "setup token"
 ```
 
-`--branch v0.1.0` checks out a release instead of the development branch. Pick the latest version from the [Releases page](https://github.com/madcoda9000/KeePort/releases). To update later, run `git fetch --tags`, `git checkout <new tag>` and `docker compose up -d --build`; back up `/data` first (see section 3).
-
-On first start with an empty database, KeePort prints a one-time setup token:
-
-```text
-KeePort first-run setup required. Open the admin UI and enter this one-time setup token: ...
-```
-
-The token is stored in `/data/keeport.db` and is disabled after the first admin account is created.
-
-## 2. Reach the UIs safely
-
-Default compose ports:
-
-- `8080` — Vault webclient and WebDAV. Safe to publish on LAN/VPN.
-- `8081` — Admin-only port, bound to `127.0.0.1` on the host by default.
-
-Open the admin UI through an SSH tunnel:
+The admin console listens on `127.0.0.1:8081`. Reach it through an SSH tunnel:
 
 ```bash
-ssh -L 8081:127.0.0.1:8081 user@your-nas
-# browser: http://localhost:8081/admin
+ssh -L 8081:127.0.0.1:8081 user@your-server
+# then open http://localhost:8081/admin
 ```
 
-Enter the setup token, username, email address and password to create the first admin account. The setup token cannot be used again.
+To keep data in a folder instead of a Docker volume, set `KEEPORT_DATA=/srv/keeport/data` in `.env` and prepare it with `sudo mkdir -p /srv/keeport/data && sudo chown -R 1000:1000 /srv/keeport/data`.
 
-Admin accounts are only for the Admin console. Create a separate user account and assign vault permissions to it for the Vault webclient or WebDAV.
+Terminate TLS in a reverse proxy, forward the vault host to `127.0.0.1:8080` and set `KEEPORT_COOKIE_SECURE=true`.
 
-To allow admin access from LAN/VPN instead, edit `.env`:
-
-```dotenv
-KEEPORT_ADMIN_BIND=0.0.0.0
-# or a specific LAN/VPN IP, e.g. 192.168.1.10
-```
-
-Then run `docker compose up -d`. Do not expose port `8081` to the public internet.
-
-## 3. Data, permissions, and backups
-
-KeePort stores everything under `/data`:
-
-- `keeport.db` — users, sessions, vault metadata, ACLs, WebDAV credential hashes, and request limit settings.
-- `vault/` — encrypted `.kdbx` files.
-
-The container runs as UID/GID `1000:1000`. If you use a bind mount instead of the named volume, make it writable by that user:
-
-```bash
-sudo mkdir -p /srv/keeport/data
-sudo chown -R 1000:1000 /srv/keeport/data
-```
-
-For a consistent backup, stop the container first, then archive the volume:
-
-```bash
-docker compose stop keeport
-docker run --rm \
-  -v keeport_keeport-data:/data:ro \
-  -v "$PWD/backups:/backup" \
-  alpine tar czf /backup/keeport-$(date +%F).tgz -C /data .
-docker compose start keeport
-```
-
-Restore by extracting the archive into a fresh volume while the container is stopped.
-
-## 4. HTTPS and reverse proxy
-
-Use HTTPS before publishing KeePort outside your LAN. A reverse proxy should terminate TLS and forward to the container.
-
-Recommended split:
-
-- Public/LAN vault domain → `127.0.0.1:8080`
-- Admin domain/IP-restricted/VPN → `127.0.0.1:8081`
-
-Caddy example:
+<details>
+<summary><b>Caddy</b> — automatic HTTPS</summary>
 
 ```caddy
 vault.example.com {
     reverse_proxy 127.0.0.1:8080
 }
 
-admin-vpn.example.com {
+# Optional: admin console only from LAN/VPN networks
+admin.example.com {
     @not_vpn not remote_ip 192.168.1.0/24 10.0.0.0/8
     respond @not_vpn 404
     reverse_proxy 127.0.0.1:8081
 }
 ```
+</details>
 
-Nginx example for the vault/WebDAV host:
+<details>
+<summary><b>nginx</b></summary>
 
 ```nginx
 server {
     listen 443 ssl;
     server_name vault.example.com;
+
+    # ssl_certificate / ssl_certificate_key from your ACME client
+
+    client_max_body_size 50m;   # room for vaults with attachments
 
     location / {
         proxy_pass http://127.0.0.1:8080;
@@ -114,63 +281,142 @@ server {
     }
 }
 ```
+</details>
 
-When serving over HTTPS, set:
+Keep `/admin` and `/api/admin` off the public vault host. If you must share one hostname, route those paths to port `8081` and restrict them with IP allowlists or VPN-only access.
 
-```dotenv
-KEEPORT_COOKIE_SECURE=true
+---
+
+## 👣 First steps in the admin console
+
+1. **Create the administrator** with the setup token from the log. The token works only once.
+2. **Users → Create a user** for every person. Admin accounts can only use the admin console; the web vault and WebDAV need a regular user.
+3. **Vault files** → create a new vault in the browser or upload an existing `.kdbx`.
+4. **Permissions** on each vault → `Read only` or `Read and write` per user.
+5. **WebDAV credentials** → one app password per device (for example "Pixel 8" or "iPhone").
+
+Users now sign in to the web vault with their account and unlock vaults with the vault's master password, which never leaves the browser.
+
+## 📱 Connect KeePass apps
+
+| Setting | Value |
+|---|---|
+| Server / URL | `https://vault.example.com/webdav` (or `http://<nas-ip>:<port>/webdav` in the LAN) |
+| Username | The generated WebDAV username from **WebDAV credentials** |
+| Password | The WebDAV app password — **not** the vault master password |
+
+| App | Platform | Notes |
+|---|---|---|
+| **KeePass2Android** | Android | Connects directly via WebDAV. Saving, syncing and merging verified on a device. |
+| **KeePassium** | iOS / iPadOS | Direct WebDAV connection ([guide](https://support.keepassium.com/kb/sync-webdav/)). Editing and syncing verified on a device. |
+| **KeePassDX** | Android | Uses Android's file picker; add KeePort in a provider such as [DAVx⁵ WebDAV Mounts](https://manual.davx5.com/webdav_mounts.html). Not yet verified. |
+
+> [!TIP]
+> Create **one app password per device**. KeePort remembers which version each app password downloaded last and uses it to detect stale saves.
+
+<details>
+<summary><b>How KeePort protects against overwrites (technical details)</b></summary>
+
+- Every vault has a revision and an ETag. Clients that send `If-Match` are checked against it. Clients that never send it, such as KeePass2Android, are checked against the version their app password last downloaded with `GET`. Without either, KeePort answers `428` and stores nothing.
+- A stale save never overwrites the vault: KeePort answers `412` (REST: `409`) and keeps the submitted file as `<name>.conflict-<UTC timestamp>-<client>-<id>.kdbx` without access grants. Administrators can download, share or delete it in **Vault files**.
+- Transactional saves are supported: a `PUT` to `<vault>.kdbx.tmp.<suffix>` or `<vault>_tmp_<suffix>.kdbx` is held for up to 15 minutes (at most 4 per app password) and only becomes the vault when the client sends `MOVE` onto exactly that vault. `MOVE` cannot rename vaults and `DELETE` on a vault is forbidden.
+- KeePort does not keep server-side WebDAV locks. `LOCK` returns a token that is not stored and `UNLOCK` returns `204`; ETags are the conflict protection.
+- Every WebDAV request is logged (method, path, status, credential, client IP, `If-Match`, `Depth`, `Destination`, `Overwrite`, size, duration — never passwords or file contents). Admins see the latest 5,000 under **Logs → WebDAV logs**.
+</details>
+
+## 🔄 Updating
+
+Read the [changelog](../CHANGELOG.md) and make a [backup](#-backup--restore) first. Your `.env` and data are kept.
+
+**Synology / QNAP** (replace the version and path as needed):
+
+```bash
+cd /volume1/docker                # QNAP: cd /share/Container
+mv keeport keeport-old
+curl -L https://github.com/madcoda9000/KeePort/archive/refs/tags/v0.2.0.tar.gz | tar xz
+mv KeePort-0.2.0 keeport
+cp keeport-old/.env keeport/
+cd keeport
+sudo docker compose up -d --build # QNAP: without sudo
 ```
 
-Keep `/api/admin/*` and `/admin/*` off the public vault domain. If you must share one hostname, route `/admin` and `/api/admin` to the admin backend port and add IP allowlists or VPN-only access at the proxy.
+Delete `keeport-old` once everything works. If you installed via Container Manager without SSH, upload the new release folder the same way and rebuild the project.
+
+**Linux server:**
+
+```bash
+cd KeePort
+git fetch --tags
+git checkout v0.2.0
+docker compose up -d --build
+```
+
+## 💾 Backup & restore
+
+KeePort keeps everything in `/data`:
+
+| Path | Contents |
+|---|---|
+| `keeport.db` | Users, sessions, vault metadata, permissions, WebDAV credential hashes, settings, WebDAV logs |
+| `vault/` | The encrypted `.kdbx` files |
+
+- **Data in a folder** (`KEEPORT_DATA=/path`): back up that folder with your usual tool — Hyper Backup, Hybrid Backup Sync, restic, borg — ideally while KeePort is stopped.
+- **Data in the Docker volume** (default): stop the container and archive the volume:
+
+  ```bash
+  docker compose stop keeport
+  docker run --rm \
+    -v keeport_keeport-data:/data:ro \
+    -v "$PWD/backups:/backup" \
+    alpine tar czf /backup/keeport-$(date +%F).tgz -C /data .
+  docker compose start keeport
+  ```
+
+To restore, stop KeePort, put the files back into the data folder or a fresh volume, make sure they belong to UID/GID `1000:1000`, and start KeePort again.
+
+> [!TIP]
+> Your `.kdbx` files are ordinary KeePass files. Downloading them now and then from **Vault files** gives you an extra copy that any KeePass app can open.
+
+## ⚙️ Configuration reference
+
+| Variable in `.env` | Default | Purpose |
+|---|---|---|
+| `KEEPORT_HTTP_HOST_PORT` | `8080` | Host port for the web vault and WebDAV. Use e.g. `8090` on QNAP. |
+| `KEEPORT_DATA` | `keeport-data` | Docker volume name, or a folder path for a bind mount (must belong to UID 1000). |
+| `KEEPORT_ADMIN_BIND` | `127.0.0.1` | Host address for the admin port — `127.0.0.1`, a LAN/VPN IP, or `0.0.0.0`. |
+| `KEEPORT_ADMIN_HOST_PORT` | `8081` | Host port for the admin console. |
+| `KEEPORT_ADMIN_PORT` | `8081` | Container port that serves the admin console and API. |
+| `KEEPORT_COOKIE_SECURE` | `false` | Set to `true` once KeePort is served over HTTPS. |
+
+After changing `.env`, run `docker compose up -d` (with `sudo` on Synology).
 
 ### Request limits
 
-Admin and Vault sign-in and first-run setup share a limit of 10 requests per minute per IP. Session checks (`me`, `csrf`) and sign-out are not part of that quota. WebDAV has a separate limit of 60 requests per minute per IP, including unauthenticated requests. A `429 Too Many Requests` response includes `Retry-After` when the limiter can estimate the wait.
+Sign-in and first-run setup share a limit of **10 requests per minute per IP**; session checks and sign-out are exempt. WebDAV has its own limit of **60 requests per minute per IP**, applied before authentication. Change both at runtime in **Admin → Settings**; they are stored in SQLite and apply immediately. A `429 Too Many Requests` response includes `Retry-After`.
 
-To change the limits, sign in to the Admin console and open **Settings → Rate limits**. Enter positive whole numbers and save. The settings are stored in SQLite and take effect without a restart. Saving a different value starts a new window for that limit only. Upgrades start with the defaults; earlier environment overrides are no longer read.
+> [!NOTE]
+> KeePort trusts `X-Forwarded-For` only from a proxy on `127.0.0.1`. A reverse proxy on the NAS host or a separate proxy container reaches KeePort through Docker's network, so KeePort sees the proxy's address for every client: the WebDAV log shows that address, and all clients share one rate-limit quota. Raise the limits in **Admin → Settings** if several devices sync at the same time.
 
-Clients behind NAT or a proxy may share a quota if KeePort sees the same source IP. Set per-client limits at the proxy if it is the only component that sees individual client addresses.
+## 🧯 Troubleshooting
 
-## 5. WebDAV for mobile/desktop KeePass clients
+| Symptom | What to do |
+|---|---|
+| No `setup token` in the log | An administrator already exists. Sign in at `/admin`. |
+| `KeePort cannot write to data directory` on start | The data folder must belong to UID/GID `1000:1000` (`chown -R 1000:1000 <folder>`). |
+| Port 8080 already in use (QNAP) | Set `KEEPORT_HTTP_HOST_PORT=8090` and run `docker compose up -d`. |
+| Admin console returns `404` on port 8080 | Expected — the admin console only answers on the admin port (`8081`). |
+| Admin console not reachable from your PC | Set `KEEPORT_ADMIN_BIND` to the NAS's LAN IP, or use an SSH tunnel. |
+| Signed out right after signing in | You open KeePort over plain HTTP while `KEEPORT_COOKIE_SECURE=true`. Use the HTTPS address, or set it to `false` for LAN-only HTTP. |
+| A KeePass app cannot save | Open **Logs → WebDAV logs** and check the `PUT`/`MOVE` right after the attempt: `404` on a temporary name = unknown naming pattern, `428` = the app neither sent `If-Match` nor downloaded the vault first, `412` = the vault changed on the server. |
+| `412 Precondition Failed` | Someone saved in between. In KeePass2Android choose **Merge**; an admin can provide the conflict copy if needed. |
+| `428 Precondition Required` | Reopen the vault from the server in the app, then save again. |
+| `429 Too Many Requests` | Wait for `Retry-After`; raise the limits in **Admin → Settings** if it happens often. |
 
-1. Sign in to the Admin UI.
-2. Create or select a user.
-3. Open **WebDAV credentials** and create an app password for that user.
-4. Give the user the generated WebDAV username and the app password.
+## 🔍 What the server can and cannot see
 
-Client settings:
-
-- Server/URL: `https://vault.example.com/webdav`
-- Username: the generated WebDAV username, not necessarily the login username.
-- Password: the WebDAV app password.
-- Do not use the master password as the WebDAV password.
-
-Mobile clients to try (compatibility depends on how the client writes):
-
-- iOS: [KeePassium](https://support.keepassium.com/kb/sync-webdav/) offers a direct WebDAV connection. Editing and syncing were verified on a device.
-- Android: [KeePassDX](https://github.com/Kunzisoft/KeePassDX/wiki/File-Manager-and-Sync) uses Android's file picker, not a built-in WebDAV client. Configure the endpoint in a storage provider such as [DAVx⁵ WebDAV Mounts](https://manual.davx5.com/webdav_mounts.html), then open the file through that provider.
-- Android: KeePass2Android connects directly via WebDAV. Saving, syncing and merging were verified on a device with the default transactional saves. Direct saves without transactional writes are covered by server tests (see below).
-- Create one WebDAV app password per device. KeePort remembers which version each app password last downloaded (see below).
-
-WebDAV users can only write files they are allowed to modify. Send the current ETag in `If-Match` for safe writes. Clients that never send `If-Match`, such as KeePass2Android, are checked against the version their app password last downloaded with `GET`. Without such a download and without `If-Match`, KeePort returns `428` and creates no copy. For a stale ETag, KeePort returns `412` and keeps the original unchanged.
-
-Transactional saves are supported: a `PUT` to `<vault>.kdbx.tmp.<suffix>` or `<vault>_tmp_<suffix>.kdbx` (both used by KeePass2Android versions) is held for up to 15 minutes (at most 4 per app password) and only becomes the vault when the client sends `MOVE` onto exactly that vault. Such uploads never appear as separate vaults. `MOVE` cannot rename vaults, and `DELETE` on a vault stays forbidden. The submitted encrypted KDBX is saved as `<name>.conflict-<UTC timestamp>-webdav-<id>.kdbx` without access grants. An administrator can download, share, or delete it from the Admin file list. The Vault REST API follows the same rules but returns `409` for a stale ETag.
-
-KeePort does not enforce server-side WebDAV locks. For authorized requests, `LOCK` returns a token that is not saved and `UNLOCK` returns `204 No Content` without changing any lock state. A lock token is not a substitute for an ETag.
-
-KeePort logs every WebDAV request, including rejected sign-ins, to the container log and to SQLite. Administrators can review the latest 5,000 requests under **Logs → WebDAV logs** in the Admin console. The log shows the method, path, status, credential, client IP, `If-Match`, `Depth`, `Destination`, `Overwrite`, request size and duration. Passwords, the `Authorization` header and file contents are never logged.
-
-## 6. Troubleshooting
-
-- **A KeePass client cannot save**: open **Logs → WebDAV logs** and look at the `PUT` and `MOVE` requests right after the attempt. `404` on a temporary name means an unknown naming pattern. `428` means the client neither sent `If-Match` nor downloaded the vault first. `412` means the vault changed on the server.
-
-- **No setup token in logs**: the admin already exists or setup is complete. Sign in at `/admin` or reset users via the admin UI.
-- **Admin UI returns 404 on port 8080**: expected. Use port `8081`/admin bind or the admin reverse-proxy route.
-- **Cannot write `/data`**: check volume permissions and UID/GID `1000:1000`.
-- **WebDAV `412 Precondition Failed`**: reload the current vault and merge your changes before saving again. Ask an administrator for the conflict copy if you need the submitted version. In KeePass2Android, choose **Merge** when it reports an external change. The app has to download the server version to merge, so the merged save is checked against the current version.
-- **WebDAV `428 Precondition Required`**: the client sent no `If-Match` and has not downloaded the vault with this app password yet. Reopen the vault from the server, then save again.
-- **`429 Too Many Requests`**: wait for the `Retry-After` interval and check the request limits above if this happens often.
-
-## 7. What the server can and cannot see
-
-KeePort sees encrypted `.kdbx` bytes and file metadata such as names, sizes, revisions, owners, and ACLs. It does not see entry titles, passwords, URLs, or notes because those stay encrypted inside the KDBX container unless the user unlocks the vault in the browser webclient.
+| KeePort sees | KeePort never sees |
+|---|---|
+| Encrypted `.kdbx` bytes | Master passwords and key files |
+| File names, sizes, revisions, timestamps | Entry titles, usernames, passwords |
+| Users, permissions, WebDAV app password hashes | URLs, notes, TOTP secrets, attachments |
+| WebDAV request metadata (see logs) | Anything inside the vault — decryption happens only in the browser or the KeePass app |

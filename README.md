@@ -23,7 +23,7 @@
 </div>
 
 > [!NOTE]
-> KeePort is in **beta** (`v0.1.0`). Keep regular backups of your `.kdbx` files and of the `/data` volume.
+> KeePort is in **beta** (`v0.1.1`). Keep regular backups of your `.kdbx` files and of the `/data` volume.
 
 ---
 
@@ -90,11 +90,14 @@ KeePass files are great: open format, strong encryption, dozens of apps. Keeping
 
 ## ⚡ Quickstart
 
+> [!TIP]
+> **Running a Synology or QNAP NAS?** Follow the step-by-step guides for [Synology DSM](docs/DEPLOYMENT.md#-synology-dsm) and [QNAP](docs/DEPLOYMENT.md#-qnap-qts--quts-hero), including HTTPS with the NAS's built-in reverse proxy and backups.
+
 **Requirements:** Docker with Compose v2.
 
 ```bash
 # Check out the latest release (not the development branch)
-git clone --branch v0.1.0 https://github.com/madcoda9000/KeePort.git
+git clone --branch v0.1.1 https://github.com/madcoda9000/KeePort.git
 cd KeePort
 
 cp .env.example .env
@@ -131,7 +134,7 @@ git checkout v0.2.0          # the release you want, see the Releases page
 docker compose up -d --build
 ```
 
-Your data stays in the `keeport-data` volume. Read the [changelog](CHANGELOG.md) before updating and [back up `/data`](docs/DEPLOYMENT.md#3-data-permissions-and-backups) first.
+Your data stays in the `keeport-data` volume (or the folder set in `KEEPORT_DATA`). Read the [changelog](CHANGELOG.md) before updating and [make a backup](docs/DEPLOYMENT.md#-backup--restore) first. NAS update steps are in the [deployment guide](docs/DEPLOYMENT.md#-updating).
 
 ## 🧩 How it works
 
@@ -168,7 +171,7 @@ flowchart LR
 | [KeePassXC](https://keepassxc.org/) | Desktop | File (download/upload) | ✅ KDBX files, TOTP and attachments verified with 2.7.6 |
 | [KeePassDX](https://www.keepassdx.com/) | Android | WebDAV via a storage provider such as DAVx⁵ | ⚪ Expected to work, not yet verified |
 
-Setup instructions per client are in the [deployment guide](docs/DEPLOYMENT.md#5-webdav-for-mobiledesktop-keepass-clients). If a client cannot save, **Admin → Logs → WebDAV logs** shows exactly which requests it sent.
+Setup instructions per client are in the [deployment guide](docs/DEPLOYMENT.md#-connect-keepass-apps). If a client cannot save, **Admin → Logs → WebDAV logs** shows exactly which requests it sent.
 
 ## 🔒 Security model
 
@@ -179,7 +182,7 @@ Setup instructions per client are in the [deployment guide](docs/DEPLOYMENT.md#5
 - **Admin isolation:** admin endpoints only answer on the admin port when `KeePort:AdminPorts` is configured.
 - **Privacy-aware logging:** WebDAV logs record method, path, status and headers such as `If-Match` — never passwords or file contents.
 
-Use HTTPS (for example behind a reverse proxy) before exposing the web vault or WebDAV beyond your LAN. See [HTTPS and reverse proxy](docs/DEPLOYMENT.md#4-https-and-reverse-proxy).
+Use HTTPS (for example behind a reverse proxy) before exposing the web vault or WebDAV beyond your LAN. The [deployment guide](docs/DEPLOYMENT.md) covers HTTPS with the Synology and QNAP reverse proxies as well as Caddy and nginx.
 
 ## ⚙️ Configuration
 
@@ -187,12 +190,14 @@ Copy `.env.example` to `.env` and adjust as needed:
 
 | Variable | Default | Purpose |
 |---|---|---|
+| `KEEPORT_HTTP_HOST_PORT` | `8080` | Host port of the web vault and WebDAV (e.g. `8090` on QNAP, where QTS uses 8080). |
+| `KEEPORT_DATA` | `keeport-data` | Docker volume name, or a folder path for a bind mount owned by UID 1000. |
 | `KEEPORT_ADMIN_BIND` | `127.0.0.1` | Host address the admin port is published on. |
 | `KEEPORT_ADMIN_HOST_PORT` | `8081` | Host port of the admin console. |
 | `KEEPORT_ADMIN_PORT` | `8081` | Container port that serves the admin API and UI. |
 | `KEEPORT_COOKIE_SECURE` | `false` | Set to `true` when KeePort is served over HTTPS. |
 
-Sign-in and WebDAV rate limits are changed at runtime in **Admin → Settings**. Everything else — backups, reverse proxy examples, troubleshooting — is in the [deployment guide](docs/DEPLOYMENT.md).
+Sign-in and WebDAV rate limits are changed at runtime in **Admin → Settings**. Everything else — NAS setup, backups, reverse proxy examples, troubleshooting — is in the [deployment guide](docs/DEPLOYMENT.md).
 
 ## 🛠️ Development
 

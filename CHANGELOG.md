@@ -7,7 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.1.1] - 2026-11-24
 
+### Added
+
+- Step-by-step deployment guides for Synology DSM (SSH or Container Manager, DSM reverse proxy, Hyper Backup) and QNAP QTS / QuTS hero (Container Station, QTS reverse proxy, Hybrid Backup Sync), next to the Caddy and nginx setups for Linux servers.
+- `KEEPORT_HTTP_HOST_PORT` sets the host port of the web vault and WebDAV (default `8080`), for example to avoid the QTS web interface on QNAP.
+- `KEEPORT_DATA` selects where data is kept: the Docker volume `keeport-data` (default, unchanged for existing installations) or a folder path that NAS backup tools can include.
+
 ### Changed
+
+- Rewrote the deployment guide with a platform chooser, architecture diagram, configuration reference, update and backup steps per platform, and a troubleshooting table. It also documents that KeePort sees a reverse proxy's address for all clients unless the proxy runs on `127.0.0.1`.
 
 - Rewrote the README with an overview, feature table, screenshots in light and dark theme (fictional demo data, `docs/images/`), architecture diagram, verified client list, configuration reference and update instructions.
 - The quickstart in the README and deployment guide clones a release tag (`--branch v0.1.0`) instead of the development branch.
