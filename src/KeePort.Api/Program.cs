@@ -88,6 +88,16 @@ catch (TrustedProxyConfigurationException ex)
     throw;
 }
 
+try
+{
+    _ = ConfigFlags.CookieSecure(builder.Configuration);
+}
+catch (InvalidOperationException ex)
+{
+    Console.Error.WriteLine($"KeePort cannot start: {ex.Message}");
+    throw;
+}
+
 var corsOrigins = builder.Configuration.GetSection("KeePort:CorsOrigins").Get<string[]>() ?? [];
 // Registers the KeePort CORS policy.
 // <param name="options">The CORS options on which to register KeePort's named policy.</param>
@@ -108,7 +118,7 @@ var app = builder.Build();
 var db = app.Services.GetRequiredService<KeePortDb>();
 var sessions = app.Services.GetRequiredService<SessionService>();
 var hasher = app.Services.GetRequiredService<PasswordHasher>();
-var secureCookies = app.Configuration.GetValue("KeePort:CookieSecure", true);
+var secureCookies = ConfigFlags.CookieSecure(app.Configuration);
 
 try
 {

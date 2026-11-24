@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2026-11-24
+
+### Fixed
+
+- `KEEPORT_COOKIE_SECURE=yes` (or `on`/`1`, `no`/`off`/`0`) no longer crashes KeePort at startup, which made the container restart in a loop. Unknown values stop the startup with a message that names the variable instead of a stack trace.
+
+### Removed
+
+- `KEEPORT_ADMIN_PORT`. It only told KeePort which container port counts as the admin port, while the container always listens on `8081`; setting it to the desired host port (e.g. `8021`) made the admin console unreachable. Use `KEEPORT_ADMIN_HOST_PORT` to move the admin console on the host. An existing `KEEPORT_ADMIN_PORT` line in `.env` is now ignored.
+
 ## [0.2.0] - 2026-11-24
 
 ### Added
@@ -101,6 +111,7 @@ First beta release.
 - Login and setup share a configurable per-IP rate limit; session checks and sign-out are exempt. WebDAV has a separate configurable limit applied before authentication.
 - Admin accounts can only sign in to the Admin console; Vault and WebDAV require a separate user account. Admin sessions are scoped to the Admin API, so existing admins need to sign in again after updating.
 
+[0.2.1]: https://github.com/madcoda9000/KeePort/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/madcoda9000/KeePort/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/madcoda9000/KeePort/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/madcoda9000/KeePort/releases/tag/v0.1.0

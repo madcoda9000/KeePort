@@ -433,9 +433,8 @@ To restore, stop KeePort, put the files back into the data folder or a fresh vol
 | `KEEPORT_HTTP_HOST_PORT` | `8080` | Host port for the web vault and WebDAV. Use e.g. `8090` on QNAP. |
 | `KEEPORT_DATA` | `keeport-data` | Docker volume name, or a folder path for a bind mount (must belong to UID 1000). |
 | `KEEPORT_ADMIN_BIND` | `127.0.0.1` | Host address for the admin port — `127.0.0.1` or a LAN/VPN IP. `0.0.0.0` exposes it on every network of the host, see [who can reach the admin console](#who-can-reach-the-admin-console). |
-| `KEEPORT_ADMIN_HOST_PORT` | `8081` | Host port for the admin console. |
-| `KEEPORT_ADMIN_PORT` | `8081` | Container port that serves the admin console and API. |
-| `KEEPORT_COOKIE_SECURE` | `false` | Set to `true` once KeePort is served over HTTPS. |
+| `KEEPORT_ADMIN_HOST_PORT` | `8081` | Host port for the admin console. The container side is always `8081`. |
+| `KEEPORT_COOKIE_SECURE` | `false` | Set to `true` once KeePort is served over HTTPS (`yes`/`no` also work). |
 | `KEEPORT_TRUSTED_PROXIES` | *(empty: loopback only)* | Reverse proxies whose `X-Forwarded-For` is accepted — IPs or CIDR networks, comma-separated. See [Trust your reverse proxy](#-trust-your-reverse-proxy). |
 
 After changing `.env`, run `docker compose up -d` (with `sudo` on Synology).
@@ -450,6 +449,7 @@ Limits apply per client address. Behind a reverse proxy, [trust the proxy](#-tru
 
 | Symptom | What to do |
 |---|---|
+| Container restarts again and again | Read the first lines of the log (`sudo docker compose logs keeport`, or **Container Manager → Container → keeport → Log**). A line starting with `KeePort cannot start:` names the setting in `.env` to fix. |
 | No `setup token` in the log | An administrator already exists. Sign in at `/admin`. |
 | `KeePort cannot write to data directory` on start | The data folder must belong to UID/GID `1000:1000` (`chown -R 1000:1000 <folder>`). |
 | Port 8080 already in use (QNAP) | Set `KEEPORT_HTTP_HOST_PORT=8090` and run `docker compose up -d`. |

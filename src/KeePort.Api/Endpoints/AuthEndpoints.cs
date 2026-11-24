@@ -85,7 +85,7 @@ public static class AuthEndpoints
             db.ClearSetupToken();
 
             var (_, token, csrfToken) = sessions.CreateSession(user, context);
-            sessions.SetSessionCookie(context, token, UserRole.Admin, configuration.GetValue("KeePort:CookieSecure", true));
+            sessions.SetSessionCookie(context, token, UserRole.Admin, ConfigFlags.CookieSecure(configuration));
             return Results.Ok(new AuthResponse(ToDto(user), csrfToken));
         }).RequireRateLimiting(CredentialRateLimitPolicy);
 
@@ -131,7 +131,7 @@ public static class AuthEndpoints
 
             db.UpdateLastLogin(user.Id, DateTimeOffset.UtcNow);
             var (_, token, csrfToken) = sessions.CreateSession(user, context);
-            sessions.SetSessionCookie(context, token, role, configuration.GetValue("KeePort:CookieSecure", true));
+            sessions.SetSessionCookie(context, token, role, ConfigFlags.CookieSecure(configuration));
             return Results.Ok(new AuthResponse(ToDto(user), csrfToken));
         }).RequireRateLimiting(CredentialRateLimitPolicy);
 
@@ -146,7 +146,7 @@ public static class AuthEndpoints
             {
                 db.DeleteSessionByTokenHash(session.TokenHash);
             }
-            sessions.ClearSessionCookie(context, role, configuration.GetValue("KeePort:CookieSecure", true));
+            sessions.ClearSessionCookie(context, role, ConfigFlags.CookieSecure(configuration));
             return Results.NoContent();
         });
 

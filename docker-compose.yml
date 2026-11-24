@@ -8,7 +8,8 @@ services:
       ASPNETCORE_URLS: http://+:8080;http://+:8081
       KeePort__DataDir: /data
       KeePort__CookieSecure: ${KEEPORT_COOKIE_SECURE:-false}
-      KeePort__AdminPorts__0: ${KEEPORT_ADMIN_PORT:-8081}
+      # The container always serves the admin console on 8081; change KEEPORT_ADMIN_HOST_PORT to move it on the host.
+      KeePort__AdminPorts__0: "8081"
       KeePort__TrustedProxies: ${KEEPORT_TRUSTED_PROXIES:-}
     ports:
       - "${KEEPORT_HTTP_HOST_PORT:-8080}:8080"

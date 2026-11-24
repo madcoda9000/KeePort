@@ -194,8 +194,7 @@ Copy `.env.example` to `.env` and adjust as needed:
 | `KEEPORT_HTTP_HOST_PORT` | `8080` | Host port of the web vault and WebDAV (e.g. `8090` on QNAP, where QTS uses 8080). |
 | `KEEPORT_DATA` | `keeport-data` | Docker volume name, or a folder path for a bind mount owned by UID 1000. |
 | `KEEPORT_ADMIN_BIND` | `127.0.0.1` | Host address the admin port is published on. |
-| `KEEPORT_ADMIN_HOST_PORT` | `8081` | Host port of the admin console. |
-| `KEEPORT_ADMIN_PORT` | `8081` | Container port that serves the admin API and UI. |
+| `KEEPORT_ADMIN_HOST_PORT` | `8081` | Host port of the admin console (the container side is always `8081`). |
 | `KEEPORT_COOKIE_SECURE` | `false` | Set to `true` when KeePort is served over HTTPS. |
 | `KEEPORT_TRUSTED_PROXIES` | *(empty)* | Your reverse proxy's IP or network, so KeePort sees each device's own address ([details](docs/DEPLOYMENT.md#-trust-your-reverse-proxy)). |
 
