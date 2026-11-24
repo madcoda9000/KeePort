@@ -23,7 +23,7 @@
 </div>
 
 > [!NOTE]
-> KeePort is in **beta** (`v0.5.0`). Keep regular backups of your `.kdbx` files and of the `/data` volume.
+> KeePort is in **beta** (`v0.6.0`). Keep regular backups of your `.kdbx` files and of the `/data` volume.
 
 ---
 
@@ -97,7 +97,7 @@ KeePass files are great: open format, strong encryption, dozens of apps. Keeping
 
 ```bash
 # Check out the latest release (not the development branch)
-git clone --branch v0.5.0 https://github.com/madcoda9000/KeePort.git
+git clone --branch v0.6.0 https://github.com/madcoda9000/KeePort.git
 cd KeePort
 
 cp .env.example .env
@@ -128,7 +128,7 @@ Open the admin console with **`https://`**. Your browser warns once about the se
 ```bash
 cd KeePort
 git fetch --tags
-git checkout v0.6.0          # the release you want, see the Releases page
+git checkout v0.7.0          # the release you want, see the Releases page
 docker compose up -d --build
 ```
 
