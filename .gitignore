@@ -17,4 +17,5 @@ src/KeePort.Api/wwwroot/
 
 # Local env
 .env
+.data/
 *.user

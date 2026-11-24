@@ -5,12 +5,14 @@ This guide is for NAS/home-server deployments with Docker Compose. It assumes Do
 ## 1. Start KeePort
 
 ```bash
-git clone https://github.com/YOUR-ORG/keeport.git
-cd keeport
+git clone --branch v0.1.0 https://github.com/madcoda9000/KeePort.git
+cd KeePort
 cp .env.example .env
 docker compose up -d --build
 docker compose logs -f keeport
 ```
+
+`--branch v0.1.0` checks out a release instead of the development branch. Pick the latest version from the [Releases page](https://github.com/madcoda9000/KeePort/releases). To update later, run `git fetch --tags`, `git checkout <new tag>` and `docker compose up -d --build`; back up `/data` first (see section 3).
 
 On first start with an empty database, KeePort prints a one-time setup token:
 

@@ -1,102 +1,189 @@
-# KeePort
+<div align="center">
 
-KeePort is a self-hosted, open-source all-in-one manager for KeePass `.kdbx` files. It combines a small .NET backend, a zero-knowledge browser vault client, an admin console, and WebDAV sync for KeePass-compatible mobile/desktop clients.
+# 🔐 KeePort
 
-The server stores vault **files** and **metadata**, but never vault secrets. KDBX decryption, editing, and re-encryption happen only in the browser.
+**Your KeePass vaults, self-hosted. Open them in the browser, sync them to your phone, share them with your family or team — without the server ever seeing a single password.**
 
-## Features
+[![Release](https://img.shields.io/github/v/release/madcoda9000/KeePort?include_prereleases&label=release&color=2ea44f)](https://github.com/madcoda9000/KeePort/releases)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![.NET 8](https://img.shields.io/badge/.NET-8.0-512BD4?logo=dotnet&logoColor=white)](https://dotnet.microsoft.com/)
+[![React 19](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)](https://react.dev/)
+[![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white)](#-quickstart)
+[![KDBX 3.1 / 4](https://img.shields.io/badge/KDBX-3.1%20%2F%204-6c757d)](#-compatibility)
 
-- KeePass KDBX compatibility via [`kdbxweb`](https://github.com/keeweb/kdbxweb) and [`argon2-browser`](https://www.npmjs.com/package/argon2-browser) WASM Argon2.
-- KDBX 3.1 and KDBX 4.x read/write support for KeePassXC, KeePassium, KeePassDX, Strongbox-style clients, and other compatible tools.
-- Optional key files and attachments handled by the browser crypto stack.
-- Strict roles: `Admin` and `User`.
-- Per-vault ACLs: `read` and `read-write`, enforced identically in the REST API, Vault webclient, and WebDAV.
-- Users cannot create or delete `.kdbx` files; admins manage files, users, ACLs, and WebDAV app passwords.
-- ETag/revision preconditions for writes: stale saves return `409`/`412` and preserve the submitted KDBX as a conflict copy visible only to admins by default.
-- Atomic vault writes: temp file, flush/fsync, atomic rename.
-- First-run setup with a one-time token printed in the container logs.
-- Session cookies (`HttpOnly`, `SameSite=Lax`, optional `Secure`), CSRF protection, Argon2id password hashing, and login rate limiting.
-- Docker image with persistent `/data` volume and optional separate admin port.
+[Quickstart](#-quickstart) · [Features](#-features) · [How it works](#-how-it-works) · [Deployment guide](docs/DEPLOYMENT.md) · [Changelog](CHANGELOG.md)
 
-## Quickstart with Docker Compose
+</div>
 
-Prerequisites: Docker with Compose v2.
+> [!NOTE]
+> KeePort is in **beta** (`v0.1.0`). Keep regular backups of your `.kdbx` files and of the `/data` volume.
+
+---
+
+## ✨ Why KeePort?
+
+KeePass files are great: open format, strong encryption, dozens of apps. Keeping them in sync across browser, phone and several people is not. KeePort is the missing piece in the middle:
+
+- **One place for your `.kdbx` files** on your own NAS or server.
+- **A web vault** that opens them in any modern browser — decryption happens on your device only.
+- **WebDAV sync** for the KeePass apps you already use on Android, iOS and desktop.
+- **Sharing with permissions** — give each person read or read-write access per vault.
+
+## 🚀 Features
+
+| | |
+|---|---|
+| 🧠 **Zero-knowledge web vault** | Unlock, search, edit and save KDBX files in the browser. Master passwords and key files never leave your device. |
+| 🔑 **Full KDBX support** | KDBX 3.1 and 4.x, Argon2id/AES-KDF, optional key files, attachments up to 10 MiB, and TOTP codes with live countdown. |
+| 📱 **WebDAV for mobile apps** | Works with KeePass2Android and KeePassium, including transactional saves, conflict-safe sync and merging. |
+| 👥 **Users & per-vault ACLs** | `read` or `read-write` per vault, enforced the same way in the API, web vault and WebDAV. |
+| 🛡️ **No silent overwrites** | Every write is checked against the version the client last saw. Stale saves are kept as admin-only conflict copies. |
+| 🧰 **Admin console** | Manage vault files, users, permissions, WebDAV app passwords, rate limits — and inspect WebDAV request logs. |
+| 💾 **Crash-safe storage** | Atomic writes (temp file → fsync → rename), soft delete with restore, plain files on a Docker volume. |
+| 🐳 **One container** | Single Docker image with a persistent `/data` volume and an optional, separately bound admin port. |
+
+## ⚡ Quickstart
+
+**Requirements:** Docker with Compose v2.
 
 ```bash
-git clone https://github.com/madcoda9000/KeePort.git
-cd keeport
+# Check out the latest release (not the development branch)
+git clone --branch v0.1.0 https://github.com/madcoda9000/KeePort.git
+cd KeePort
+
 cp .env.example .env
 docker compose up -d --build
-docker compose logs keeport | grep "setup token"
+
+# One-time token for creating the first administrator
+docker compose logs keeport | grep -i "setup token"
 ```
 
-The Vault webclient is available at `http://<host>:8080`. WebDAV is available at `http://<host>:8080/webdav`.
+| What | Where |
+|---|---|
+| 🌐 Web vault | `http://<host>:8080` |
+| 📂 WebDAV | `http://<host>:8080/webdav` |
+| 🛠️ Admin console | `http://127.0.0.1:8081/admin` (local only, see below) |
 
-The admin UI is bound to `127.0.0.1:8081` by default so it is not exposed to the LAN. Open an SSH tunnel and use the one-time setup token from the logs:
+The admin console is bound to `127.0.0.1` by default, so it is not reachable from your network. Open it through an SSH tunnel:
 
 ```bash
 ssh -L 8081:127.0.0.1:8081 user@your-nas
-# then open http://localhost:8081/admin
+# then open http://localhost:8081/admin and enter the setup token
 ```
 
-If you intentionally want admin access from LAN/VPN, set `KEEPORT_ADMIN_BIND=0.0.0.0` or a VPN/LAN IP in `.env`, then recreate the container.
+**First steps in the admin console:** create the administrator → create a user → create or upload a vault and grant access → create a WebDAV app password per device.
 
-See [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) for backups, HTTPS reverse proxy setup, admin isolation, and mobile app configuration.
+> [!TIP]
+> To reach the admin console from your LAN or VPN instead, set `KEEPORT_ADMIN_BIND` in `.env` to a LAN/VPN IP (or `0.0.0.0`) and run `docker compose up -d` again. Never expose port `8081` to the internet.
 
-## Local development
-
-Backend:
+### Updating to a new release
 
 ```bash
+cd KeePort
+git fetch --tags
+git checkout v0.2.0          # the release you want, see the Releases page
+docker compose up -d --build
+```
+
+Your data stays in the `keeport-data` volume. Read the [changelog](CHANGELOG.md) before updating and [back up `/data`](docs/DEPLOYMENT.md#3-data-permissions-and-backups) first.
+
+## 🧩 How it works
+
+```mermaid
+flowchart LR
+    subgraph Devices["Your devices"]
+        B["🌐 Browser<br/>KeePort web vault<br/><i>decrypts locally</i>"]
+        M["📱 KeePass apps<br/>KeePass2Android, KeePassium"]
+    end
+
+    subgraph Server["KeePort container"]
+        API["ASP.NET Core<br/>REST API · WebDAV · Admin"]
+        DB[("SQLite<br/>users, ACLs, metadata")]
+        FS[("/data/vault<br/>encrypted .kdbx files")]
+    end
+
+    B -- "encrypted KDBX + ETag" --> API
+    M -- "WebDAV (Basic auth, app password)" --> API
+    API --> DB
+    API --> FS
+```
+
+- The server stores `.kdbx` files as **opaque encrypted blobs**. It never parses vault contents and never receives a master password or key file.
+- Every vault has a **revision and an ETag**. A write is only accepted if it is based on the current version; otherwise the original stays untouched and the submitted file becomes a **conflict copy** for an administrator.
+- WebDAV clients that do not send `If-Match` (such as KeePass2Android) are checked against the version their app password **last downloaded**, so they get the same protection.
+
+## 📱 Compatibility
+
+| Client | Platform | Connection | Status |
+|---|---|---|---|
+| KeePort web vault | Any modern browser | Built in | ✅ Open, edit, save, attachments, TOTP |
+| [KeePass2Android](https://github.com/PhilippC/keepass2android) | Android | WebDAV | ✅ Save, sync and merge verified on a device |
+| [KeePassium](https://keepassium.com/) | iOS / iPadOS | WebDAV | ✅ Edit and sync verified on a device |
+| [KeePassXC](https://keepassxc.org/) | Desktop | File (download/upload) | ✅ KDBX files, TOTP and attachments verified with 2.7.6 |
+| [KeePassDX](https://www.keepassdx.com/) | Android | WebDAV via a storage provider such as DAVx⁵ | ⚪ Expected to work, not yet verified |
+
+Setup instructions per client are in the [deployment guide](docs/DEPLOYMENT.md#5-webdav-for-mobiledesktop-keepass-clients). If a client cannot save, **Admin → Logs → WebDAV logs** shows exactly which requests it sent.
+
+## 🔒 Security model
+
+- **Zero knowledge:** decryption, editing and re-encryption happen only in the browser or KeePass app.
+- **Separate roles:** admin accounts can only use the admin console; the web vault and WebDAV require a regular user account.
+- **Separate WebDAV credentials:** one app password per device, stored as an Argon2id hash and revocable at any time.
+- **Hardened sessions:** `HttpOnly`/`SameSite` cookies, CSRF tokens, Argon2id password hashing and configurable per-IP rate limits for sign-in and WebDAV.
+- **Admin isolation:** admin endpoints only answer on the admin port when `KeePort:AdminPorts` is configured.
+- **Privacy-aware logging:** WebDAV logs record method, path, status and headers such as `If-Match` — never passwords or file contents.
+
+Use HTTPS (for example behind a reverse proxy) before exposing the web vault or WebDAV beyond your LAN. See [HTTPS and reverse proxy](docs/DEPLOYMENT.md#4-https-and-reverse-proxy).
+
+## ⚙️ Configuration
+
+Copy `.env.example` to `.env` and adjust as needed:
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `KEEPORT_ADMIN_BIND` | `127.0.0.1` | Host address the admin port is published on. |
+| `KEEPORT_ADMIN_HOST_PORT` | `8081` | Host port of the admin console. |
+| `KEEPORT_ADMIN_PORT` | `8081` | Container port that serves the admin API and UI. |
+| `KEEPORT_COOKIE_SECURE` | `false` | Set to `true` when KeePort is served over HTTPS. |
+
+Sign-in and WebDAV rate limits are changed at runtime in **Admin → Settings**. Everything else — backups, reverse proxy examples, troubleshooting — is in the [deployment guide](docs/DEPLOYMENT.md).
+
+## 🛠️ Development
+
+```bash
+# Backend with a local data directory (the default /data is meant for the container)
+export KeePort__DataDir="$PWD/.data" KeePort__CookieSecure=false
 dotnet run --project src/KeePort.Api
-```
 
-Frontend dev servers:
-
-```bash
+# Frontend dev servers
 cd web/vault && npm install && npm run dev
-cd ../admin && npm install && npm run dev
-```
+cd web/admin && npm install && npm run dev
 
-To serve the built React apps from the .NET backend locally:
-
-```bash
+# Serve the built frontends from the backend
 ./scripts/build-web.sh
 dotnet run --project src/KeePort.Api
+
+# Tests
+dotnet test
 ```
 
-The Vault UI is served at `/`, the Admin UI at `/admin`, and WebDAV at `/webdav`.
-
-## Security model
-
-- Master passwords and key files are entered only in the browser and are never sent to the KeePort API.
-- The backend stores KDBX files as opaque binary objects; it does not parse vault contents.
-- Vault writes require the current ETag (`If-Match` or `X-Expected-ETag`) so concurrent clients cannot overwrite each other silently.
-- WebDAV credentials are separate app passwords stored as Argon2id hashes.
-- WebDAV does not enforce server-side locks. `LOCK` returns a non-persistent token and `UNLOCK` returns `204` for authorized requests. Use the current ETag with `If-Match` for conflict protection. Clients without `If-Match` (e.g. KeePass2Android) are checked against the version their app password last downloaded; transactional saves via temporary file plus `MOVE` are supported.
-- Admin endpoints are hidden unless the request arrives on an admin port when `KeePort:AdminPorts` is configured.
-
-Do not expose the admin port to the public internet. Use HTTPS for any public exposure of the vault client and WebDAV.
-
-## Browser extension (planned)
-
-A browser extension is not part of the initial release, but the backend is already prepared for it:
-
-- `KeePort:CorsOrigins` allows configuring additional CORS origins for extension contexts without code changes.
-- Authentication uses session cookies plus CSRF tokens; a token-based flow for extensions is planned on top of the existing session infrastructure.
-
-No extension code ships yet – this section documents the intended basis only.
-
-## Project layout
+The web vault is served at `/`, the admin console at `/admin` and WebDAV at `/webdav`.
 
 ```text
-src/KeePort.Api        ASP.NET Core backend, REST API, WebDAV, SQLite data layer
-web/vault              React + TypeScript vault webclient
-web/admin              React + TypeScript admin console
-tests/KeePort.Api.Tests  xUnit integration/unit tests
-docs/DEPLOYMENT.md     NAS/homeserver deployment guide
+src/KeePort.Api           ASP.NET Core backend: REST API, WebDAV, SQLite data layer
+web/vault                 React + TypeScript web vault (shadcn/ui)
+web/admin                 React + TypeScript admin console (shadcn/ui)
+web/shared                Shared table components and helpers
+tests/KeePort.Api.Tests   xUnit integration tests
+docs/                     Deployment guide and project plans
 ```
 
-## License
+## 🗺️ Roadmap
 
-MIT. See [`LICENSE`](LICENSE).
+- **Browser extension** — the backend already supports extra CORS origins via `KeePort:CorsOrigins`; a token-based sign-in for extensions is planned on top of the existing sessions.
+
+Ideas and bug reports are welcome in the [issue tracker](https://github.com/madcoda9000/KeePort/issues).
+
+## 📄 License
+
+KeePort is released under the [MIT License](LICENSE).

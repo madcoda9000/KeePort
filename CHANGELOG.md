@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.1] - 2026-11-24
+
+### Changed
+
+- Rewrote the README with an overview, feature table, architecture diagram, verified client list, configuration reference and update instructions.
+- The quickstart in the README and deployment guide clones a release tag (`--branch v0.1.0`) instead of the development branch.
+
+### Fixed
+
+- Quickstart used `cd keeport` although the clone directory is `KeePort`; the deployment guide still pointed to a placeholder repository URL.
+- Local development instructions set a writable data directory (`.data/`, ignored by Git); the default `/data` is meant for the container.
+
 ## [0.1.0] - 2026-11-24
 
 First beta release.
@@ -62,4 +74,5 @@ First beta release.
 - Login and setup share a configurable per-IP rate limit; session checks and sign-out are exempt. WebDAV has a separate configurable limit applied before authentication.
 - Admin accounts can only sign in to the Admin console; Vault and WebDAV require a separate user account. Admin sessions are scoped to the Admin API, so existing admins need to sign in again after updating.
 
+[0.1.1]: https://github.com/madcoda9000/KeePort/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/madcoda9000/KeePort/releases/tag/v0.1.0
