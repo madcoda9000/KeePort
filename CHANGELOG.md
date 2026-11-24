@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- TOTP entries saved in the web vault now appear as TOTP in KeePass2Android and KeePassXC. A raw Base32 secret is stored in the `otp` field as `otpauth://totp/<title>?secret=…&period=30&digits=6` (protected), and the `otpauth://totp/` prefix is lowercased. Previously the bare secret was stored and KeePass2Android only showed it as a plain text field. Existing entries are converted the next time they are saved in the web vault. An empty TOTP setting no longer leaves an empty `otp` field.
 - WebDAV logs table: long paths and `Destination` values are truncated again, so the table no longer overflows its card and hides the Duration column on narrower screens.
 - Quickstart used `cd keeport` although the clone directory is `KeePort`; the deployment guide still pointed to a placeholder repository URL.
 - Local development instructions set a writable data directory (`.data/`, ignored by Git); the default `/data` is meant for the container.

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { parseOtpSecret, totpCode, totpUri } from './totp.ts';
+import { parseOtpSecret, storedOtpValue, totpCode, totpUri } from './totp.ts';
 
 const secret = 'GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ';
 
@@ -26,6 +26,22 @@ test('preserves the stored URI and rejects HOTP', () => {
   assert.equal(totpUri(` ${uri} `, 'Renamed entry'), uri);
   assert.equal(totpUri(uri.replace('/totp/', '/hotp/'), 'Example'), null);
   assert.equal(totpUri('', 'Example'), null);
+});
+
+/** Verifies that the stored otp value uses a format KeePass2Android and KeePassXC recognize. */
+test('stores raw secrets as otpauth URIs and normalizes the TOTP prefix', async () => {
+  const stored = storedOtpValue(' gezd-gnbv gy3tqojqgezdgnbvgy3tqojq ', 'GitHub');
+  assert.equal(stored, `otpauth://totp/GitHub?secret=${secret}&period=30&digits=6`);
+  assert.ok(stored.startsWith('otpauth://totp/'));
+  assert.equal((await totpCode(parseOtpSecret(stored), 59000)).code, '287082');
+
+  const uri = `otpauth://totp/Issuer:Example?secret=${secret}&digits=8&issuer=Issuer`;
+  assert.equal(storedOtpValue(uri, 'Ignored'), uri);
+  assert.equal(storedOtpValue(uri.replace('otpauth://totp/', 'OTPAUTH://TOTP/'), 'Ignored'), uri);
+  const hotp = `otpauth://hotp/Example?secret=${secret}&counter=1`;
+  assert.equal(storedOtpValue(hotp, 'Example'), hotp);
+  assert.equal(storedOtpValue('not a secret!', 'Example'), 'not a secret!');
+  assert.equal(storedOtpValue('   ', 'Example'), '');
 });
 
 /** Verifies that an exported raw secret generates the same code in URI form. */

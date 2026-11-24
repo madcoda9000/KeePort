@@ -41,7 +41,9 @@ test('round-trips new and existing attachments and the TOTP field through encryp
   const draft = addAttachment(new Map(), new File(['attachment contents'], 'notes.txt'));
   const { updated: opened } = await saveEntryUpdate(db, null, fields, draft, reopen);
   const [view] = listEntries(opened);
-  assert.equal(view.otp, fields.otp);
+  // A raw Base32 secret is stored as an otpauth URI (protected) so other KeePass clients recognize it.
+  assert.equal(view.otp, `otpauth://totp/${encodeURIComponent(fields.title)}?secret=${fields.otp}&period=30&digits=6`);
+  assert.ok(view.entry.fields.get('otp') instanceof ProtectedValue);
   const attachment = view.entry.binaries.get('notes.txt');
   assert.ok(attachment);
   assert.equal(attachmentSize(attachment), 19);

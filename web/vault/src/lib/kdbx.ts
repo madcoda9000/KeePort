@@ -1,6 +1,7 @@
 import * as kdbxweb from 'kdbxweb';
 import argon2 from 'argon2-browser/dist/argon2-bundled.min.js';
 import { encodeAttachments, type AttachmentDraft } from './attachments.ts';
+import { storedOtpValue } from './totp.ts';
 
 let argon2Ready: Promise<void> | null = null;
 
@@ -153,8 +154,23 @@ export function applyEntryEdits(entry: kdbxweb.KdbxEntry, edits: EntryEdits) {
   entry.fields.set('Password', kdbxweb.ProtectedValue.fromString(edits.password));
   entry.fields.set('URL', edits.url);
   entry.fields.set('Notes', kdbxweb.ProtectedValue.fromString(edits.notes));
-  entry.fields.set('otp', edits.otp);
+  setOtpField(entry, edits);
   entry.times.update();
+}
+
+/**
+ * Stores the TOTP setting in the `otp` field in a format other KeePass clients recognize, protected like
+ * KeePassXC does, and removes the field when no TOTP is set so clients do not show an empty `otp` field.
+ * @param entry - The KDBX entry whose `otp` field is written.
+ * @param edits - The draft values providing the TOTP input and the entry title used as URI label.
+ */
+function setOtpField(entry: kdbxweb.KdbxEntry, edits: EntryEdits) {
+  const value = storedOtpValue(edits.otp, edits.title);
+  if (value) {
+    entry.fields.set('otp', kdbxweb.ProtectedValue.fromString(value));
+  } else {
+    entry.fields.delete('otp');
+  }
 }
 
 /**
@@ -175,7 +191,7 @@ export function createEntry(db: kdbxweb.Kdbx, edits: EntryEdits): kdbxweb.KdbxEn
   entry.fields.set('Password', kdbxweb.ProtectedValue.fromString(edits.password));
   entry.fields.set('URL', edits.url);
   entry.fields.set('Notes', kdbxweb.ProtectedValue.fromString(edits.notes));
-  entry.fields.set('otp', edits.otp);
+  setOtpField(entry, edits);
   entry.times.update();
   return entry;
 }

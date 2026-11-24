@@ -86,6 +86,25 @@ export function totpUri(raw: string, label: string): string | null {
 }
 
 /**
+ * Returns the value to store in the entry's `otp` field so other KeePass clients recognize it.
+ * A raw Base32 secret becomes `otpauth://totp/<label>?secret=…&period=30&digits=6` (KeePassXC format);
+ * KeePass2Android, for example, ignores a bare secret. TOTP URIs are kept, with the scheme and type
+ * lowercased because KeePass2Android matches the prefix `otpauth://totp/` case-sensitively.
+ * Anything that is not a valid TOTP secret is stored unchanged so no input is lost.
+ * @param raw - The TOTP value entered by the user.
+ * @param label - The entry title, used as the URI label for a raw secret.
+ */
+export function storedOtpValue(raw: string, label: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed) return '';
+  const totpPrefix = /^otpauth:\/\/totp\//i;
+  if (totpPrefix.test(trimmed)) return trimmed.replace(totpPrefix, 'otpauth://totp/');
+  if (/^otpauth:\/\//i.test(trimmed)) return trimmed;
+  const uri = totpUri(trimmed, label);
+  return uri ? `${uri}&period=30&digits=6` : raw;
+}
+
+/**
  * Generates the TOTP code and remaining validity for the supplied timestamp.
  * @param config - The TOTP secret, hash algorithm, digit count, and time-step configuration.
  * @param timeMs - The calculation time in milliseconds since the Unix epoch; defaults to now.

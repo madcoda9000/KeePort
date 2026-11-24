@@ -1000,7 +1000,7 @@ export default function App() {
                              */ (event) => setEdits({ ...edits, otp: event.target.value })}
                             aria-describedby="otp-help"
                           />
-                          <FieldDescription id="otp-help">Use an otpauth URI or a Base32 secret.</FieldDescription>
+                          <FieldDescription id="otp-help">Use an otpauth URI or a Base32 secret. A Base32 secret is saved as an otpauth URI so KeePass apps such as KeePass2Android and KeePassXC show it as TOTP.</FieldDescription>
                         </Field>
                       </FieldGroup>
                       {totp && (
