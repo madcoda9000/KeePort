@@ -201,6 +201,35 @@ public sealed record CreateWebDavCredentialRequest(string UserId, string Label, 
 /// <param name="RevokedAt">The time the credential was revoked, if it has been revoked.</param>
 public sealed record WebDavCredentialDto(string Id, string UserId, string Username, string Label, DateTimeOffset CreatedAt, DateTimeOffset? LastUsedAt, DateTimeOffset? RevokedAt);
 
+/// <summary>Describes one logged WebDAV request without credentials or file content.</summary>
+/// <param name="Id">The sequential log entry ID.</param>
+/// <param name="OccurredAt">The time the request completed.</param>
+/// <param name="Method">The HTTP method of the request.</param>
+/// <param name="Path">The requested path below the server root.</param>
+/// <param name="Status">The HTTP status code returned to the client.</param>
+/// <param name="Credential">The WebDAV username that authenticated the request, or null if authentication failed.</param>
+/// <param name="RemoteIp">The client IP address as seen by KeePort, if known.</param>
+/// <param name="DurationMs">The processing time in milliseconds.</param>
+/// <param name="ContentLength">The declared request body size in bytes, if any.</param>
+/// <param name="IfMatch">Whether the request carried an If-Match header.</param>
+/// <param name="Depth">The Depth header value, if any.</param>
+/// <param name="Destination">The Destination header value of a MOVE, if any.</param>
+/// <param name="Overwrite">The Overwrite header value, if any.</param>
+public sealed record WebDavRequestLogDto(
+    long Id,
+    DateTimeOffset OccurredAt,
+    string Method,
+    string Path,
+    int Status,
+    string? Credential,
+    string? RemoteIp,
+    long DurationMs,
+    long? ContentLength,
+    bool IfMatch,
+    string? Depth,
+    string? Destination,
+    string? Overwrite);
+
 /// <summary>Represents an API error and, for write conflicts, the current ETag when known.</summary>
 /// <param name="Error">The machine-readable API error code.</param>
 /// <param name="Message">Optional human-readable detail about the error.</param>

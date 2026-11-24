@@ -113,6 +113,30 @@ public sealed class KeePortDb : IDisposable
                 last_used_at TEXT NULL,
                 revoked_at TEXT NULL
             );
+
+            CREATE TABLE IF NOT EXISTS webdav_read_state (
+                credential_id TEXT NOT NULL REFERENCES webdav_credentials(id) ON DELETE CASCADE,
+                file_id TEXT NOT NULL REFERENCES vault_files(id) ON DELETE CASCADE,
+                etag TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (credential_id, file_id)
+            );
+
+            CREATE TABLE IF NOT EXISTS webdav_request_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                occurred_at TEXT NOT NULL,
+                method TEXT NOT NULL,
+                path TEXT NOT NULL,
+                status INTEGER NOT NULL,
+                credential TEXT NULL,
+                remote_ip TEXT NULL,
+                duration_ms INTEGER NOT NULL,
+                content_length INTEGER NULL,
+                if_match INTEGER NOT NULL,
+                depth TEXT NULL,
+                destination TEXT NULL,
+                overwrite TEXT NULL
+            );
             """);
 
         Execute(connection, """
@@ -838,6 +862,105 @@ public sealed class KeePortDb : IDisposable
         Execute(connection, "UPDATE webdav_credentials SET last_used_at = @lastUsedAt WHERE id = @id;",
             new SqliteParameter("@id", id),
             new SqliteParameter("@lastUsedAt", lastUsedAt.ToString("O")));
+    }
+
+    /// <summary>Returns the ETag of the vault version last downloaded with a WebDAV credential, if any.</summary>
+    /// <param name="credentialId">The ID of the WebDAV credential that downloaded the vault.</param>
+    /// <param name="fileId">The ID of the vault file.</param>
+    public string? GetWebDavReadETag(string credentialId, string fileId)
+    {
+        using var connection = Open();
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT etag FROM webdav_read_state WHERE credential_id = @credentialId AND file_id = @fileId;";
+        command.Parameters.AddWithValue("@credentialId", credentialId);
+        command.Parameters.AddWithValue("@fileId", fileId);
+        return command.ExecuteScalar() as string;
+    }
+
+    /// <summary>Records the ETag of the vault version a WebDAV credential last downloaded or wrote.</summary>
+    /// <param name="credentialId">The ID of the WebDAV credential that holds this vault version.</param>
+    /// <param name="fileId">The ID of the vault file.</param>
+    /// <param name="etag">The entity tag of the vault version the client now holds.</param>
+    public void SetWebDavReadETag(string credentialId, string fileId, string etag)
+    {
+        using var connection = Open();
+        connection.Open();
+        Execute(connection, """
+            INSERT INTO webdav_read_state (credential_id, file_id, etag, updated_at)
+            VALUES (@credentialId, @fileId, @etag, @updatedAt)
+            ON CONFLICT(credential_id, file_id) DO UPDATE SET etag = excluded.etag, updated_at = excluded.updated_at;
+            """,
+            new SqliteParameter("@credentialId", credentialId),
+            new SqliteParameter("@fileId", fileId),
+            new SqliteParameter("@etag", etag),
+            new SqliteParameter("@updatedAt", DateTimeOffset.UtcNow.ToString("O")));
+    }
+
+    /// <summary>The number of WebDAV request log entries kept; older entries are removed on insert.</summary>
+    public const int WebDavRequestLogLimit = 5000;
+
+    /// <summary>Appends a WebDAV request to the log and removes entries beyond the retention limit.</summary>
+    /// <param name="entry">The request metadata to store; its ID is assigned by SQLite and ignored here.</param>
+    public void AddWebDavRequestLog(WebDavRequestLogDto entry)
+    {
+        using var connection = Open();
+        connection.Open();
+        using var transaction = connection.BeginTransaction();
+        Execute(connection, transaction, """
+            INSERT INTO webdav_request_log
+                (occurred_at, method, path, status, credential, remote_ip, duration_ms, content_length, if_match, depth, destination, overwrite)
+            VALUES
+                (@occurredAt, @method, @path, @status, @credential, @remoteIp, @durationMs, @contentLength, @ifMatch, @depth, @destination, @overwrite);
+            """,
+            new SqliteParameter("@occurredAt", entry.OccurredAt.ToString("O")),
+            new SqliteParameter("@method", entry.Method),
+            new SqliteParameter("@path", entry.Path),
+            new SqliteParameter("@status", entry.Status),
+            new SqliteParameter("@credential", DbValue(entry.Credential)),
+            new SqliteParameter("@remoteIp", DbValue(entry.RemoteIp)),
+            new SqliteParameter("@durationMs", entry.DurationMs),
+            new SqliteParameter("@contentLength", DbValue(entry.ContentLength)),
+            new SqliteParameter("@ifMatch", entry.IfMatch ? 1 : 0),
+            new SqliteParameter("@depth", DbValue(entry.Depth)),
+            new SqliteParameter("@destination", DbValue(entry.Destination)),
+            new SqliteParameter("@overwrite", DbValue(entry.Overwrite)));
+        Execute(connection, transaction,
+            "DELETE FROM webdav_request_log WHERE id <= (SELECT MAX(id) FROM webdav_request_log) - @limit;",
+            new SqliteParameter("@limit", WebDavRequestLogLimit));
+        transaction.Commit();
+    }
+
+    /// <summary>Lists the retained WebDAV request log entries, newest first.</summary>
+    public IReadOnlyList<WebDavRequestLogDto> ListWebDavRequestLog()
+    {
+        using var connection = Open();
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT id, occurred_at, method, path, status, credential, remote_ip, duration_ms, content_length, if_match, depth, destination, overwrite
+            FROM webdav_request_log ORDER BY id DESC;
+            """;
+        using var reader = command.ExecuteReader();
+        var entries = new List<WebDavRequestLogDto>();
+        while (reader.Read())
+        {
+            entries.Add(new WebDavRequestLogDto(
+                reader.GetInt64(0),
+                ParseDate(reader.GetString(1)),
+                reader.GetString(2),
+                reader.GetString(3),
+                reader.GetInt32(4),
+                reader.IsDBNull(5) ? null : reader.GetString(5),
+                reader.IsDBNull(6) ? null : reader.GetString(6),
+                reader.GetInt64(7),
+                reader.IsDBNull(8) ? null : reader.GetInt64(8),
+                reader.GetInt32(9) != 0,
+                reader.IsDBNull(10) ? null : reader.GetString(10),
+                reader.IsDBNull(11) ? null : reader.GetString(11),
+                reader.IsDBNull(12) ? null : reader.GetString(12)));
+        }
+        return entries;
     }
 
     /// <summary>Checks whether a WebDAV username is already in use.</summary>

@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Admin console: new **Logs → WebDAV logs** page listing the latest 5,000 WebDAV requests (time, method, path, status, credential, client IP, precondition and move headers, size, duration) with live search, column sorting, paging and refresh. Passwords and file contents are never logged.
+
+- WebDAV saves from KeePass2Android: transactional uploads to `<vault>.kdbx.tmp.<suffix>` or `<vault>_tmp_<suffix>.kdbx` are staged per app password and applied with `MOVE` onto exactly that vault. Without `If-Match`, writes are checked against the version the app password last downloaded, so stale saves still become conflict copies instead of overwriting.
+
 - Vault entry attachments: show names and sizes, download locally, and add files up to 10 MiB or confirm removal in read-write vaults. Attachment changes save with the encrypted KDBX revision.
 - Copy the TOTP provisioning URI from the entry detail, including for entries with a raw Base32 secret.
 - Live search, column-header sorting, and pagination in the Admin vault files, accounts, and WebDAV credentials tables and the Vault entries table. Choose 10 (default), 20, or 50 rows per page.
@@ -25,6 +29,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Marked vault attachment management as accepted in the hardening plan; mobile WebDAV verification and first-release steps remain open.
 - Documented how to reload a vault from WebDAV in KeePass2Android without database caching and why saves from this client fail.
+- WebDAV requests are logged to the console and stored in SQLite with method, path, status and precondition headers (never passwords or file content) to diagnose client compatibility.
+- WebDAV `OPTIONS` lists `MOVE`. `MOVE` on a vault itself is rejected with `403`; vaults are still renamed in the Admin console only.
 - Completed function and method documentation across the API, frontends, shared table code, and tests, including descriptions of each parameter.
 - Configure login and WebDAV rate limits in the Admin console instead of environment variables. Values are persisted in SQLite and apply immediately.
 - Documented that WebDAV `LOCK` tokens are not persisted and `UNLOCK` does not release a server-side lock; clients should use ETags for conflict protection.

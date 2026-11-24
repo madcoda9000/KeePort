@@ -414,6 +414,18 @@ public static class AdminEndpoints
                 .ToArray());
         });
 
+        // Lists the retained WebDAV request log, newest first, for administrators.
+        // <param name="context">The current HTTP request and response context.</param>
+        // <param name="db">The SQLite store for KeePort metadata.</param>
+        group.MapGet("/logs/webdav", (HttpContext context, KeePortDb db) =>
+        {
+            if (ApiAuth.RequireAdmin(context) is { } forbidden)
+            {
+                return forbidden;
+            }
+            return Results.Ok(db.ListWebDavRequestLog());
+        });
+
         // Lists WebDAV credential metadata for administrators.
         // <param name="context">The current HTTP request and response context.</param>
         // <param name="db">The SQLite store for KeePort metadata.</param>

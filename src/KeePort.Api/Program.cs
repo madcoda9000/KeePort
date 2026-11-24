@@ -37,6 +37,7 @@ builder.Services.AddSingleton<KeePortDb>();
 builder.Services.AddSingleton<PasswordHasher>();
 builder.Services.AddSingleton<SessionService>();
 builder.Services.AddSingleton<VaultService>();
+builder.Services.AddSingleton<WebDavStagingStore>();
 builder.Services.AddSingleton<RateLimitSettingsService>();
 
 // Registers the credential and WebDAV limits and their rejection response.

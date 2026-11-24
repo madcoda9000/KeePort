@@ -37,6 +37,22 @@ export interface RateLimitSettings {
   webDavPerMinute: number;
 }
 
+export interface WebDavRequestLogEntry {
+  id: number;
+  occurredAt: string;
+  method: string;
+  path: string;
+  status: number;
+  credential: string | null;
+  remoteIp: string | null;
+  durationMs: number;
+  contentLength: number | null;
+  ifMatch: boolean;
+  depth: string | null;
+  destination: string | null;
+  overwrite: string | null;
+}
+
 export interface WebDavCredential {
   id: string;
   userId: string;
@@ -310,5 +326,13 @@ export const api = {
    */
   async revokeWebDavCredential(id: string) {
     await request<void>(`/api/admin/webdav-credentials/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  },
+
+  /**
+   * Lists the retained WebDAV request log, newest first.
+   * @param signal - An optional signal that aborts the request when the caller no longer needs it.
+   */
+  async listWebDavLogs(signal?: AbortSignal) {
+    return request<WebDavRequestLogEntry[]>('/api/admin/logs/webdav', { signal });
   }
 };

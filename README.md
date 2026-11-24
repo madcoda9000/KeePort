@@ -73,7 +73,7 @@ The Vault UI is served at `/`, the Admin UI at `/admin`, and WebDAV at `/webdav`
 - The backend stores KDBX files as opaque binary objects; it does not parse vault contents.
 - Vault writes require the current ETag (`If-Match` or `X-Expected-ETag`) so concurrent clients cannot overwrite each other silently.
 - WebDAV credentials are separate app passwords stored as Argon2id hashes.
-- WebDAV does not enforce server-side locks. `LOCK` returns a non-persistent token and `UNLOCK` returns `204` for authorized requests. Use the current ETag with `If-Match` for conflict protection.
+- WebDAV does not enforce server-side locks. `LOCK` returns a non-persistent token and `UNLOCK` returns `204` for authorized requests. Use the current ETag with `If-Match` for conflict protection. Clients without `If-Match` (e.g. KeePass2Android) are checked against the version their app password last downloaded; transactional saves via temporary file plus `MOVE` are supported.
 - Admin endpoints are hidden unless the request arrives on an admin port when `KeePort:AdminPorts` is configured.
 
 Do not expose the admin port to the public internet. Use HTTPS for any public exposure of the vault client and WebDAV.

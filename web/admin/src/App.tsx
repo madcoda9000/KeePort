@@ -8,6 +8,7 @@ import {
   DownloadIcon,
   KeyRoundIcon,
   LogOutIcon,
+  ScrollTextIcon,
   MoonIcon,
   NetworkIcon,
   PlusIcon,
@@ -20,6 +21,7 @@ import {
 import { AdminProfile } from '@/components/admin-profile';
 import { AuthLayout } from '@/components/auth-layout';
 import { RateLimitSettingsPanel } from '@/components/rate-limit-settings';
+import { WebDavLogsPanel } from '@/components/webdav-logs';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
   AlertDialog,
@@ -59,6 +61,9 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarMenuSub,
+  SidebarMenuSubButton,
+  SidebarMenuSubItem,
   SidebarProvider,
   SidebarTrigger,
   useSidebar
@@ -68,7 +73,7 @@ import { DataTable, type TableColumn } from '@shared/data-table';
 import { matchesTableSearch, timestampSortValue } from '@shared/table-data';
 
 type Message = { kind: 'notice' | 'error'; text: string } | null;
-type Tab = 'vaults' | 'users' | 'webdav' | 'settings';
+type Tab = 'vaults' | 'users' | 'webdav' | 'settings' | 'webdav-logs';
 type PermissionValue = 'none' | 'read' | 'read-write';
 
 const ADMIN_SECTIONS = {
@@ -87,8 +92,18 @@ const ADMIN_SECTIONS = {
     title: 'Settings',
     description: 'Manage server-wide settings for KeePort.',
     icon: SettingsIcon
+  },
+  'webdav-logs': {
+    title: 'WebDAV logs',
+    description: 'Review requests from KeePass clients to diagnose sync problems.',
+    icon: NetworkIcon
   }
 } as const;
+
+/** Sections listed directly under "Manage" in the navigation. */
+const MANAGE_TABS: readonly Tab[] = ['vaults', 'users', 'webdav', 'settings'];
+/** Sections listed below the "Logs" navigation entry; the first one opens when "Logs" is selected. */
+const LOG_TABS: readonly Tab[] = ['webdav-logs'];
 
 const VAULT_COLUMNS: readonly TableColumn<AdminFile>[] = [
   /**
@@ -1095,6 +1110,8 @@ export default function App() {
 
           {tab === 'settings' && <RateLimitSettingsPanel />}
 
+          {tab === 'webdav-logs' && <WebDavLogsPanel />}
+
           {tab === 'vaults' && (
             <>
               <div className="grid gap-4 xl:grid-cols-2">
@@ -1518,6 +1535,16 @@ function AdminNavigation({ tab, user, onProfileUpdate, onSelect }: {
   onSelect: (tab: Tab) => void;
 }) {
   const { setOpenMobile } = useSidebar();
+
+  /**
+   * Opens a section unless it is already active and closes the mobile navigation drawer.
+   * @param section - The admin section selected in the navigation.
+   */
+  function select(section: Tab) {
+    if (section !== tab) onSelect(section);
+    setOpenMobile(false);
+  }
+
   return (
     <Sidebar variant="inset">
       <SidebarHeader className="h-14 shrink-0 justify-center border-b px-5 py-0">
@@ -1535,8 +1562,8 @@ function AdminNavigation({ tab, user, onProfileUpdate, onSelect }: {
         <SidebarGroup>
           <SidebarGroupLabel>Manage</SidebarGroupLabel>
           <SidebarMenu>
-            {(Object.keys(ADMIN_SECTIONS) as Tab[]).map(/**
-             * Renders one navigation button for each admin section.
+            {MANAGE_TABS.map(/**
+             * Renders one navigation button for each management section.
              * @param section - The admin section identifier used to select its label and icon.
              */ (section) => {
               const { title, icon: Icon } = ADMIN_SECTIONS[section];
@@ -1546,10 +1573,7 @@ function AdminNavigation({ tab, user, onProfileUpdate, onSelect }: {
                     type="button"
                     isActive={tab === section}
                     aria-current={tab === section ? 'page' : undefined}
-                    onClick={/** Changes sections only when the selected button is not already active. */ () => {
-                      if (section !== tab) onSelect(section);
-                      setOpenMobile(false);
-                    }}
+                    onClick={/** Opens this management section. */ () => select(section)}
                   >
                     <Icon />
                     <span>{title}</span>
@@ -1557,6 +1581,35 @@ function AdminNavigation({ tab, user, onProfileUpdate, onSelect }: {
                 </SidebarMenuItem>
               );
             })}
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                type="button"
+                isActive={LOG_TABS.includes(tab)}
+                onClick={/** Opens the first log section. */ () => select(LOG_TABS[0])}
+              >
+                <ScrollTextIcon />
+                <span>Logs</span>
+              </SidebarMenuButton>
+              <SidebarMenuSub>
+                {LOG_TABS.map(/**
+                 * Renders one sub-navigation entry for each log section.
+                 * @param section - The log section identifier used to select its label.
+                 */ (section) => (
+                  <SidebarMenuSubItem key={section}>
+                    <SidebarMenuSubButton asChild isActive={tab === section}>
+                      <button
+                        type="button"
+                        className="w-full"
+                        aria-current={tab === section ? 'page' : undefined}
+                        onClick={/** Opens this log section. */ () => select(section)}
+                      >
+                        <span>{ADMIN_SECTIONS[section].title}</span>
+                      </button>
+                    </SidebarMenuSubButton>
+                  </SidebarMenuSubItem>
+                ))}
+              </SidebarMenuSub>
+            </SidebarMenuItem>
           </SidebarMenu>
         </SidebarGroup>
       </SidebarContent>

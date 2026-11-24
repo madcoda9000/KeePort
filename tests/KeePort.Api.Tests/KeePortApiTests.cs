@@ -666,6 +666,167 @@ public class KeePortApiTests : IDisposable
         Assert.Equal(HttpStatusCode.BadRequest, invalidWrite.StatusCode);
     }
 
+    /// <summary>Replays KeePass2Android's transactional WebDAV save: temporary PUT, ignored DELETE, then MOVE without If-Match.</summary>
+    [Fact]
+    public async Task WebDav_KeePass2Android_Transactional_Save_Uses_Last_Download_As_Precondition()
+    {
+        var adminCsrf = await SetupAdminAsync(_admin);
+        var (userId, _) = await CreateUserAsync(_admin, adminCsrf, "alice", "user");
+        var vault = await UploadVaultAsync(_admin, adminCsrf, "mobile.kdbx", "v1");
+        await SetPermissionsAsync(_admin, adminCsrf, vault.Id, userId, "read-write");
+        var webDav = await CreateWebDavCredentialAsync(_admin, adminCsrf, userId);
+
+        using var download = await SendAsync(_user, HttpMethod.Get, "/webdav/mobile.kdbx", basic: webDav.BasicAuth);
+        Assert.Equal(HttpStatusCode.OK, download.StatusCode);
+
+        using var tempPut = await SendAsync(_user, HttpMethod.Put, "/webdav/mobile.kdbx.tmp.04819273", bytes: KdbxBytes("v2"), basic: webDav.BasicAuth);
+        Assert.Equal(HttpStatusCode.Created, tempPut.StatusCode);
+        using var deleteTarget = await SendAsync(_user, HttpMethod.Delete, "/webdav/mobile.kdbx", basic: webDav.BasicAuth);
+        Assert.Equal(HttpStatusCode.Forbidden, deleteTarget.StatusCode);
+        using var move = await MoveAsync(_user, "/webdav/mobile.kdbx.tmp.04819273", "http://localhost/webdav/mobile.kdbx", webDav.BasicAuth);
+        Assert.Equal(HttpStatusCode.NoContent, move.StatusCode);
+
+        using var afterMove = await SendAsync(_user, HttpMethod.Get, "/webdav/mobile.kdbx", basic: webDav.BasicAuth);
+        Assert.Equal(KdbxBytes("v2"), await afterMove.Content.ReadAsByteArrayAsync());
+        using var tempGone = await MoveAsync(_user, "/webdav/mobile.kdbx.tmp.04819273", "http://localhost/webdav/mobile.kdbx", webDav.BasicAuth);
+        Assert.Equal(HttpStatusCode.NotFound, tempGone.StatusCode);
+
+        // Non-transactional mode: a direct PUT without If-Match is checked against the last download.
+        using var directPut = await SendAsync(_user, HttpMethod.Put, "/webdav/mobile.kdbx", bytes: KdbxBytes("v3"), basic: webDav.BasicAuth);
+        Assert.Equal(HttpStatusCode.NoContent, directPut.StatusCode);
+        var etagAfterDirect = directPut.Headers.GetValues("ETag").Single();
+
+        // A change in the web vault after the client's last download turns the next mobile save into a conflict copy.
+        var (csrf, _) = await LoginAsync(_user, "alice", "User passphrase 123");
+        using var webVaultWrite = await SendAsync(_user, HttpMethod.Put, $"/api/vault/files/{vault.Id}/content", bytes: KdbxBytes("web"), csrf: csrf, etag: etagAfterDirect);
+        Assert.Equal(HttpStatusCode.OK, webVaultWrite.StatusCode);
+
+        using var staleTemp = await SendAsync(_user, HttpMethod.Put, "/webdav/mobile.kdbx.tmp.11111111", bytes: KdbxBytes("stale-mobile"), basic: webDav.BasicAuth);
+        Assert.Equal(HttpStatusCode.Created, staleTemp.StatusCode);
+        using var staleMove = await MoveAsync(_user, "/webdav/mobile.kdbx.tmp.11111111", "/webdav/mobile.kdbx", webDav.BasicAuth);
+        Assert.Equal(HttpStatusCode.PreconditionFailed, staleMove.StatusCode);
+        using var stalePut = await SendAsync(_user, HttpMethod.Put, "/webdav/mobile.kdbx", bytes: KdbxBytes("stale-direct"), basic: webDav.BasicAuth);
+        Assert.Equal(HttpStatusCode.PreconditionFailed, stalePut.StatusCode);
+
+        using var current = await SendAsync(_user, HttpMethod.Get, $"/api/vault/files/{vault.Id}/content");
+        Assert.Equal(KdbxBytes("web"), await current.Content.ReadAsByteArrayAsync());
+        var files = await GetJsonAsync(_admin, "/api/admin/files?includeDeleted=false");
+        Assert.Equal(2, files.EnumerateArray().Count(/* Counts the WebDAV conflict copies of the mobile vault.
+         * <param name="file">One returned file entry.</param>
+         */ file => file.GetProperty("name").GetString()!.StartsWith("mobile.conflict-", StringComparison.Ordinal)));
+        Assert.DoesNotContain(files.EnumerateArray(), /* Ensures no temporary upload became a vault.
+         * <param name="file">One returned file entry.</param>
+         */ file => file.GetProperty("name").GetString()!.Contains(".tmp.", StringComparison.Ordinal));
+    }
+
+    /// <summary>Verifies the limits of temporary uploads and MOVE: permissions, targets, Overwrite and KDBX validation.</summary>
+    [Fact]
+    public async Task WebDav_Temporary_Uploads_And_Move_Are_Restricted()
+    {
+        var adminCsrf = await SetupAdminAsync(_admin);
+        var (userId, _) = await CreateUserAsync(_admin, adminCsrf, "alice", "user");
+        var own = await UploadVaultAsync(_admin, adminCsrf, "own.kdbx", "own");
+        var other = await UploadVaultAsync(_admin, adminCsrf, "other.kdbx", "other");
+        var readOnly = await UploadVaultAsync(_admin, adminCsrf, "readonly.kdbx", "ro");
+        await SetPermissionsAsync(_admin, adminCsrf, own.Id, userId, "read-write");
+        await SetPermissionsAsync(_admin, adminCsrf, other.Id, userId, "read-write");
+        await SetPermissionsAsync(_admin, adminCsrf, readOnly.Id, userId, "read");
+        var webDav = await CreateWebDavCredentialAsync(_admin, adminCsrf, userId);
+
+        using var noVault = await SendAsync(_user, HttpMethod.Put, "/webdav/new.kdbx.tmp.12345678", bytes: KdbxBytes("x"), basic: webDav.BasicAuth);
+        Assert.Equal(HttpStatusCode.NotFound, noVault.StatusCode);
+        using var readOnlyTemp = await SendAsync(_user, HttpMethod.Put, "/webdav/readonly.kdbx.tmp.12345678", bytes: KdbxBytes("x"), basic: webDav.BasicAuth);
+        Assert.Equal(HttpStatusCode.Forbidden, readOnlyTemp.StatusCode);
+        using var invalidTemp = await SendAsync(_user, HttpMethod.Put, "/webdav/own.kdbx.tmp.12345678", bytes: Encoding.UTF8.GetBytes("not-kdbx"), basic: webDav.BasicAuth);
+        Assert.Equal(HttpStatusCode.BadRequest, invalidTemp.StatusCode);
+
+        using var temp = await SendAsync(_user, HttpMethod.Put, "/webdav/own.kdbx.tmp.12345678", bytes: KdbxBytes("own-v2"), basic: webDav.BasicAuth);
+        Assert.Equal(HttpStatusCode.Created, temp.StatusCode);
+        using var otherTarget = await MoveAsync(_user, "/webdav/own.kdbx.tmp.12345678", "/webdav/other.kdbx", webDav.BasicAuth);
+        Assert.Equal(HttpStatusCode.Forbidden, otherTarget.StatusCode);
+        using var noOverwrite = await MoveAsync(_user, "/webdav/own.kdbx.tmp.12345678", "/webdav/own.kdbx", webDav.BasicAuth, overwrite: "F");
+        Assert.Equal(HttpStatusCode.PreconditionFailed, noOverwrite.StatusCode);
+        using var noDestination = await MoveAsync(_user, "/webdav/own.kdbx.tmp.12345678", null, webDav.BasicAuth);
+        Assert.Equal(HttpStatusCode.BadRequest, noDestination.StatusCode);
+        using var renameVault = await MoveAsync(_user, "/webdav/own.kdbx", "/webdav/renamed.kdbx", webDav.BasicAuth);
+        Assert.Equal(HttpStatusCode.Forbidden, renameVault.StatusCode);
+
+        // Without a download by this credential there is no known base version, so the move still needs If-Match.
+        using var withoutBase = await MoveAsync(_user, "/webdav/own.kdbx.tmp.12345678", "/webdav/own.kdbx", webDav.BasicAuth);
+        Assert.Equal(HttpStatusCode.PreconditionRequired, withoutBase.StatusCode);
+        using var unchanged = await _admin.GetAsync($"/api/admin/files/{own.Id}/content");
+        Assert.Equal(KdbxBytes("own"), await unchanged.Content.ReadAsByteArrayAsync());
+
+        // Released KeePass2Android versions name the temporary file <stem>_tmp_<digits>.kdbx.
+        using var ownDownload = await SendAsync(_user, HttpMethod.Get, "/webdav/own.kdbx", basic: webDav.BasicAuth);
+        using var releasedTemp = await SendAsync(_user, HttpMethod.Put, "/webdav/own_tmp_17643505.kdbx", bytes: KdbxBytes("own-released"), basic: webDav.BasicAuth);
+        Assert.Equal(HttpStatusCode.Created, releasedTemp.StatusCode);
+        using var releasedMove = await MoveAsync(_user, "/webdav/own_tmp_17643505.kdbx", "http://192.168.2.100:8080/webdav/own.kdbx", webDav.BasicAuth);
+        Assert.Equal(HttpStatusCode.NoContent, releasedMove.StatusCode);
+        using var releasedResult = await _admin.GetAsync($"/api/admin/files/{own.Id}/content");
+        Assert.Equal(KdbxBytes("own-released"), await releasedResult.Content.ReadAsByteArrayAsync());
+
+        using var tempAgain = await SendAsync(_user, HttpMethod.Put, "/webdav/own.kdbx.tmp.87654321", bytes: KdbxBytes("own-v3"), basic: webDav.BasicAuth);
+        using var deleteTemp = await SendAsync(_user, HttpMethod.Delete, "/webdav/own.kdbx.tmp.87654321", basic: webDav.BasicAuth);
+        Assert.Equal(HttpStatusCode.NoContent, deleteTemp.StatusCode);
+        using var options = await SendAsync(_user, HttpMethod.Options, "/webdav/", basic: webDav.BasicAuth);
+        Assert.Contains("MOVE", options.Content.Headers.Allow);
+    }
+
+    /// <summary>Verifies that WebDAV requests are logged without secrets and that only admins can read the log.</summary>
+    [Fact]
+    public async Task WebDav_Requests_Are_Logged_For_Admins_Only()
+    {
+        var adminCsrf = await SetupAdminAsync(_admin);
+        var (userId, _) = await CreateUserAsync(_admin, adminCsrf, "alice", "user");
+        var vault = await UploadVaultAsync(_admin, adminCsrf, "logged.kdbx", "v1");
+        await SetPermissionsAsync(_admin, adminCsrf, vault.Id, userId, "read-write");
+        var webDav = await CreateWebDavCredentialAsync(_admin, adminCsrf, userId);
+
+        using var unauthenticated = await SendAsync(_user, HttpMethod.Get, "/webdav/logged.kdbx");
+        Assert.Equal(HttpStatusCode.Unauthorized, unauthenticated.StatusCode);
+        using var unknownTemp = await SendAsync(_user, HttpMethod.Put, "/webdav/missing_tmp_123.kdbx", bytes: KdbxBytes("x"), basic: webDav.BasicAuth);
+        Assert.Equal(HttpStatusCode.NotFound, unknownTemp.StatusCode);
+        using var download = await SendAsync(_user, HttpMethod.Get, "/webdav/logged.kdbx", basic: webDav.BasicAuth);
+        Assert.Equal(HttpStatusCode.OK, download.StatusCode);
+
+        using var logResponse = await _admin.GetAsync("/api/admin/logs/webdav");
+        logResponse.EnsureSuccessStatusCode();
+        var logText = await logResponse.Content.ReadAsStringAsync();
+        Assert.DoesNotContain("Webdav passphrase 123", logText);
+        var entries = JsonSerializer.Deserialize<JsonElement>(logText).EnumerateArray().ToArray();
+        Assert.Equal(3, entries.Length);
+
+        // Newest first: the successful download, then the rejected temporary upload, then the unauthenticated read.
+        Assert.Equal("GET", entries[0].GetProperty("method").GetString());
+        Assert.Equal(200, entries[0].GetProperty("status").GetInt32());
+        Assert.Equal(webDav.Username, entries[0].GetProperty("credential").GetString());
+        Assert.Equal("/webdav/missing_tmp_123.kdbx", entries[1].GetProperty("path").GetString());
+        Assert.Equal(404, entries[1].GetProperty("status").GetInt32());
+        Assert.Equal(5, entries[1].GetProperty("contentLength").GetInt64());
+        Assert.Equal(401, entries[2].GetProperty("status").GetInt32());
+        Assert.Equal(JsonValueKind.Null, entries[2].GetProperty("credential").ValueKind);
+
+        await LoginAsync(_user, "alice", "User passphrase 123");
+        using var userAccess = await _user.GetAsync("/api/admin/logs/webdav");
+        Assert.Equal(HttpStatusCode.Unauthorized, userAccess.StatusCode);
+    }
+
+    /// <summary>Sends a WebDAV MOVE with optional Destination and Overwrite headers.</summary>
+    /// <param name="client">The test HTTP client for the request.</param>
+    /// <param name="url">The source path of the move.</param>
+    /// <param name="destination">The Destination header value, or null to omit it.</param>
+    /// <param name="basic">The preformatted Basic authorization value.</param>
+    /// <param name="overwrite">The Overwrite header value; KeePass2Android sends T.</param>
+    private static async Task<HttpResponseMessage> MoveAsync(HttpClient client, string url, string? destination, string basic, string overwrite = "T")
+    {
+        using var request = new HttpRequestMessage(new HttpMethod("MOVE"), url);
+        request.Headers.TryAddWithoutValidation("Authorization", basic);
+        request.Headers.TryAddWithoutValidation("Overwrite", overwrite);
+        if (destination is not null) request.Headers.TryAddWithoutValidation("Destination", destination);
+        return await client.SendAsync(request);
+    }
+
     /// <summary>Prefixes test payload text with the KDBX signature bytes.</summary>
     /// <param name="payload">The fixture text to encode after the KDBX signature.</param>
     private static byte[] KdbxBytes(string payload)

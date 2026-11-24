@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Globalization;
 using System.Text;
 using KeePort.Api.Data;
@@ -16,7 +17,8 @@ public sealed record WebDavAuthResult(WebDavCredentialRecord Credential, UserRec
 public static class WebDavEndpoints
 {
     private const string AuthItemKey = "KeePort.WebDavAuth";
-    private static readonly string[] Methods = ["OPTIONS", "PROPFIND", "GET", "HEAD", "PUT", "DELETE", "LOCK", "UNLOCK"];
+    private const string AllowedMethods = "OPTIONS, PROPFIND, GET, HEAD, PUT, MOVE, LOCK, UNLOCK";
+    private static readonly string[] Methods = ["OPTIONS", "PROPFIND", "GET", "HEAD", "PUT", "DELETE", "MOVE", "LOCK", "UNLOCK"];
 
     /// <summary>Adds authentication for WebDAV requests before they reach the vault handlers.</summary>
     /// <param name="app">The application pipeline to which the middleware is added.</param>
@@ -24,7 +26,9 @@ public static class WebDavEndpoints
     /// <param name="hasher">The service for hashing and verifying passwords.</param>
     public static IApplicationBuilder UseWebDavAuthentication(this IApplicationBuilder app, KeePortDb db, PasswordHasher hasher)
     {
-       // Authenticates WebDAV requests and challenges unauthenticated clients when required.
+        var logger = app.ApplicationServices.GetRequiredService<ILoggerFactory>().CreateLogger("KeePort.WebDav");
+
+       // Authenticates WebDAV requests, challenges unauthenticated clients, and logs each request without credentials.
         // <param name="context">The current HTTP request and response context.</param>
         // <param name="next">The next middleware in the request pipeline.</param>
         return app.Use(async (context, next) =>
@@ -37,18 +41,81 @@ public static class WebDavEndpoints
                 return;
             }
 
+            var started = Stopwatch.GetTimestamp();
             var auth = Authenticate(context, db, hasher);
             if (auth is null)
             {
                 context.Response.StatusCode = StatusCodes.Status401Unauthorized;
                 context.Response.Headers.WWWAuthenticate = "Basic realm=\"KeePort WebDAV\", charset=\"UTF-8\"";
+                LogRequest(logger, db, context, null, started);
                 return;
             }
 
             context.Items[AuthItemKey] = auth;
-            await next();
+            try
+            {
+                await next();
+            }
+            finally
+            {
+                LogRequest(logger, db, context, auth, started);
+            }
         });
     }
+
+    /// <summary>
+    /// Logs method, path, status and the relevant precondition headers of a WebDAV request to the console and the
+    /// admin-visible request log, never credentials or content. Storage failures never affect the request.
+    /// </summary>
+    /// <param name="logger">The logger that receives the request line.</param>
+    /// <param name="db">The SQLite store that keeps the admin-visible request log.</param>
+    /// <param name="context">The completed HTTP request and response context.</param>
+    /// <param name="auth">The verified credential, or null if authentication failed.</param>
+    /// <param name="started">The <see cref="Stopwatch"/> timestamp taken when the request entered the middleware.</param>
+    private static void LogRequest(ILogger logger, KeePortDb db, HttpContext context, WebDavAuthResult? auth, long started)
+    {
+        var request = context.Request;
+        var entry = new WebDavRequestLogDto(
+            0,
+            DateTimeOffset.UtcNow,
+            request.Method,
+            request.Path.Value ?? string.Empty,
+            context.Response.StatusCode,
+            auth?.Credential.Username,
+            context.Connection.RemoteIpAddress?.ToString(),
+            (long)Stopwatch.GetElapsedTime(started).TotalMilliseconds,
+            request.ContentLength,
+            request.Headers.IfMatch.Count > 0,
+            NullIfEmpty(request.Headers["Depth"].ToString()),
+            NullIfEmpty(request.Headers["Destination"].ToString()),
+            NullIfEmpty(request.Headers["Overwrite"].ToString()));
+
+        logger.LogInformation(
+            "WebDAV {Method} {Path} -> {Status} (credential: {Credential}, If-Match: {IfMatch}, Depth: {Depth}, Destination: {Destination}, Overwrite: {Overwrite}, Length: {Length}, {DurationMs} ms)",
+            entry.Method,
+            entry.Path,
+            entry.Status,
+            entry.Credential ?? "-",
+            entry.IfMatch ? "yes" : "no",
+            entry.Depth ?? "-",
+            entry.Destination ?? "-",
+            entry.Overwrite ?? "-",
+            entry.ContentLength?.ToString(CultureInfo.InvariantCulture) ?? "-",
+            entry.DurationMs);
+
+        try
+        {
+            db.AddWebDavRequestLog(entry);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Could not store the WebDAV request log entry.");
+        }
+    }
+
+    /// <summary>Returns null for an empty header value so the log stores a missing value instead of an empty string.</summary>
+    /// <param name="value">The header value to check.</param>
+    private static string? NullIfEmpty(string value) => value.Length == 0 ? null : value;
 
     /// <summary>Maps supported WebDAV methods on the root and child paths.</summary>
     /// <param name="app">The endpoint route builder on which to register the routes.</param>
@@ -62,8 +129,9 @@ public static class WebDavEndpoints
     /// <param name="context">The current HTTP request and response context.</param>
     /// <param name="vault">The service for checking vault access and reading or writing encrypted files.</param>
     /// <param name="db">The SQLite store for KeePort metadata.</param>
+    /// <param name="staging">The store for temporary uploads that are later moved onto a vault.</param>
     /// <param name="cancellationToken">A token that cancels the operation when the caller no longer needs it.</param>
-    private static async Task<IResult> HandleAsync(HttpContext context, VaultService vault, KeePortDb db, CancellationToken cancellationToken)
+    private static async Task<IResult> HandleAsync(HttpContext context, VaultService vault, KeePortDb db, WebDavStagingStore staging, CancellationToken cancellationToken)
     {
         if (context.Items[AuthItemKey] is not WebDavAuthResult auth)
         {
@@ -81,6 +149,10 @@ public static class WebDavEndpoints
         var file = isCollection ? null : vault.GetByName(relativePath);
         if (!isCollection && file is null)
         {
+            if (WebDavStagingStore.TryParseStagingName(relativePath, out var targetName) && vault.GetByName(targetName) is { } target)
+            {
+                return await HandleStagingAsync(context, vault, db, staging, auth, method, relativePath, target, cancellationToken);
+            }
             return Results.NotFound(new ErrorResponse("not_found", "Vault file not found."));
         }
 
@@ -88,14 +160,153 @@ public static class WebDavEndpoints
         {
             "OPTIONS" => HandleOptions(context),
             "PROPFIND" => HandlePropFind(context, vault, auth.User, isCollection, file),
-            "GET" => isCollection ? MethodNotAllowed(context, "PROPFIND") : HandleGet(context, vault, auth.User, file!, includeBody: true, cancellationToken),
-            "HEAD" => isCollection ? MethodNotAllowed(context, "PROPFIND") : HandleGet(context, vault, auth.User, file!, includeBody: false, cancellationToken),
-            "PUT" => isCollection ? MethodNotAllowed(context, "GET, HEAD, PROPFIND") : await HandlePutAsync(context, vault, auth.User, file!, cancellationToken),
+            "GET" => isCollection ? MethodNotAllowed(context, "PROPFIND") : HandleGet(context, vault, db, auth, file!, includeBody: true),
+            "HEAD" => isCollection ? MethodNotAllowed(context, "PROPFIND") : HandleGet(context, vault, db, auth, file!, includeBody: false),
+            "PUT" => isCollection ? MethodNotAllowed(context, "GET, HEAD, PROPFIND") : await HandlePutAsync(context, vault, db, auth, file!, cancellationToken),
             "DELETE" => Results.Text("Deleting .kdbx files via WebDAV is disabled. Use the admin UI.", statusCode: StatusCodes.Status403Forbidden),
+            "MOVE" => Results.Text("Renaming .kdbx files via WebDAV is disabled. Use the admin UI.", statusCode: StatusCodes.Status403Forbidden),
             "LOCK" => HandleLock(context),
             "UNLOCK" => Results.StatusCode(StatusCodes.Status204NoContent),
-            _ => MethodNotAllowed(context, "OPTIONS, PROPFIND, GET, HEAD, PUT, LOCK, UNLOCK")
+            _ => MethodNotAllowed(context, AllowedMethods)
         };
+    }
+
+    /// <summary>Handles requests on a temporary upload name that belongs to an existing vault.</summary>
+    /// <param name="context">The current HTTP request and response context.</param>
+    /// <param name="vault">The service for checking vault access and reading or writing encrypted files.</param>
+    /// <param name="db">The SQLite store for KeePort metadata.</param>
+    /// <param name="staging">The store for temporary uploads that are later moved onto a vault.</param>
+    /// <param name="auth">The verified WebDAV credential and its owner.</param>
+    /// <param name="method">The upper-case HTTP method of the request.</param>
+    /// <param name="stagingName">The temporary file name from the request path.</param>
+    /// <param name="target">The vault that the temporary upload belongs to.</param>
+    /// <param name="cancellationToken">A token that cancels the operation when the caller no longer needs it.</param>
+    private static async Task<IResult> HandleStagingAsync(
+        HttpContext context,
+        VaultService vault,
+        KeePortDb db,
+        WebDavStagingStore staging,
+        WebDavAuthResult auth,
+        string method,
+        string stagingName,
+        VaultFileRecord target,
+        CancellationToken cancellationToken)
+    {
+        if (!vault.CanWrite(auth.User, target))
+        {
+            return vault.CanRead(auth.User, target)
+                ? Results.Json(new ErrorResponse("forbidden", "You do not have write access to this vault."), statusCode: StatusCodes.Status403Forbidden)
+                : Results.NotFound(new ErrorResponse("not_found", "Vault file not found."));
+        }
+
+        switch (method)
+        {
+            case "PUT":
+            {
+                var content = await ReadBodyAsync(context, cancellationToken);
+                if (!VaultService.HasKdbxSignature(content))
+                {
+                    return Results.Json(new ErrorResponse("invalid_vault", "File does not have a valid KDBX signature."), statusCode: StatusCodes.Status400BadRequest);
+                }
+                await staging.SaveAsync(auth.Credential.Id, stagingName, content, cancellationToken);
+                return Results.StatusCode(StatusCodes.Status201Created);
+            }
+            case "MOVE":
+                return await HandleStagingMoveAsync(context, vault, db, staging, auth, stagingName, target, cancellationToken);
+            case "DELETE":
+                return staging.Delete(auth.Credential.Id, stagingName)
+                    ? Results.StatusCode(StatusCodes.Status204NoContent)
+                    : Results.NotFound(new ErrorResponse("not_found", "Temporary upload not found."));
+            case "OPTIONS":
+                return HandleOptions(context);
+            default:
+                return Results.NotFound(new ErrorResponse("not_found", "Vault file not found."));
+        }
+    }
+
+    /// <summary>Moves a temporary upload onto its vault using the regular conflict-checked write path.</summary>
+    /// <param name="context">The current HTTP request and response context.</param>
+    /// <param name="vault">The service for checking vault access and reading or writing encrypted files.</param>
+    /// <param name="db">The SQLite store for KeePort metadata.</param>
+    /// <param name="staging">The store for temporary uploads that are later moved onto a vault.</param>
+    /// <param name="auth">The verified WebDAV credential and its owner.</param>
+    /// <param name="stagingName">The temporary file name from the request path.</param>
+    /// <param name="target">The vault that the temporary upload belongs to.</param>
+    /// <param name="cancellationToken">A token that cancels the operation when the caller no longer needs it.</param>
+    private static async Task<IResult> HandleStagingMoveAsync(
+        HttpContext context,
+        VaultService vault,
+        KeePortDb db,
+        WebDavStagingStore staging,
+        WebDavAuthResult auth,
+        string stagingName,
+        VaultFileRecord target,
+        CancellationToken cancellationToken)
+    {
+        var destination = GetDestinationName(context);
+        if (destination is null)
+        {
+            return Results.Json(new ErrorResponse("bad_request", "MOVE requires a Destination header below /webdav/."), statusCode: StatusCodes.Status400BadRequest);
+        }
+        if (!string.Equals(destination, target.Name, StringComparison.OrdinalIgnoreCase))
+        {
+            return Results.Json(new ErrorResponse("forbidden", "A temporary upload can only be moved onto its own vault."), statusCode: StatusCodes.Status403Forbidden);
+        }
+        if (string.Equals(context.Request.Headers["Overwrite"].ToString().Trim(), "F", StringComparison.OrdinalIgnoreCase))
+        {
+            return Results.Json(new ErrorResponse("precondition_failed", "The destination vault exists and Overwrite is F."), statusCode: StatusCodes.Status412PreconditionFailed);
+        }
+
+        var content = await staging.ReadAsync(auth.Credential.Id, stagingName, cancellationToken);
+        if (content is null)
+        {
+            return Results.NotFound(new ErrorResponse("not_found", "Temporary upload not found."));
+        }
+
+        try
+        {
+            return await WriteVaultAsync(context, vault, db, auth, target, content, cancellationToken);
+        }
+        finally
+        {
+            staging.Delete(auth.Credential.Id, stagingName);
+        }
+    }
+
+    /// <summary>Resolves the flat vault name from a MOVE request's Destination header, or null if it is not below /webdav/.</summary>
+    /// <param name="context">The current HTTP request and response context.</param>
+    private static string? GetDestinationName(HttpContext context)
+    {
+        var header = context.Request.Headers["Destination"].ToString().Trim();
+        if (header.Length == 0)
+        {
+            return null;
+        }
+
+        string path;
+        if (Uri.TryCreate(header, UriKind.Absolute, out var absolute) && (absolute.Scheme == Uri.UriSchemeHttp || absolute.Scheme == Uri.UriSchemeHttps))
+        {
+            path = absolute.AbsolutePath;
+        }
+        else if (header.StartsWith('/'))
+        {
+            path = header.Split('?', '#')[0];
+        }
+        else
+        {
+            return null;
+        }
+
+        // A reverse proxy may publish WebDAV below a prefix (e.g. /keeport/webdav/), so only the part from /webdav/ on counts.
+        path = Uri.UnescapeDataString(path);
+        var webDavIndex = path.IndexOf("/webdav/", StringComparison.OrdinalIgnoreCase);
+        if (webDavIndex < 0)
+        {
+            return null;
+        }
+
+        var name = GetRelativePath(path[webDavIndex..]);
+        return name.Length == 0 || name.Contains('/', StringComparison.Ordinal) || name.Contains('\\', StringComparison.Ordinal) ? null : name;
     }
 
     /// <summary>Removes the WebDAV path prefix and decodes the remaining path.</summary>
@@ -123,7 +334,7 @@ public static class WebDavEndpoints
     /// <param name="context">The current HTTP request and response context.</param>
     private static IResult HandleOptions(HttpContext context)
     {
-        context.Response.Headers.Allow = "OPTIONS, PROPFIND, GET, HEAD, PUT, LOCK, UNLOCK";
+        context.Response.Headers.Allow = AllowedMethods;
         context.Response.Headers["DAV"] = "1, 2";
         context.Response.Headers["MS-Author-Via"] = "DAV";
         context.Response.ContentLength = 0;
@@ -139,16 +350,16 @@ public static class WebDavEndpoints
         return Results.StatusCode(StatusCodes.Status405MethodNotAllowed);
     }
 
-    /// <summary>Returns vault bytes or headers only after checking read access and conditional requests.</summary>
+    /// <summary>Returns vault bytes or headers after checking read access, and remembers which version a GET delivered.</summary>
     /// <param name="context">The current HTTP request and response context.</param>
     /// <param name="vault">The service for checking vault access and reading or writing encrypted files.</param>
-    /// <param name="user">The user account associated with the operation.</param>
+    /// <param name="db">The SQLite store for KeePort metadata.</param>
+    /// <param name="auth">The verified WebDAV credential and its owner.</param>
     /// <param name="file">The metadata of the vault file to operate on.</param>
     /// <param name="includeBody">Whether to send the encrypted response body; false for HEAD.</param>
-    /// <param name="cancellationToken">A token that cancels the operation when the caller no longer needs it.</param>
-    private static IResult HandleGet(HttpContext context, VaultService vault, UserRecord user, VaultFileRecord file, bool includeBody, CancellationToken cancellationToken)
+    private static IResult HandleGet(HttpContext context, VaultService vault, KeePortDb db, WebDavAuthResult auth, VaultFileRecord file, bool includeBody)
     {
-        if (!vault.CanRead(user, file))
+        if (!vault.CanRead(auth.User, file))
         {
             return Results.Json(new ErrorResponse("forbidden", "You do not have read access to this vault."), statusCode: StatusCodes.Status403Forbidden);
         }
@@ -169,48 +380,82 @@ public static class WebDavEndpoints
             return Results.StatusCode(StatusCodes.Status200OK);
         }
 
+        // A full download means this client now holds this version; writes without If-Match are checked against it.
+        db.SetWebDavReadETag(auth.Credential.Id, file.Id, file.ETag);
         return Results.File(path, "application/octet-stream", file.Name, enableRangeProcessing: false);
     }
 
-    /// <summary>Checks write access and conditional headers before accepting a WebDAV upload.</summary>
+    /// <summary>Checks write access before accepting a direct WebDAV upload onto a vault.</summary>
     /// <param name="context">The current HTTP request and response context.</param>
     /// <param name="vault">The service for checking vault access and reading or writing encrypted files.</param>
-    /// <param name="user">The user account associated with the operation.</param>
+    /// <param name="db">The SQLite store for KeePort metadata.</param>
+    /// <param name="auth">The verified WebDAV credential and its owner.</param>
     /// <param name="file">The metadata of the vault file to operate on.</param>
     /// <param name="cancellationToken">A token that cancels the operation when the caller no longer needs it.</param>
-    private static async Task<IResult> HandlePutAsync(HttpContext context, VaultService vault, UserRecord user, VaultFileRecord file, CancellationToken cancellationToken)
+    private static async Task<IResult> HandlePutAsync(HttpContext context, VaultService vault, KeePortDb db, WebDavAuthResult auth, VaultFileRecord file, CancellationToken cancellationToken)
     {
         if (file.DeletedAt is not null)
         {
             return Results.NotFound(new ErrorResponse("not_found", "Vault file not found."));
         }
-        if (!vault.CanWrite(user, file))
+        if (!vault.CanWrite(auth.User, file))
         {
             return Results.Json(new ErrorResponse("forbidden", "You do not have write access to this vault."), statusCode: StatusCodes.Status403Forbidden);
         }
 
+        var content = await ReadBodyAsync(context, cancellationToken);
+        return await WriteVaultAsync(context, vault, db, auth, file, content, cancellationToken);
+    }
+
+    /// <summary>Reads the complete request body into memory.</summary>
+    /// <param name="context">The current HTTP request and response context.</param>
+    /// <param name="cancellationToken">A token that cancels the operation when the caller no longer needs it.</param>
+    private static async Task<byte[]> ReadBodyAsync(HttpContext context, CancellationToken cancellationToken)
+    {
+        await using var memory = new MemoryStream();
+        await context.Request.Body.CopyToAsync(memory, cancellationToken);
+        return memory.ToArray();
+    }
+
+    /// <summary>
+    /// Writes new vault content with an ETag precondition. Without If-Match, the version this credential last
+    /// downloaded is the expected one, so stale saves still become conflict copies instead of overwriting.
+    /// </summary>
+    /// <param name="context">The current HTTP request and response context.</param>
+    /// <param name="vault">The service for checking vault access and reading or writing encrypted files.</param>
+    /// <param name="db">The SQLite store for KeePort metadata.</param>
+    /// <param name="auth">The verified WebDAV credential and its owner.</param>
+    /// <param name="file">The vault to write.</param>
+    /// <param name="content">The encrypted KDBX bytes submitted by the client.</param>
+    /// <param name="cancellationToken">A token that cancels the operation when the caller no longer needs it.</param>
+    private static async Task<IResult> WriteVaultAsync(HttpContext context, VaultService vault, KeePortDb db, WebDavAuthResult auth, VaultFileRecord file, byte[] content, CancellationToken cancellationToken)
+    {
         var expectedETag = context.Request.Headers["X-KeePort-Expected-ETag"].FirstOrDefault()
             ?? context.Request.Headers.IfMatch.FirstOrDefault();
         if (string.IsNullOrWhiteSpace(expectedETag))
         {
-            return Results.Json(new ErrorResponse("precondition_required", "WebDAV writes require If-Match with the current ETag."), statusCode: StatusCodes.Status428PreconditionRequired);
+            expectedETag = db.GetWebDavReadETag(auth.Credential.Id, file.Id);
         }
-
-        byte[] content;
-        await using (var memory = new MemoryStream())
+        if (string.IsNullOrWhiteSpace(expectedETag))
         {
-            await context.Request.Body.CopyToAsync(memory, cancellationToken);
-            content = memory.ToArray();
+            return Results.Json(
+                new ErrorResponse("precondition_required", "WebDAV writes require If-Match with the current ETag or a prior download with this credential."),
+                statusCode: StatusCodes.Status428PreconditionRequired);
         }
 
         VaultWriteResult result;
         try
         {
-            result = await vault.WriteContentAsync(file.Id, content, expectedETag, user, "webdav", cancellationToken);
+            result = await vault.WriteContentAsync(file.Id, content, expectedETag, auth.User, "webdav", cancellationToken);
         }
         catch (VaultValidationException ex)
         {
             return Results.Json(new ErrorResponse("invalid_vault", ex.Message), statusCode: StatusCodes.Status400BadRequest);
+        }
+
+        if (result.Status == VaultWriteStatus.Success)
+        {
+            db.SetWebDavReadETag(auth.Credential.Id, file.Id, result.File!.ETag);
         }
 
         return result.Status switch

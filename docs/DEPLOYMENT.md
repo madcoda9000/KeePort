@@ -147,19 +147,26 @@ Mobile clients to try (compatibility depends on how the client writes):
 
 - iOS: [KeePassium](https://support.keepassium.com/kb/sync-webdav/) offers a direct WebDAV connection.
 - Android: [KeePassDX](https://github.com/Kunzisoft/KeePassDX/wiki/File-Manager-and-Sync) uses Android's file picker, not a built-in WebDAV client. Configure the endpoint in a storage provider such as [DAVx⁵ WebDAV Mounts](https://manual.davx5.com/webdav_mounts.html), then open the file through that provider.
-- Android: KeePass2Android can read and reload the latest server version with **Database caching** disabled. If it asks whether to merge or overwrite, cancel: both choices attempt an upload. KeePort rejects uploads to temporary names with `404`; direct writes without `If-Match` return `428`. Disabling the client's transactional saves does not add the missing `If-Match` header.
-- A client that does not send the current `If-Match` value may be able to read but cannot save. Test writes with a disposable vault before relying on mobile sync.
+- Android: KeePass2Android connects directly via WebDAV and can save with and without transactional writes (see below). Server-side verification is automated; confirm with a disposable vault on your device before relying on it.
+- Create one WebDAV app password per device. KeePort remembers which version each app password last downloaded (see below).
 
-WebDAV users can only write files they are allowed to modify. Send the current ETag in `If-Match` for safe writes. If no precondition is supplied, KeePort returns `428` and creates no copy. For a stale ETag, KeePort returns `412` and keeps the original unchanged. The submitted encrypted KDBX is saved as `<name>.conflict-<UTC timestamp>-webdav-<id>.kdbx` without access grants. An administrator can download, share, or delete it from the Admin file list. The Vault REST API follows the same rules but returns `409` for a stale ETag.
+WebDAV users can only write files they are allowed to modify. Send the current ETag in `If-Match` for safe writes. Clients that never send `If-Match`, such as KeePass2Android, are checked against the version their app password last downloaded with `GET`. Without such a download and without `If-Match`, KeePort returns `428` and creates no copy. For a stale ETag, KeePort returns `412` and keeps the original unchanged.
+
+Transactional saves are supported: a `PUT` to `<vault>.kdbx.tmp.<suffix>` or `<vault>_tmp_<suffix>.kdbx` (both used by KeePass2Android versions) is held for up to 15 minutes (at most 4 per app password) and only becomes the vault when the client sends `MOVE` onto exactly that vault. Such uploads never appear as separate vaults. `MOVE` cannot rename vaults, and `DELETE` on a vault stays forbidden. The submitted encrypted KDBX is saved as `<name>.conflict-<UTC timestamp>-webdav-<id>.kdbx` without access grants. An administrator can download, share, or delete it from the Admin file list. The Vault REST API follows the same rules but returns `409` for a stale ETag.
 
 KeePort does not enforce server-side WebDAV locks. For authorized requests, `LOCK` returns a token that is not saved and `UNLOCK` returns `204 No Content` without changing any lock state. A lock token is not a substitute for an ETag.
 
+KeePort logs every WebDAV request, including rejected sign-ins, to the container log and to SQLite. Administrators can review the latest 5,000 requests under **Logs → WebDAV logs** in the Admin console. The log shows the method, path, status, credential, client IP, `If-Match`, `Depth`, `Destination`, `Overwrite`, request size and duration. Passwords, the `Authorization` header and file contents are never logged.
+
 ## 6. Troubleshooting
+
+- **A KeePass client cannot save**: open **Logs → WebDAV logs** and look at the `PUT` and `MOVE` requests right after the attempt. `404` on a temporary name means an unknown naming pattern. `428` means the client neither sent `If-Match` nor downloaded the vault first. `412` means the vault changed on the server.
 
 - **No setup token in logs**: the admin already exists or setup is complete. Sign in at `/admin` or reset users via the admin UI.
 - **Admin UI returns 404 on port 8080**: expected. Use port `8081`/admin bind or the admin reverse-proxy route.
 - **Cannot write `/data`**: check volume permissions and UID/GID `1000:1000`.
-- **WebDAV `412 Precondition Failed`**: reload the current vault and merge your changes before saving again. Ask an administrator for the conflict copy if you need the submitted version.
+- **WebDAV `412 Precondition Failed`**: reload the current vault and merge your changes before saving again. Ask an administrator for the conflict copy if you need the submitted version. In KeePass2Android, choose **Merge** when it reports an external change. The app has to download the server version to merge, so the merged save is checked against the current version.
+- **WebDAV `428 Precondition Required`**: the client sent no `If-Match` and has not downloaded the vault with this app password yet. Reopen the vault from the server, then save again.
 - **`429 Too Many Requests`**: wait for the `Retry-After` interval and check the request limits above if this happens often.
 
 ## 7. What the server can and cannot see
