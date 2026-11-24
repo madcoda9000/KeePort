@@ -26,4 +26,4 @@ Admins sehen im Admin-Frontend unter **Logs → WebDAV logs**, welche WebDAV-Anf
 
 ## Status
 
-Umgesetzt: Backend-Tests 19/19 grün, Admin-Build fehlerfrei, keine neuen Lint-Warnungen. Offen ist die Sichtprüfung im Browser durch Sascha.
+Erledigt (2026-11-24). Backend-Tests 19/19 grün, Admin-Build fehlerfrei, keine neuen Lint-Warnungen. Sichtprüfung im Browser durch Sascha. Nachträglich: IPv4-Clients werden ohne `::ffff:`-Präfix angezeigt.

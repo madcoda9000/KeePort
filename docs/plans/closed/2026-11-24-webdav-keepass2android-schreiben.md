@@ -56,4 +56,9 @@ KeePass2Android kann speichern. Der Schutz vor versehentlichem Überschreiben (E
 
 ## Status
 
-Code, Tests (18/18 grün) und Doku fertig. Offen ist nur die Abnahme auf dem Android-Gerät.
+Erledigt (2026-11-24). Abnahme durch Sascha auf Android mit KeePass2Android und aktiviertem Datenbank-Caching:
+
+- Handy → Server: Eintrag geändert und gespeichert. Im Serverprotokoll erscheint `PUT …_tmp_<n>.kdbx`, danach `MOVE`. Die Änderung ist im Web-Vault sichtbar.
+- Server → Handy: Eintrag im Web-Vault geändert, auf dem Handy synchronisiert. Ohne lokale Änderungen lädt die App den Serverstand ohne Nachfrage, die Änderung ist korrekt da.
+- Zusammenführen bei gleichzeitigen Änderungen auf Handy und Server: auf dem Gerät erfolgreich.
+- Zusätzlich iOS mit KeePassium: Ändern und Synchronisieren erfolgreich.

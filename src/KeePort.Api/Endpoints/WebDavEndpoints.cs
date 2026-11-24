@@ -82,7 +82,7 @@ public static class WebDavEndpoints
             request.Path.Value ?? string.Empty,
             context.Response.StatusCode,
             auth?.Credential.Username,
-            context.Connection.RemoteIpAddress?.ToString(),
+            FormatRemoteIp(context.Connection.RemoteIpAddress),
             (long)Stopwatch.GetElapsedTime(started).TotalMilliseconds,
             request.ContentLength,
             request.Headers.IfMatch.Count > 0,
@@ -112,6 +112,11 @@ public static class WebDavEndpoints
             logger.LogWarning(ex, "Could not store the WebDAV request log entry.");
         }
     }
+
+    /// <summary>Formats the client address, showing IPv4 clients of a dual-stack socket as plain IPv4 instead of ::ffff:a.b.c.d.</summary>
+    /// <param name="address">The remote address of the connection, if known.</param>
+    private static string? FormatRemoteIp(System.Net.IPAddress? address)
+        => address is null ? null : (address.IsIPv4MappedToIPv6 ? address.MapToIPv4() : address).ToString();
 
     /// <summary>Returns null for an empty header value so the log stores a missing value instead of an empty string.</summary>
     /// <param name="value">The header value to check.</param>

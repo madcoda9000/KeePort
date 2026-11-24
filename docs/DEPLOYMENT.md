@@ -145,9 +145,9 @@ Client settings:
 
 Mobile clients to try (compatibility depends on how the client writes):
 
-- iOS: [KeePassium](https://support.keepassium.com/kb/sync-webdav/) offers a direct WebDAV connection.
+- iOS: [KeePassium](https://support.keepassium.com/kb/sync-webdav/) offers a direct WebDAV connection. Editing and syncing were verified on a device.
 - Android: [KeePassDX](https://github.com/Kunzisoft/KeePassDX/wiki/File-Manager-and-Sync) uses Android's file picker, not a built-in WebDAV client. Configure the endpoint in a storage provider such as [DAVx⁵ WebDAV Mounts](https://manual.davx5.com/webdav_mounts.html), then open the file through that provider.
-- Android: KeePass2Android connects directly via WebDAV and can save with and without transactional writes (see below). Server-side verification is automated; confirm with a disposable vault on your device before relying on it.
+- Android: KeePass2Android connects directly via WebDAV. Saving, syncing and merging were verified on a device with the default transactional saves. Direct saves without transactional writes are covered by server tests (see below).
 - Create one WebDAV app password per device. KeePort remembers which version each app password last downloaded (see below).
 
 WebDAV users can only write files they are allowed to modify. Send the current ETag in `If-Match` for safe writes. Clients that never send `If-Match`, such as KeePass2Android, are checked against the version their app password last downloaded with `GET`. Without such a download and without `If-Match`, KeePort returns `428` and creates no copy. For a stale ETag, KeePort returns `412` and keeps the original unchanged.

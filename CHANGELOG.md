@@ -30,6 +30,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Marked vault attachment management as accepted in the hardening plan; mobile WebDAV verification and first-release steps remain open.
 - Documented how to reload a vault from WebDAV in KeePass2Android without database caching and why saves from this client fail.
 - WebDAV requests are logged to the console and stored in SQLite with method, path, status and precondition headers (never passwords or file content) to diagnose client compatibility.
+- WebDAV logs show IPv4 clients as plain IPv4 (`192.168.2.79`) instead of the IPv6-mapped form (`::ffff:192.168.2.79`).
+- Marked WebDAV client compatibility as accepted on devices: KeePass2Android (save, sync, merge) and KeePassium on iOS (edit and sync).
 - WebDAV `OPTIONS` lists `MOVE`. `MOVE` on a vault itself is rejected with `403`; vaults are still renamed in the Admin console only.
 - Completed function and method documentation across the API, frontends, shared table code, and tests, including descriptions of each parameter.
 - Configure login and WebDAV rate limits in the Admin console instead of environment variables. Values are persisted in SQLite and apply immediately.

@@ -59,11 +59,16 @@ Die Analyse vom 2026-11-23 hat ergeben, dass alle Kernanforderungen des Ursprung
 
 ## AP4 – WebDAV-Client-Kompatibilitätstest (M, extern)
 
-**Status:** Teilweise erledigt. HTTP-Verhalten am 2026-11-24 mit isoliertem Kestrel und zwei echten KDBX-Ständen geprüft: `PROPFIND` (207), übereinstimmende ETags bei Listing, `GET` und `HEAD`, `PUT` ohne ETag (428), mit aktuellem ETag (204) und mit altem ETag (412). Nach dem Konflikt blieb das Original unverändert; genau eine Konfliktkopie erschien im Admin.
+**Status:** Erledigt (2026-11-24). Abnahme auf Geräten durch Sascha:
+
+- **Android, KeePass2Android:** Speichern vom Handy, Synchronisieren vom Web-Vault und Zusammenführen bei gleichzeitigen Änderungen erfolgreich.
+- **iOS, KeePassium:** Ändern und Synchronisieren erfolgreich. Das Zusammenführen wurde dort nicht eigens geprüft, weil KeePassium Änderungen sofort hochlädt.
+
+HTTP-Verhalten am 2026-11-24 mit isoliertem Kestrel und zwei echten KDBX-Ständen geprüft: `PROPFIND` (207), übereinstimmende ETags bei Listing, `GET` und `HEAD`, `PUT` ohne ETag (428), mit aktuellem ETag (204) und mit altem ETag (412). Nach dem Konflikt blieb das Original unverändert; genau eine Konfliktkopie erschien im Admin.
 
 **Android (2026-11-24):** Sascha konnte einen nach dem Argon2-Fix neu erstellten Tresor mit KeePass2Android per WebDAV öffnen. Mit deaktiviertem Datenbank-Caching lud die App nach einer Änderung im Web-Vault die Datei neu und zeigte die Änderung an. Mit aktiviertem Caching bot der Konfliktdialog „Überschreiben“ und „Zusammenführen“ an; beide versuchen einen Upload und scheiterten. Das Speichern scheiterte ebenfalls mit `Java.IO.FileNotFoundException`. Der Client-Code von v1.15-r6 lädt beim transaktionalen Speichern zuerst eine temporäre Datei hoch und meldet bei `404` diesen Fehler. Gegen isoliertes KeePort nachgestellt: `PUT` auf den temporären Pfad liefert `404`; ein direktes `PUT` ohne `If-Match` liefert `428`. Kein kompatibler Schreibpfad für diesen Client bestätigt. Ein Android-Schreibtest mit einem anderen Client und die iOS-Abnahme bleiben offen.
 
-**Nachtrag (2026-11-24):** Serverseitige Unterstützung für KeePass2Android umgesetzt, siehe `2026-11-24-webdav-keepass2android-schreiben.md`: temporäre Uploads plus `MOVE` und ein gemerkter Download-ETag pro App-Passwort statt fehlendem `If-Match`. Automatisierte Tests grün; der Schreibtest auf dem Gerät steht noch aus.
+**Nachtrag (2026-11-24):** Serverseitige Unterstützung für KeePass2Android umgesetzt, siehe `2026-11-24-webdav-keepass2android-schreiben.md`: temporäre Uploads plus `MOVE` und ein gemerkter Download-ETag pro App-Passwort statt fehlendem `If-Match`. Automatisierte Tests grün. Am selben Tag auf dem Gerät abgenommen: Speichern vom Handy und Synchronisieren vom Web-Vault aufs Handy funktionieren (Plan in `docs/plans/closed`). Danach wurden auch das Zusammenführen auf Android und iOS mit KeePassium bestätigt (siehe Status).
 
 **Befund:** KeePort verlangt beim WebDAV-PUT ein aktuelles `If-Match` (428 wenn es fehlt). Die Schreibkompatibilität mit mobilen Clients hängt davon ab, ob sie diesen Header senden.
 
@@ -195,7 +200,6 @@ Nach jedem Paket: `CHANGELOG.md`-Eintrag unter `## [Unreleased]` (Sektionen `Add
 
 ## Noch offen
 
-- **AP4:** Android-Schreibtest mit kompatiblem WebDAV-Client und iOS-Abnahme durchführen, einschließlich Konfliktverhalten.
 - **AP7 / AP9:** Beim freigegebenen ersten Release das öffentliche Repository und den Release-Tag anlegen, den Changelog versionieren und den Plan nach `docs/plans/closed` verschieben.
 
 ## Risiken
