@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-11-24
+
+### Added
+
+- `KEEPORT_TRUSTED_PROXIES` lists reverse proxies (IPs or CIDR networks) whose `X-Forwarded-For` and `X-Forwarded-Proto` KeePort accepts, in addition to loopback. Behind the Synology or QNAP reverse proxy, Caddy or nginx, rate limits, WebDAV logs and sessions then use each device's own address instead of the proxy's. Without the setting, behavior is unchanged.
+- Startup log line listing the trusted proxies, and a warning (at most once per sender and hour) when `X-Forwarded-For` arrives from an address that is not trusted, naming the address to add.
+- Deployment guide section "Trust your reverse proxy" with the steps for every platform.
+
+### Changed
+
+- Client addresses are formatted the same way everywhere: IPv4 clients of dual-stack sockets count as plain IPv4 (`192.168.1.5`, not `::ffff:192.168.1.5`) in rate limits, sessions and WebDAV logs.
+- The deployment guide, README and `.env.example` explain what `KEEPORT_ADMIN_BIND=0.0.0.0` means: the admin console becomes reachable on every network of the host, and Docker port publishing bypasses host firewalls.
+
+### Security
+
+- Catch-all proxy entries (`0.0.0.0/0`, `::/0`) and invalid entries stop KeePort at startup instead of being ignored, so client addresses cannot be spoofed through an overly broad configuration.
+
 ## [0.1.1] - 2026-11-24
 
 ### Added
@@ -84,5 +101,6 @@ First beta release.
 - Login and setup share a configurable per-IP rate limit; session checks and sign-out are exempt. WebDAV has a separate configurable limit applied before authentication.
 - Admin accounts can only sign in to the Admin console; Vault and WebDAV require a separate user account. Admin sessions are scoped to the Admin API, so existing admins need to sign in again after updating.
 
+[0.2.0]: https://github.com/madcoda9000/KeePort/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/madcoda9000/KeePort/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/madcoda9000/KeePort/releases/tag/v0.1.0

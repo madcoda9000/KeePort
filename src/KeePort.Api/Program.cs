@@ -77,6 +77,17 @@ builder.Services.AddRateLimiter(options =>
     };
 });
 
+TrustedProxyList trustedProxies;
+try
+{
+    trustedProxies = TrustedProxyList.Parse(builder.Configuration["KeePort:TrustedProxies"]);
+}
+catch (TrustedProxyConfigurationException ex)
+{
+    Console.Error.WriteLine($"KeePort cannot start: invalid KEEPORT_TRUSTED_PROXIES (KeePort:TrustedProxies). {ex.Message}");
+    throw;
+}
+
 var corsOrigins = builder.Configuration.GetSection("KeePort:CorsOrigins").Get<string[]>() ?? [];
 // Registers the KeePort CORS policy.
 // <param name="options">The CORS options on which to register KeePort's named policy.</param>
@@ -115,11 +126,15 @@ if (!db.HasAdmin() && db.GetSetupToken() is { } setupToken)
     app.Logger.LogWarning("KeePort first-run setup required. Open the admin UI and enter this one-time setup token: {SetupToken}", setupToken);
 }
 
-app.UseForwardedHeaders(new ForwardedHeadersOptions
+var forwardedHeaders = new ForwardedHeadersOptions
 {
     ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto,
     ForwardLimit = 1
-});
+};
+trustedProxies.ApplyTo(forwardedHeaders);
+app.Logger.LogInformation("Accepting X-Forwarded-For/-Proto from: {TrustedProxies}", trustedProxies.Describe());
+app.UseForwardedHeaders(forwardedHeaders);
+app.UseForwardedHeaderDiagnostics();
 
 // Sets security headers and chooses a content policy for the API or the frontend.
 // <param name="context">The current HTTP request and response context.</param>
@@ -211,7 +226,7 @@ app.Run();
 // <param name="version">The policy revision used to separate old and new quota partitions.</param>
 static RateLimitPartition<(string, long)> PerIpLimit(HttpContext context, int limit, long version)
     => RateLimitPartition.GetFixedWindowLimiter(
-        (context.Connection.RemoteIpAddress?.ToString() ?? "unknown", version),
+        (ClientIp.Format(context.Connection.RemoteIpAddress) ?? "unknown", version),
         // Configures the one-minute partition to reject requests instead of queueing them.
         // <param name="_">The partition key, unused because quota settings are already captured.</param>
         _ => new FixedWindowRateLimiterOptions { PermitLimit = limit, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 });

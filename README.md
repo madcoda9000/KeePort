@@ -123,7 +123,7 @@ ssh -L 8081:127.0.0.1:8081 user@your-nas
 **First steps in the admin console:** create the administrator → create a user → create or upload a vault and grant access → create a WebDAV app password per device.
 
 > [!TIP]
-> To reach the admin console from your LAN or VPN instead, set `KEEPORT_ADMIN_BIND` in `.env` to a LAN/VPN IP (or `0.0.0.0`) and run `docker compose up -d` again. Never expose port `8081` to the internet.
+> To reach the admin console from your LAN or VPN instead, set `KEEPORT_ADMIN_BIND` in `.env` to the host's LAN or VPN IP and run `docker compose up -d` again. Avoid `0.0.0.0`: it opens the admin console on every network the host is connected to — your whole subnet and, on a server with a public IP, the internet ([details](docs/DEPLOYMENT.md#who-can-reach-the-admin-console)). Never expose port `8081` to the internet.
 
 ### Updating to a new release
 
@@ -179,6 +179,7 @@ Setup instructions per client are in the [deployment guide](docs/DEPLOYMENT.md#-
 - **Separate roles:** admin accounts can only use the admin console; the web vault and WebDAV require a regular user account.
 - **Separate WebDAV credentials:** one app password per device, stored as an Argon2id hash and revocable at any time.
 - **Hardened sessions:** `HttpOnly`/`SameSite` cookies, CSRF tokens, Argon2id password hashing and configurable per-IP rate limits for sign-in and WebDAV.
+- **Explicit proxy trust:** client addresses from `X-Forwarded-For` are only accepted from reverse proxies you list; catch-all entries are refused.
 - **Admin isolation:** admin endpoints only answer on the admin port when `KeePort:AdminPorts` is configured.
 - **Privacy-aware logging:** WebDAV logs record method, path, status and headers such as `If-Match` — never passwords or file contents.
 
@@ -196,6 +197,7 @@ Copy `.env.example` to `.env` and adjust as needed:
 | `KEEPORT_ADMIN_HOST_PORT` | `8081` | Host port of the admin console. |
 | `KEEPORT_ADMIN_PORT` | `8081` | Container port that serves the admin API and UI. |
 | `KEEPORT_COOKIE_SECURE` | `false` | Set to `true` when KeePort is served over HTTPS. |
+| `KEEPORT_TRUSTED_PROXIES` | *(empty)* | Your reverse proxy's IP or network, so KeePort sees each device's own address ([details](docs/DEPLOYMENT.md#-trust-your-reverse-proxy)). |
 
 Sign-in and WebDAV rate limits are changed at runtime in **Admin → Settings**. Everything else — NAS setup, backups, reverse proxy examples, troubleshooting — is in the [deployment guide](docs/DEPLOYMENT.md).
 

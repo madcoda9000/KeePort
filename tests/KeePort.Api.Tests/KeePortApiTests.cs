@@ -3,6 +3,8 @@ using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using KeePort.Api.Data;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Configuration;
@@ -810,6 +812,79 @@ public class KeePortApiTests : IDisposable
         await LoginAsync(_user, "alice", "User passphrase 123");
         using var userAccess = await _user.GetAsync("/api/admin/logs/webdav");
         Assert.Equal(HttpStatusCode.Unauthorized, userAccess.StatusCode);
+    }
+
+    /// <summary>Verifies that X-Forwarded-For from an untrusted sender is ignored by default.</summary>
+    [Fact]
+    public async Task Forwarded_Client_Ip_Is_Ignored_Without_Trusted_Proxies()
+    {
+        await SetupAdminAsync(_admin);
+        var status = await SendFromAsync(_factory, "172.18.0.1", "203.0.113.7", "/webdav/untrusted");
+        Assert.Equal(StatusCodes.Status401Unauthorized, status);
+
+        var entry = await FindWebDavLogAsync(_admin, "/webdav/untrusted");
+        Assert.Equal("172.18.0.1", entry.GetProperty("remoteIp").GetString());
+    }
+
+    /// <summary>Verifies that trusted proxies pass on the client IP to the WebDAV log and to per-client rate limits.</summary>
+    [Fact]
+    public async Task Trusted_Proxies_Pass_On_The_Client_Ip()
+    {
+        using var factory = _factory.WithWebHostBuilder(/* Trusts one proxy address and one proxy network.
+         * <param name="builder">The web host builder of the test server.</param>
+         */ builder => builder.UseSetting("KeePort:TrustedProxies", "172.18.0.1, 10.20.0.0/16"));
+        using var admin = factory.CreateClient();
+        var csrf = await SetupAdminAsync(admin);
+        using var limits = await SendAsync(admin, HttpMethod.Put, RateLimitsPath, json: new RateLimitSettings(10, 2), csrf: csrf);
+        Assert.Equal(HttpStatusCode.OK, limits.StatusCode);
+
+        // Per-client quota: the first client is limited after two requests, another client behind the same proxy is not.
+        Assert.Equal(StatusCodes.Status401Unauthorized, await SendFromAsync(factory, "172.18.0.1", "203.0.113.10", "/webdav/client-a-1"));
+        Assert.Equal(StatusCodes.Status401Unauthorized, await SendFromAsync(factory, "172.18.0.1", "203.0.113.10", "/webdav/client-a-2"));
+        Assert.Equal(StatusCodes.Status429TooManyRequests, await SendFromAsync(factory, "172.18.0.1", "203.0.113.10", "/webdav/client-a-3"));
+        Assert.Equal(StatusCodes.Status401Unauthorized, await SendFromAsync(factory, "172.18.0.1", "203.0.113.11", "/webdav/client-b"));
+
+        // Network entries, IPv4-mapped senders, untrusted senders and spoofed chains.
+        await SendFromAsync(factory, "10.20.5.5", "198.51.100.4", "/webdav/network");
+        await SendFromAsync(factory, "::ffff:172.18.0.1", "203.0.113.12", "/webdav/mapped");
+        await SendFromAsync(factory, "10.21.0.1", "198.51.100.9", "/webdav/outside");
+        await SendFromAsync(factory, "172.18.0.1", "1.2.3.4, 203.0.113.13", "/webdav/chain");
+
+        Assert.Equal("203.0.113.11", (await FindWebDavLogAsync(admin, "/webdav/client-b")).GetProperty("remoteIp").GetString());
+        Assert.Equal("198.51.100.4", (await FindWebDavLogAsync(admin, "/webdav/network")).GetProperty("remoteIp").GetString());
+        Assert.Equal("203.0.113.12", (await FindWebDavLogAsync(admin, "/webdav/mapped")).GetProperty("remoteIp").GetString());
+        Assert.Equal("10.21.0.1", (await FindWebDavLogAsync(admin, "/webdav/outside")).GetProperty("remoteIp").GetString());
+        Assert.Equal("203.0.113.13", (await FindWebDavLogAsync(admin, "/webdav/chain")).GetProperty("remoteIp").GetString());
+    }
+
+    /// <summary>Sends an unauthenticated WebDAV GET as if it arrived from a proxy, and returns the status code.</summary>
+    /// <param name="factory">The test application to send the request to.</param>
+    /// <param name="sender">The address of the connecting proxy or client.</param>
+    /// <param name="forwardedFor">The X-Forwarded-For header value.</param>
+    /// <param name="path">The request path, unique per request so the log entry can be found.</param>
+    private static async Task<int> SendFromAsync(WebApplicationFactory<Program> factory, string sender, string forwardedFor, string path)
+    {
+        var context = await factory.Server.SendAsync(/* Builds the request with the simulated connection address.
+         * <param name="c">The HTTP context of the simulated request.</param>
+         */ c =>
+        {
+            c.Request.Method = HttpMethods.Get;
+            c.Request.Path = path;
+            c.Request.Headers["X-Forwarded-For"] = forwardedFor;
+            c.Connection.RemoteIpAddress = IPAddress.Parse(sender);
+        });
+        return context.Response.StatusCode;
+    }
+
+    /// <summary>Returns the WebDAV log entry recorded for a request path.</summary>
+    /// <param name="admin">An HTTP client signed in as administrator.</param>
+    /// <param name="path">The unique request path to look for.</param>
+    private static async Task<JsonElement> FindWebDavLogAsync(HttpClient admin, string path)
+    {
+        var entries = await GetJsonAsync(admin, "/api/admin/logs/webdav");
+        return Assert.Single(entries.EnumerateArray(), /* Matches the entry for the requested path.
+         * <param name="e">One WebDAV log entry.</param>
+         */ e => e.GetProperty("path").GetString() == path);
     }
 
     /// <summary>Sends a WebDAV MOVE with optional Destination and Overwrite headers.</summary>

@@ -2,6 +2,7 @@ using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
 using KeePort.Api.Data;
+using KeePort.Api.Security;
 using Microsoft.AspNetCore.Http;
 
 namespace KeePort.Api.Services;
@@ -49,7 +50,7 @@ public sealed class SessionService
             ExpiresAt = now.Add(_sessionLifetime),
             LastSeenAt = now,
             UserAgent = context.Request.Headers.UserAgent.ToString(),
-            IpAddress = context.Connection.RemoteIpAddress?.ToString()
+            IpAddress = ClientIp.Format(context.Connection.RemoteIpAddress)
         };
         _db.CreateSession(session);
         return (session, token, csrfToken);

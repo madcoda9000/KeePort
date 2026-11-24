@@ -9,6 +9,7 @@ services:
       KeePort__DataDir: /data
       KeePort__CookieSecure: ${KEEPORT_COOKIE_SECURE:-false}
       KeePort__AdminPorts__0: ${KEEPORT_ADMIN_PORT:-8081}
+      KeePort__TrustedProxies: ${KEEPORT_TRUSTED_PROXIES:-}
     ports:
       - "${KEEPORT_HTTP_HOST_PORT:-8080}:8080"
       - "${KEEPORT_ADMIN_BIND:-127.0.0.1}:${KEEPORT_ADMIN_HOST_PORT:-8081}:8081"
