@@ -9,11 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Rewrote the README with an overview, feature table, architecture diagram, verified client list, configuration reference and update instructions.
+- Rewrote the README with an overview, feature table, screenshots in light and dark theme (fictional demo data, `docs/images/`), architecture diagram, verified client list, configuration reference and update instructions.
 - The quickstart in the README and deployment guide clones a release tag (`--branch v0.1.0`) instead of the development branch.
 
 ### Fixed
 
+- WebDAV logs table: long paths and `Destination` values are truncated again, so the table no longer overflows its card and hides the Duration column on narrower screens.
 - Quickstart used `cd keeport` although the clone directory is `KeePort`; the deployment guide still pointed to a placeholder repository URL.
 - Local development instructions set a writable data directory (`.data/`, ignored by Git); the default `/data` is meant for the container.
 

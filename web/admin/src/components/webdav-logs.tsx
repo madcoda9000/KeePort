@@ -181,14 +181,17 @@ export function WebDavLogsPanel() {
             <TableRow key={entry.id}>
               <TableCell className="ps-6 whitespace-nowrap text-muted-foreground tabular-nums">{formatTime(entry.occurredAt)}</TableCell>
               <TableCell className="font-mono text-xs">{entry.method}</TableCell>
-              <TableCell className="max-w-72 truncate font-mono text-xs" title={entry.path}>{entry.path}</TableCell>
+              <TableCell className="font-mono text-xs">
+                <div className="max-w-64 truncate" title={entry.path}>{entry.path}</div>
+              </TableCell>
               <TableCell>
                 <Badge variant={statusVariant(entry.status)} className="tabular-nums">{entry.status}</Badge>
               </TableCell>
               <TableCell>{entry.credential ?? <span className="text-muted-foreground">—</span>}</TableCell>
               <TableCell className="font-mono text-xs text-muted-foreground">{entry.remoteIp ?? '—'}</TableCell>
-              <TableCell className="max-w-80 truncate text-xs text-muted-foreground" title={describeDetails(entry)}>
-                {describeDetails(entry) || '—'}
+              <TableCell className="text-xs text-muted-foreground">
+                {/* A width-limited block is needed because max-width on a table cell does not truncate in browsers. */}
+                <div className="max-w-56 truncate" title={describeDetails(entry)}>{describeDetails(entry) || '—'}</div>
               </TableCell>
               <TableCell className="text-end text-muted-foreground tabular-nums">{entry.durationMs} ms</TableCell>
             </TableRow>

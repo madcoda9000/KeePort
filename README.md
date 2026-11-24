@@ -11,7 +11,14 @@
 [![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white)](#-quickstart)
 [![KDBX 3.1 / 4](https://img.shields.io/badge/KDBX-3.1%20%2F%204-6c757d)](#-compatibility)
 
-[Quickstart](#-quickstart) · [Features](#-features) · [How it works](#-how-it-works) · [Deployment guide](docs/DEPLOYMENT.md) · [Changelog](CHANGELOG.md)
+[Quickstart](#-quickstart) · [Features](#-features) · [Screenshots](#-screenshots) · [How it works](#-how-it-works) · [Deployment guide](docs/DEPLOYMENT.md) · [Changelog](CHANGELOG.md)
+
+<br>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/vault-entries-dark.webp">
+  <img src="docs/images/vault-entries-light.webp" alt="KeePort web vault showing the unlocked family.kdbx with its entries" width="100%">
+</picture>
 
 </div>
 
@@ -41,6 +48,45 @@ KeePass files are great: open format, strong encryption, dozens of apps. Keeping
 | 🧰 **Admin console** | Manage vault files, users, permissions, WebDAV app passwords, rate limits — and inspect WebDAV request logs. |
 | 💾 **Crash-safe storage** | Atomic writes (temp file → fsync → rename), soft delete with restore, plain files on a Docker volume. |
 | 🐳 **One container** | Single Docker image with a persistent `/data` volume and an optional, separately bound admin port. |
+
+## 📸 Screenshots
+
+<table>
+  <tr>
+    <td width="50%">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/images/vault-entry-dark.webp">
+        <img src="docs/images/vault-entry-light.webp" alt="Entry details with live TOTP code, decrypted only in the browser">
+      </picture>
+      <p align="center"><b>Entry details & TOTP</b><br><sub>Edit entries and copy one-time codes — decrypted only in your browser.</sub></p>
+    </td>
+    <td width="50%">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/images/admin-vaults-dark.webp">
+        <img src="docs/images/admin-vaults-light.webp" alt="Admin console listing stored vault files">
+      </picture>
+      <p align="center"><b>Vault files</b><br><sub>Create, upload, rename, restore and download KDBX files.</sub></p>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/images/admin-permissions-dark.webp">
+        <img src="docs/images/admin-permissions-light.webp" alt="Per-user vault permissions in the admin console">
+      </picture>
+      <p align="center"><b>Per-vault permissions</b><br><sub>Read only or read and write, per user and vault.</sub></p>
+    </td>
+    <td width="50%">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/images/admin-webdav-logs-dark.webp">
+        <img src="docs/images/admin-webdav-logs-light.webp" alt="WebDAV request log with a KeePass2Android-style save">
+      </picture>
+      <p align="center"><b>WebDAV logs</b><br><sub>See exactly what each KeePass app sends when syncing.</sub></p>
+    </td>
+  </tr>
+</table>
+
+<sub>Screenshots use fictional demo data. Light and dark versions follow your GitHub theme.</sub>
 
 ## ⚡ Quickstart
 
