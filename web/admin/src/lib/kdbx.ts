@@ -22,7 +22,7 @@ export function ensureKdbxCrypto(): Promise<void> {
           pass: new Uint8Array(password),
           salt: new Uint8Array(salt),
           time: iterations,
-          mem: memory * 1024,
+          mem: memory,
           hashLen: length,
           parallelism,
           type
@@ -191,6 +191,12 @@ export async function createKdbxBytes(name: string, password: string): Promise<U
   const credentials = new kdbxweb.KdbxCredentials(kdbxweb.ProtectedValue.fromString(password), null);
   await credentials.ready;
   const db = kdbxweb.Kdbx.create(credentials, name);
+  db.setKdf(kdbxweb.Consts.KdfId.Argon2id);
+  const kdf = db.header.kdfParameters;
+  if (!kdf) throw new Error('Missing KDBX key derivation parameters.');
+  kdf.set('M', kdbxweb.VarDictionary.ValueType.UInt64, new kdbxweb.Int64(64 * 1024 * 1024));
+  kdf.set('I', kdbxweb.VarDictionary.ValueType.UInt64, new kdbxweb.Int64(3));
+  kdf.set('P', kdbxweb.VarDictionary.ValueType.UInt32, 4);
   db.createDefaultGroup();
   const buffer = await db.save();
   return new Uint8Array(buffer);

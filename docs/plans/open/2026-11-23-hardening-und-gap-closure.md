@@ -19,6 +19,8 @@ Die Analyse vom 2026-11-23 hat ergeben, dass alle Kernanforderungen des Ursprung
 
 ## AP1 – Toter Client-Code entfernen (S)
 
+**Status:** Erledigt. Die ungenutzte `getFile()`-Methode wurde entfernt; der Vault-Build ist grün.
+
 **Befund:** `web/vault/src/lib/api.ts` enthält `getFile()` → `GET /api/vault/files/{id}`, einen Endpoint, den das Backend nicht bereitstellt (nur `GET /api/vault/files` und `GET /api/vault/files/{id}/content`). Die Methode ist ungenutzt.
 
 **Änderung:** `getFile` aus `web/vault/src/lib/api.ts` entfernen (oder – falls die Metadaten-Ansicht geplant ist – den Endpoint im Backend ergänzen; Standard: entfernen).
@@ -28,6 +30,8 @@ Die Analyse vom 2026-11-23 hat ergeben, dass alle Kernanforderungen des Ursprung
 ---
 
 ## AP2 – KDBX-Inhaltsvalidierung beim Upload und bei Schreibzugriffen (S)
+
+**Status:** Erledigt. Uploads und Schreibzugriffe prüfen die KDBX-Signatur. Gültige und ungültige Dateisignaturen sind durch API-Tests abgedeckt.
 
 **Befund:** `VaultService.Create` und `VaultService.WriteContentAsync` prüfen nur „nicht leer“ und (beim Anlegen) die `.kdbx`-Endung. Korrupte oder falsche Dateien werden als gültige Revisionen akzeptiert.
 
@@ -55,7 +59,9 @@ Die Analyse vom 2026-11-23 hat ergeben, dass alle Kernanforderungen des Ursprung
 
 ## AP4 – WebDAV-Client-Kompatibilitätstest (M, extern)
 
-**Status:** HTTP-Verhalten am 2026-11-24 mit isoliertem Kestrel und zwei echten KDBX-Ständen geprüft: `PROPFIND` (207), übereinstimmende ETags bei Listing, `GET` und `HEAD`, `PUT` ohne ETag (428), mit aktuellem ETag (204) und mit altem ETag (412). Nach dem Konflikt blieb das Original unverändert; genau eine Konfliktkopie erschien im Admin. Die Abnahme mit echten Mobilgeräten steht noch aus.
+**Status:** Teilweise erledigt. HTTP-Verhalten am 2026-11-24 mit isoliertem Kestrel und zwei echten KDBX-Ständen geprüft: `PROPFIND` (207), übereinstimmende ETags bei Listing, `GET` und `HEAD`, `PUT` ohne ETag (428), mit aktuellem ETag (204) und mit altem ETag (412). Nach dem Konflikt blieb das Original unverändert; genau eine Konfliktkopie erschien im Admin.
+
+**Android (2026-11-24):** Sascha konnte einen nach dem Argon2-Fix neu erstellten Tresor mit KeePass2Android per WebDAV öffnen. Mit deaktiviertem Datenbank-Caching lud die App nach einer Änderung im Web-Vault die Datei neu und zeigte die Änderung an. Mit aktiviertem Caching bot der Konfliktdialog „Überschreiben“ und „Zusammenführen“ an; beide versuchen einen Upload und scheiterten. Das Speichern scheiterte ebenfalls mit `Java.IO.FileNotFoundException`. Der Client-Code von v1.15-r6 lädt beim transaktionalen Speichern zuerst eine temporäre Datei hoch und meldet bei `404` diesen Fehler. Gegen isoliertes KeePort nachgestellt: `PUT` auf den temporären Pfad liefert `404`; ein direktes `PUT` ohne `If-Match` liefert `428`. Kein kompatibler Schreibpfad für diesen Client bestätigt. Ein Android-Schreibtest mit einem anderen Client und die iOS-Abnahme bleiben offen.
 
 **Befund:** KeePort verlangt beim WebDAV-PUT ein aktuelles `If-Match` (428 wenn es fehlt). Die Schreibkompatibilität mit mobilen Clients hängt davon ab, ob sie diesen Header senden.
 
@@ -98,7 +104,9 @@ Die Analyse vom 2026-11-23 hat ergeben, dass alle Kernanforderungen des Ursprung
 
 ---
 
-## AP7 – GitHub-Repository anlegen und pushen (S, braucht Entscheidung)
+## AP7 – GitHub-Repository anlegen und pushen (S)
+
+**Status:** Offen bis zum ersten Release. Der README-Platzhalter ist bereits in AP8 entfernt worden.
 
 **Befund:** Prompt verlangt ein GitHub-Repository; aktuell nur lokaler `main` ohne Remote.
 
@@ -112,6 +120,8 @@ Die Analyse vom 2026-11-23 hat ergeben, dass alle Kernanforderungen des Ursprung
 
 ## AP8 – Cleanups (S)
 
+**Status:** Erledigt. CS1998-Warnungen sind behoben, die README-URL ist aktualisiert und der Ansatz für die Browser-Erweiterung ist dokumentiert.
+
 - 6× CS1998-Warnings (`AuthEndpoints`, `VaultEndpoints`, `WebDavEndpoints`) durch Entfernen unnötiger `async`/`await` beseitigen.
 - README: `YOUR-ORG`-Platzhalter entfernen (abhängig von AP7).
 - Browser-Erweiterungs-Basis (`KeePort:CorsOrigins` + Token-Ansatz) als kurzer Abschnitt in README oder `docs/` dokumentieren – **Entscheidung (2026-11-23, Sascha): nur Doku, keine substanzielle Token-/CORS-Vorbereitung.**
@@ -121,6 +131,8 @@ Die Analyse vom 2026-11-23 hat ergeben, dass alle Kernanforderungen des Ursprung
 ---
 
 ## AP9 – CHANGELOG- und Plan-Pflege (laufend)
+
+**Status:** Teilweise erledigt. Die abgeschlossenen Änderungen sind unter `## [Unreleased]` dokumentiert. Versionseintrag und Planabschluss bleiben bis zum Release offen.
 
 Nach jedem Paket: `CHANGELOG.md`-Eintrag unter `## [Unreleased]` (Sektionen `Added`/`Changed`/`Fixed`/`Security`); bei Abschluss des Plans Eintrag `## [0.2.0] - <Datum>` und Plan-Status auf `done` setzen.
 
@@ -146,7 +158,7 @@ Nach jedem Paket: `CHANGELOG.md`-Eintrag unter `## [Unreleased]` (Sektionen `Add
 
 ## AP11 – Attachments-Verwaltung im Vault-Client (M)
 
-**Status:** Implementiert. Name, Größe und Download sind auch im Lesemodus verfügbar. Schreibberechtigte können Dateien bis 10 MiB hinzufügen und nach Bestätigung aus dem aktuellen Eintrag entfernen; gespeichert wird verschlüsselt mit ETag. Alte Eintragsstände können Anhänge weiter enthalten. KDBX-Roundtrip, Download und Rücknahme nach abgelehntem Speichern sind automatisiert geprüft. KeePassXC 2.7.6 exportierte den gespeicherten Anhang bytegenau und fand ihn nach dem Entfernen nicht mehr im aktuellen Eintrag. Browserbedienung nicht manuell geprüft.
+**Status:** Erledigt. Sascha hat am 2026-11-24 bestätigt, dass die Anhangsverwaltung im Vault funktioniert. Name, Größe und Download sind auch im Lesemodus verfügbar. Schreibberechtigte können Dateien bis 10 MiB hinzufügen und nach Bestätigung aus dem aktuellen Eintrag entfernen; gespeichert wird verschlüsselt mit ETag. Alte Eintragsstände können Anhänge weiter enthalten. KDBX-Roundtrip, Download und Rücknahme nach abgelehntem Speichern sind automatisiert geprüft. KeePassXC 2.7.6 exportierte den gespeicherten Anhang bytegenau und fand ihn nach dem Entfernen nicht mehr im aktuellen Eintrag.
 
 **Befund:** Attachments bleiben beim Speichern erhalten (`entry.binaries` wird von kdbxweb mitgeschrieben), aber es gibt keine UI: Weder Ansehen/Download noch Hinzufügen/Löschen. Nutzerfrage (2026-11-23): „Wie kann der User Attachments bearbeiten (löschen oder neue hinzufügen)?“
 
@@ -181,7 +193,7 @@ Nach jedem Paket: `CHANGELOG.md`-Eintrag unter `## [Unreleased]` (Sektionen `Add
 
 ## Noch offen
 
-- **AP4:** WebDAV-Abnahme auf echten iOS- und Android-Geräten protokollieren.
+- **AP4:** Android-Schreibtest mit kompatiblem WebDAV-Client und iOS-Abnahme durchführen, einschließlich Konfliktverhalten.
 - **AP7 / AP9:** Beim freigegebenen ersten Release das öffentliche Repository und den Release-Tag anlegen, den Changelog versionieren und den Plan nach `docs/plans/closed` verschieben.
 
 ## Risiken

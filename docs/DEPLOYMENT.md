@@ -147,6 +147,7 @@ Mobile clients to try (compatibility depends on how the client writes):
 
 - iOS: [KeePassium](https://support.keepassium.com/kb/sync-webdav/) offers a direct WebDAV connection.
 - Android: [KeePassDX](https://github.com/Kunzisoft/KeePassDX/wiki/File-Manager-and-Sync) uses Android's file picker, not a built-in WebDAV client. Configure the endpoint in a storage provider such as [DAVx⁵ WebDAV Mounts](https://manual.davx5.com/webdav_mounts.html), then open the file through that provider.
+- Android: KeePass2Android can read and reload the latest server version with **Database caching** disabled. If it asks whether to merge or overwrite, cancel: both choices attempt an upload. KeePort rejects uploads to temporary names with `404`; direct writes without `If-Match` return `428`. Disabling the client's transactional saves does not add the missing `If-Match` header.
 - A client that does not send the current `If-Match` value may be able to read but cannot save. Test writes with a disposable vault before relying on mobile sync.
 
 WebDAV users can only write files they are allowed to modify. Send the current ETag in `If-Match` for safe writes. If no precondition is supplied, KeePort returns `428` and creates no copy. For a stale ETag, KeePort returns `412` and keeps the original unchanged. The submitted encrypted KDBX is saved as `<name>.conflict-<UTC timestamp>-webdav-<id>.kdbx` without access grants. An administrator can download, share, or delete it from the Admin file list. The Vault REST API follows the same rules but returns `409` for a stale ETag.
