@@ -50,6 +50,7 @@ export function parseOtpSecret(raw: string): TotpConfig | null {
   if (trimmed.toLowerCase().startsWith('otpauth://')) {
     try {
       const url = new URL(trimmed);
+      if (url.hostname.toLowerCase() !== 'totp') return null;
       const secret = url.searchParams.get('secret');
       if (!secret) return null;
       const decoded = base32Decode(secret);
@@ -67,6 +68,21 @@ export function parseOtpSecret(raw: string): TotpConfig | null {
   const decoded = base32Decode(trimmed);
   if (decoded.length === 0) return null;
   return { secret: decoded, digits: 6, period: 30, algorithm: 'SHA-1' };
+}
+
+/**
+ * Preserves a stored TOTP URI or builds one for a raw Base32 secret using the default settings.
+ * @param raw - The entry's TOTP URI or raw Base32 secret.
+ * @param label - The entry label to use when building a URI for a raw secret.
+ */
+export function totpUri(raw: string, label: string): string | null {
+  const trimmed = raw.trim();
+  if (!parseOtpSecret(trimmed)) return null;
+  if (/^otpauth:\/\//i.test(trimmed)) return trimmed;
+
+  const secret = trimmed.replace(/[\s=-]/g, '').toUpperCase();
+  if (!/^[A-Z2-7]+$/.test(secret)) return null;
+  return `otpauth://totp/${encodeURIComponent(label.trim() || 'KeePort')}?secret=${secret}`;
 }
 
 /**

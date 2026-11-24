@@ -55,11 +55,18 @@ Die Analyse vom 2026-11-23 hat ergeben, dass alle Kernanforderungen des Ursprung
 
 ## AP4 – WebDAV-Client-Kompatibilitätstest (M, extern)
 
-**Befund:** WebDAV-PUT verlangt zwingend `If-Match` (428 sonst). Das ist spec-konform, aber reale KeePass-Clients (KeePassium, KeePassDX, Strongbox) müssen in der Praxis verifiziert werden.
+**Status:** HTTP-Verhalten am 2026-11-24 mit isoliertem Kestrel und zwei echten KDBX-Ständen geprüft: `PROPFIND` (207), übereinstimmende ETags bei Listing, `GET` und `HEAD`, `PUT` ohne ETag (428), mit aktuellem ETag (204) und mit altem ETag (412). Nach dem Konflikt blieb das Original unverändert; genau eine Konfliktkopie erschien im Admin. Die Abnahme mit echten Mobilgeräten steht noch aus.
+
+**Befund:** KeePort verlangt beim WebDAV-PUT ein aktuelles `If-Match` (428 wenn es fehlt). Die Schreibkompatibilität mit mobilen Clients hängt davon ab, ob sie diesen Header senden.
 
 **Änderung:** Lokalen Container (`docker compose up -d --build`) starten, Test-Tresor anlegen, mit je einem echten iOS-/Android-Client synchronisieren. Auf Fehlverhalten: nur wenn nötig eine dokumentierte Fallback-Option (z. B. `If-Match: *` als explizit dokumentierte unsichere Option pro Credential) – **kein stiller Verzicht auf ETag-Prüfung**.
 
-**Akzeptanz:** Ergebnisprotokoll (welche Clients mit welchen Headern erfolgreich sind) in diesem Plan-Doc nachgezogen; ggf. Follow-up-Aufgabe.
+**Abnahme auf Mobilgeräten:**
+
+1. Separaten Testtresor mit Schreibrecht und temporärem WebDAV-App-Passwort bereitstellen (HTTPS im LAN/VPN).
+2. iOS: KeePassium direkt per WebDAV verbinden. Android: KeePassDX über einen Android-Dateianbieter wie DAVx⁵ WebDAV Mounts verbinden. App-, Anbieter- und OS-Version notieren.
+3. Testtresor auflisten, öffnen, einen Testeintrag speichern und nach erneutem Download prüfen. Für den Konflikttest den Tresor in zwei Clients öffnen, im ersten speichern, danach im zweiten ohne Neuladen speichern.
+4. Je Client HTTP-Status und vorhandenes `If-Match` protokollieren, keine Zugangsdaten. `428` heißt fehlendes `If-Match`; bei `412` darf das Original nicht überschrieben werden, und die Konfliktkopie muss im Admin erscheinen. Falls der Client selbst neu lädt, dieses Verhalten festhalten.
 
 ---
 
@@ -121,6 +128,8 @@ Nach jedem Paket: `CHANGELOG.md`-Eintrag unter `## [Unreleased]` (Sektionen `Add
 
 ## AP10 – TOTP-Unterstützung im Vault-Client (M, Muss laut Sascha 2026-11-23)
 
+**Status:** Erledigt. Der Vault kopiert Code und `otpauth://`-URI. Vorhandene URIs bleiben unverändert; für rohe Base32-Secrets wird die URI mit Standardparametern erzeugt. Am 2026-11-24 mit KeePassXC 2.7.6 im gleichen Zeitfenster und gegen die RFC-6238-SHA-1-Testvektoren verglichen; KDBX-Roundtrip erhält das `otp`-Feld.
+
 **Befund:** KeePort ist ein Passwortmanager – TOTP (2FA) ist ein Kernfeature von KeePass. Aktuell werden nur Title/UserName/Password/URL/Notes gelesen und bearbeitet; das KeePass-`otp`-Feld (otpauth://-URL, KeePassXC-Konvention) wird weder angezeigt noch gepflegt.
 
 **Änderung:**
@@ -135,7 +144,9 @@ Nach jedem Paket: `CHANGELOG.md`-Eintrag unter `## [Unreleased]` (Sektionen `Add
 
 ---
 
-## AP11 – Attachments-Verwaltung im Vault-Client (M, Vorschlag – Bestätigung offen)
+## AP11 – Attachments-Verwaltung im Vault-Client (M)
+
+**Status:** Implementiert. Name, Größe und Download sind auch im Lesemodus verfügbar. Schreibberechtigte können Dateien bis 10 MiB hinzufügen und nach Bestätigung aus dem aktuellen Eintrag entfernen; gespeichert wird verschlüsselt mit ETag. Alte Eintragsstände können Anhänge weiter enthalten. KDBX-Roundtrip, Download und Rücknahme nach abgelehntem Speichern sind automatisiert geprüft. KeePassXC 2.7.6 exportierte den gespeicherten Anhang bytegenau und fand ihn nach dem Entfernen nicht mehr im aktuellen Eintrag. Browserbedienung nicht manuell geprüft.
 
 **Befund:** Attachments bleiben beim Speichern erhalten (`entry.binaries` wird von kdbxweb mitgeschrieben), aber es gibt keine UI: Weder Ansehen/Download noch Hinzufügen/Löschen. Nutzerfrage (2026-11-23): „Wie kann der User Attachments bearbeiten (löschen oder neue hinzufügen)?“
 
@@ -155,7 +166,7 @@ Nach jedem Paket: `CHANGELOG.md`-Eintrag unter `## [Unreleased]` (Sektionen `Add
 2. **AP10** (TOTP – Muss-Feature, nur Frontend)
 3. **AP6** (Rate-Limiting, klein, sicherheitsrelevant)
 4. **AP3, AP5** (Konfliktkopie + No-Locks-Doku; Entscheidungen getroffen)
-5. **AP11** (Attachments-UI, nach Bestätigung des Umfangs)
+5. **AP11** (Attachments-UI)
 6. **AP7** (GitHub-Repo – erst zum ersten Release, geo. `madcoda9000/KeePort` public)
 7. **AP4** (externer Client-Test, nach AP3 sinnvoll)
 
@@ -164,13 +175,14 @@ Nach jedem Paket: `CHANGELOG.md`-Eintrag unter `## [Unreleased]` (Sektionen `Add
 1. **GitHub (AP7):** Wird zum ersten Release angelegt als **https://github.com/madcoda9000/KeePort**, **öffentlich**.
 2. **Konfliktkopie (AP3):** Normale Datei in der Admin-Liste (kein extra Datenmodell/Status).
 3. **LOCK/UNLOCK (AP5):** Option B – dokumentiert keine serverseitigen Locks.
-4. **Attachments-UI (AP11):** User muss Attachments bearbeiten können (löschen/neue hinzufügen) – Umfang in AP11 vorgeschlagen, Bestätigung offen.
+4. **Attachments-UI (AP11):** Download, Hinzufügen und Löschen wie in AP11 beschrieben.
 5. **Browser-Erweiterung:** Nur Doku (AP8), keine substanzielle Token-/CORS-Vorbereitung.
 6. **Neu (Muss):** TOTP-Unterstützung im Vault-Client → AP10.
 
 ## Noch offen
 
-- **AP11-Umfang bestätigen** (Attachments: Download/Hinzufügen/Löschen wie vorgeschlagen?).
+- **AP4:** WebDAV-Abnahme auf echten iOS- und Android-Geräten protokollieren.
+- **AP7 / AP9:** Beim freigegebenen ersten Release das öffentliche Repository und den Release-Tag anlegen, den Changelog versionieren und den Plan nach `docs/plans/closed` verschieben.
 
 ## Risiken
 

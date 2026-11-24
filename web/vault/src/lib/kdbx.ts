@@ -1,5 +1,6 @@
 import * as kdbxweb from 'kdbxweb';
 import argon2 from 'argon2-browser/dist/argon2-bundled.min.js';
+import { encodeAttachments, type AttachmentDraft } from './attachments.ts';
 
 let argon2Ready: Promise<void> | null = null;
 
@@ -186,6 +187,55 @@ export function createEntry(db: kdbxweb.Kdbx, edits: EntryEdits): kdbxweb.KdbxEn
 export async function saveVault(db: kdbxweb.Kdbx): Promise<Uint8Array> {
   const buffer = await db.save();
   return new Uint8Array(buffer);
+}
+
+/**
+ * Applies an entry draft and hands only the encrypted vault to the persistence callback.
+ * @param db - The unlocked database containing the entry.
+ * @param entry - The existing entry, or null to add an entry to the default group.
+ * @param edits - The entry fields to save.
+ * @param attachments - The final set of draft attachments to save with those fields.
+ * @param persist - The callback that writes the encrypted KDBX with the current ETag.
+ */
+export async function saveEntryUpdate<T>(
+  db: kdbxweb.Kdbx,
+  entry: kdbxweb.KdbxEntry | null,
+  edits: EntryEdits,
+  attachments: AttachmentDraft,
+  persist: (bytes: Uint8Array) => Promise<T>
+): Promise<{ entryId: string; updated: T }> {
+  const original = entry && {
+    fields: new Map(entry.fields),
+    binaries: entry.binaries,
+    times: entry.times.clone(),
+    history: entry.history.slice(),
+    _editState: entry._editState && { added: [...entry._editState.added], deleted: [...entry._editState.deleted] }
+  };
+  const originalBinaries = db.binaries.getAllWithHashes();
+  let created: kdbxweb.KdbxEntry | undefined;
+  try {
+    const binaries = await encodeAttachments(db, attachments);
+    const edited = entry ?? (created = createEntry(db, edits));
+    if (entry) applyEntryEdits(entry, edits);
+    edited.binaries = binaries;
+    return { entryId: edited.uuid.id, updated: await persist(await saveVault(db)) };
+  } catch (error) {
+    if (entry && original) Object.assign(entry, original);
+    if (created?.parentGroup) {
+      const siblings = created.parentGroup.entries;
+      const index = siblings.indexOf(created);
+      if (index !== -1) siblings.splice(index, 1);
+    }
+    const originalHashes = new Set(originalBinaries.map(/**
+     * Selects the original identity of each registered binary.
+     * @param binary - A binary already present before saving the draft.
+     */ (binary) => binary.hash));
+    for (const binary of db.binaries.getAllWithHashes()) {
+      if (!originalHashes.has(binary.hash)) db.binaries.deleteWithHash(binary.hash);
+    }
+    for (const binary of originalBinaries) db.binaries.addWithHash(binary);
+    throw error;
+  }
 }
 
 /**

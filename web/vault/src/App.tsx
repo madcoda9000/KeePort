@@ -1,18 +1,17 @@
-import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import type { Kdbx } from 'kdbxweb';
 import { api, ApiError } from './lib/api';
 import type { User, VaultFile } from './lib/api';
 import {
-  applyEntryEdits,
   clearVaultCredentials,
-  createEntry,
   entryMatches,
   listEntries,
   loadVault,
-  saveVault
+  saveEntryUpdate
 } from './lib/kdbx';
 import type { EntryEdits, EntryView } from './lib/kdbx';
-import { parseOtpSecret, totpCode } from './lib/totp';
+import type { AttachmentDraft } from './lib/attachments';
+import { parseOtpSecret, totpCode, totpUri } from './lib/totp';
 import { getTheme, toggleTheme } from './theme';
 import {
   CopyIcon,
@@ -28,6 +27,7 @@ import {
   UserRoundIcon
 } from 'lucide-react';
 import { AuthLayout } from '@/components/auth-layout';
+import { EntryAttachments } from '@/components/entry-attachments';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
@@ -65,6 +65,7 @@ import { DataTable, type TableColumn } from '@shared/data-table';
 import { Textarea } from '@/components/ui/textarea';
 
 type Message = { kind: 'notice' | 'error'; text: string } | null;
+type EntryDraft = EntryEdits & { attachments: AttachmentDraft };
 
 const DEFAULT_AUTO_LOCK_MINUTES = 5;
 
@@ -121,6 +122,22 @@ function errorText(error: unknown, fallback: string) {
   return fallback;
 }
 
+/**
+ * Creates a local draft without changing the entry or its stored attachments.
+ * @param entry - The unlocked entry to edit, or null for a new entry.
+ */
+function entryDraft(entry: EntryView | null): EntryDraft {
+  return {
+    title: entry?.title ?? '',
+    username: entry?.username ?? '',
+    password: entry?.password ?? '',
+    url: entry?.url ?? '',
+    notes: entry?.notes ?? '',
+    otp: entry?.otp ?? '',
+    attachments: entry?.entry.binaries ?? new Map()
+  };
+}
+
 /** Manages the vault session, client-side unlocking, and entry editing. */
 export default function App() {
   const [authChecked, setAuthChecked] = useState(false);
@@ -132,7 +149,8 @@ export default function App() {
   const [etag, setEtag] = useState('');
   const [permission, setPermission] = useState<'read' | 'read-write'>('read');
   const [selectedEntry, setSelectedEntry] = useState<EntryView | null>(null);
-  const [edits, setEdits] = useState<EntryEdits | null>(null);
+  const [edits, setEdits] = useState<EntryDraft | null>(null);
+  const vaultGeneration = useRef(0);
   const [totp, setTotp] = useState<{ code: string; secondsLeft: number } | null>(null);
 
   /** Starts periodic TOTP updates while the current draft has a usable secret. */
@@ -174,6 +192,8 @@ export default function App() {
    */ (file) => file.id === selectedId) ?? null, [files, selectedId]);
   const canWrite = permission === 'read-write';
   const unlocked = Boolean(db && selectedFile);
+  const otpUri = useMemo(/** Prepares a provisioning URI without displaying the secret. */ () =>
+    totpUri(edits?.otp ?? '', edits?.title ?? ''), [edits?.otp, edits?.title]);
 
   /** Refreshes the encrypted vault inventory for the current user. */
   async function refreshFiles() {
@@ -186,6 +206,7 @@ export default function App() {
    * @param notify - Whether to display the vault locked notice.
    */
   function lockVault(notify = false) {
+    vaultGeneration.current += 1;
     clearVaultCredentials(db);
     setDb(null);
     setEntries([]);
@@ -215,7 +236,7 @@ export default function App() {
    */
   async function handleUnlock(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!selectedFile) return;
+    if (!selectedFile || busy) return;
     if (!password && !keyFile) {
       setMessage({ kind: 'error', text: 'Enter the master password or select a key file.' });
       return;
@@ -246,7 +267,7 @@ export default function App() {
   /** Opens an empty draft for creating an entry in the unlocked vault. */
   function startNewEntry() {
     setSelectedEntry(null);
-    setEdits({ title: '', username: '', password: '', url: '', notes: '', otp: '' });
+    setEdits(entryDraft(null));
     setMessage(null);
   }
 
@@ -256,23 +277,23 @@ export default function App() {
    */
   async function handleSave(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!db || !selectedFile || !edits) return;
+    if (!db || !selectedFile || !edits || busy) return;
     if (!canWrite) {
       setMessage({ kind: 'error', text: 'This vault is read-only for your account.' });
       return;
     }
+    const generation = vaultGeneration.current;
     setBusy('save');
     setMessage(null);
     try {
-      let entryId: string;
-      if (selectedEntry) {
-        applyEntryEdits(selectedEntry.entry, edits);
-        entryId = selectedEntry.id;
-      } else {
-        entryId = createEntry(db, edits).uuid.id;
-      }
-      const bytes = await saveVault(db);
-      const updated = await api.putFileBytes(selectedFile.id, bytes, etag);
+      const { entryId, updated } = await saveEntryUpdate(db, selectedEntry?.entry ?? null, edits, edits.attachments, /**
+       * Writes the encrypted revision only while this vault is still unlocked.
+       * @param bytes - The serialized, encrypted KDBX database.
+       */ (bytes) => {
+        if (generation !== vaultGeneration.current) throw new Error('The vault locked before saving.');
+        return api.putFileBytes(selectedFile.id, bytes, etag);
+      });
+      if (generation !== vaultGeneration.current) return;
       const nextEntries = listEntries(db);
       const refreshed = nextEntries.find(/**
        * Finds the saved entry in the refreshed list.
@@ -289,20 +310,10 @@ export default function App() {
       setEtag(updated.etag);
       setEntries(nextEntries);
       setSelectedEntry(refreshed);
-      setEdits(
-        refreshed
-          ? {
-              title: refreshed.title,
-              username: refreshed.username,
-              password: refreshed.password,
-              url: refreshed.url,
-              notes: refreshed.notes,
-              otp: refreshed.otp
-            }
-          : null
-      );
+      setEdits(refreshed ? entryDraft(refreshed) : null);
       setMessage({ kind: 'notice', text: 'Vault saved.' });
     } catch (error) {
+      if (generation !== vaultGeneration.current) return;
       if (error instanceof ApiError && error.status === 409) {
         setMessage({ kind: 'error', text: `${error.message} Close and reopen the vault to load the latest version.` });
         try {
@@ -460,6 +471,7 @@ export default function App() {
     let lockTimer: number | undefined;
     /** Clears credentials and unlocked data when the auto-lock timer expires. */
     const lock = () => {
+      vaultGeneration.current += 1;
       clearVaultCredentials(db);
       setDb(null);
       setEntries([]);
@@ -784,7 +796,7 @@ export default function App() {
                       />
                     </Field>
                   </FieldGroup>
-                  <Button type="submit" className="justify-self-start" disabled={busy === 'unlock'}>
+                  <Button type="submit" className="justify-self-start" disabled={busy !== null}>
                     <LockKeyholeOpenIcon />
                     {busy === 'unlock' ? 'Unlocking…' : 'Unlock vault'}
                   </Button>
@@ -855,14 +867,7 @@ export default function App() {
                           onClick={/** Clears the workspace message and opens a draft for the selected entry. */ () => {
                             setMessage(null);
                             setSelectedEntry(entry);
-                            setEdits({
-                              title: entry.title,
-                              username: entry.username,
-                              password: entry.password,
-                              url: entry.url,
-                              notes: entry.notes,
-                              otp: entry.otp
-                            });
+                            setEdits(entryDraft(entry));
                           }}
                         >
                           <KeyRoundIcon className="mt-0.5 shrink-0 text-muted-foreground" />
@@ -924,7 +929,7 @@ export default function App() {
                           <Input
                             id="entry-title"
                             value={edits.title}
-                            readOnly={!canWrite}
+                            readOnly={!canWrite || busy === 'save'}
                             onChange={/**
                              * Updates the draft entry title.
                              * @param event - The entry title input change event.
@@ -936,7 +941,7 @@ export default function App() {
                           <Input
                             id="entry-username"
                             value={edits.username}
-                            readOnly={!canWrite}
+                            readOnly={!canWrite || busy === 'save'}
                             onChange={/**
                              * Updates the draft entry username.
                              * @param event - The entry username input change event.
@@ -950,7 +955,7 @@ export default function App() {
                             type="password"
                             autoComplete="off"
                             value={edits.password}
-                            readOnly={!canWrite}
+                            readOnly={!canWrite || busy === 'save'}
                             onChange={/**
                              * Updates the draft entry password.
                              * @param event - The entry password input change event.
@@ -962,7 +967,7 @@ export default function App() {
                           <Input
                             id="entry-url"
                             value={edits.url}
-                            readOnly={!canWrite}
+                            readOnly={!canWrite || busy === 'save'}
                             onChange={/**
                              * Updates the draft website URL.
                              * @param event - The website URL input change event.
@@ -974,7 +979,7 @@ export default function App() {
                           <Textarea
                             id="entry-notes"
                             value={edits.notes}
-                            readOnly={!canWrite}
+                            readOnly={!canWrite || busy === 'save'}
                             onChange={/**
                              * Updates the draft notes.
                              * @param event - The entry notes input change event.
@@ -988,7 +993,7 @@ export default function App() {
                             type="password"
                             autoComplete="off"
                             value={edits.otp}
-                            readOnly={!canWrite}
+                            readOnly={!canWrite || busy === 'save'}
                             onChange={/**
                              * Updates the draft TOTP secret or provisioning URI.
                              * @param event - The TOTP field change event containing a secret or provisioning URI.
@@ -1011,8 +1016,35 @@ export default function App() {
                           >
                             <CopyIcon /> Copy code
                           </Button>
+                          {otpUri && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              type="button"
+                              title="Copy the provisioning URI, including the secret"
+                              onClick={/** Copies the provisioning URI without displaying its secret. */ () => void copyValue(otpUri, 'TOTP URI')}
+                            >
+                              <CopyIcon /> Copy TOTP URI
+                            </Button>
+                          )}
                         </div>
                       )}
+                      <EntryAttachments
+                        draft={edits.attachments}
+                        canWrite={canWrite}
+                        disabled={busy === 'save'}
+                        onChange={/**
+                         * Updates only the attachments in the open draft.
+                         * @param attachments - The updated attachment list for the current entry.
+                         */ (attachments) => {
+                          setMessage(null);
+                          setEdits({ ...edits, attachments });
+                        }}
+                        onError={/**
+                         * Reports an attachment validation failure inside the entry editor.
+                         * @param text - The reason the selected file could not be attached.
+                         */ (text) => setMessage({ kind: 'error', text })}
+                      />
                       <Separator />
                       <div className="flex flex-wrap gap-2">
                         {canWrite && (

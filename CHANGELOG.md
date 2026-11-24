@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Vault entry attachments: show names and sizes, download locally, and add files up to 10 MiB or confirm removal in read-write vaults. Attachment changes save with the encrypted KDBX revision.
+- Copy the TOTP provisioning URI from the entry detail, including for entries with a raw Base32 secret.
 - Live search, column-header sorting, and pagination in the Admin vault files, accounts, and WebDAV credentials tables and the Vault entries table. Choose 10 (default), 20, or 50 rows per page.
 - Stale REST and WebDAV writes preserve the submitted encrypted KDBX as an admin-only conflict copy without overwriting the original.
 - Admin sidebar profile with initials, username, email and controls to change the signed-in administrator's email and password.
@@ -21,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Clarified mobile WebDAV setup and the need for clients to send the current ETag when saving.
 - Completed function and method documentation across the API, frontends, shared table code, and tests, including descriptions of each parameter.
 - Configure login and WebDAV rate limits in the Admin console instead of environment variables. Values are persisted in SQLite and apply immediately.
 - Documented that WebDAV `LOCK` tokens are not persisted and `UNLOCK` does not release a server-side lock; clients should use ETags for conflict protection.

@@ -1,0 +1,53 @@
+import { KdbxBinaries, ProtectedValue, type Kdbx, type KdbxEntry } from 'kdbxweb';
+
+type SavedAttachment = KdbxEntry['binaries'] extends Map<string, infer Binary> ? Binary : never;
+export type Attachment = SavedAttachment | File;
+export type AttachmentDraft = ReadonlyMap<string, Attachment>;
+export const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+
+/**
+ * Gets an uploaded or saved attachment's size without decrypting its contents.
+ * @param attachment - A selected file or an existing KDBX binary.
+ */
+export function attachmentSize(attachment: Attachment): number {
+  if (attachment instanceof File) return attachment.size;
+  const value = KdbxBinaries.isKdbxBinaryWithHash(attachment) ? attachment.value : attachment;
+  return value.byteLength;
+}
+
+/**
+ * Stages a local file without overwriting an existing attachment or reading its contents.
+ * @param draft - The current attachment list for this entry.
+ * @param file - The file the user selected for addition.
+ */
+export function addAttachment(draft: AttachmentDraft, file: File): AttachmentDraft {
+  if (file.size > MAX_ATTACHMENT_BYTES) throw new Error('Each new attachment must be 10 MiB or smaller.');
+  if (draft.has(file.name)) throw new Error('An attachment with that name already exists. Remove it or rename the new file first.');
+  const updated = new Map(draft);
+  updated.set(file.name, file);
+  return updated;
+}
+
+/**
+ * Exposes an attachment as a download, not as inline content.
+ * @param attachment - The draft or stored attachment to download locally.
+ */
+export function attachmentBlob(attachment: Attachment): Blob {
+  if (attachment instanceof File) return attachment.slice(0, attachment.size, 'application/octet-stream');
+  const value = KdbxBinaries.isKdbxBinaryWithHash(attachment) ? attachment.value : attachment;
+  const bytes = value instanceof ProtectedValue ? value.getBinary() as Uint8Array<ArrayBuffer> : value;
+  return new Blob([bytes], { type: 'application/octet-stream' });
+}
+
+/**
+ * Registers new binary data with KDBX and keeps the original references for unchanged attachments.
+ * @param db - The unlocked vault receiving the new binary data.
+ * @param draft - The final attachment list to store on the entry.
+ */
+export async function encodeAttachments(db: Kdbx, draft: AttachmentDraft): Promise<KdbxEntry['binaries']> {
+  const binaries: KdbxEntry['binaries'] = new Map();
+  for (const [name, attachment] of draft) {
+    binaries.set(name, attachment instanceof File ? await db.createBinary(await attachment.arrayBuffer()) : attachment);
+  }
+  return binaries;
+}
