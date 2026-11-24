@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-11-24
+
+### Added
+
+- The web vault and admin console show the running KeePort version as a badge on the sign-in screen and in the sidebar header, so you can check at a glance whether an update was applied. The version is taken from the release at build time.
+
 ## [0.2.1] - 2026-11-24
 
 ### Fixed
@@ -111,6 +117,7 @@ First beta release.
 - Login and setup share a configurable per-IP rate limit; session checks and sign-out are exempt. WebDAV has a separate configurable limit applied before authentication.
 - Admin accounts can only sign in to the Admin console; Vault and WebDAV require a separate user account. Admin sessions are scoped to the Admin API, so existing admins need to sign in again after updating.
 
+[0.3.0]: https://github.com/madcoda9000/KeePort/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/madcoda9000/KeePort/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/madcoda9000/KeePort/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/madcoda9000/KeePort/compare/v0.1.0...v0.1.1

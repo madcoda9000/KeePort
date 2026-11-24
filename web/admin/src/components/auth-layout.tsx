@@ -1,6 +1,7 @@
 import { KeyRoundIcon, ShieldCheckIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
+import { VersionBadge } from '@shared/app-version';
 
 /**
  * Composes the split KeePort sign-in screen around the supplied account flow.
@@ -26,6 +27,7 @@ export function AuthLayout({
               <KeyRoundIcon className="size-4" />
             </span>
             KeePort <span className="font-normal text-muted-foreground">/ {area}</span>
+            <VersionBadge className="ms-1" />
           </div>
           {children}
         </CardContent>

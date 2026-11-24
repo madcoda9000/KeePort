@@ -61,6 +61,7 @@ import {
   useSidebar
 } from '@/components/ui/sidebar';
 import { TableCell, TableRow } from '@/components/ui/table';
+import { VersionBadge } from '@shared/app-version';
 import { DataTable, type TableColumn } from '@shared/data-table';
 import { Textarea } from '@/components/ui/textarea';
 
@@ -1111,7 +1112,9 @@ function VaultNavigation({
             <KeyRoundIcon className="size-4" />
           </span>
           <div>
-            <p className="text-sm font-semibold">KeePort</p>
+            <p className="flex items-center gap-1.5 text-sm font-semibold">
+              KeePort <VersionBadge />
+            </p>
             <p className="text-xs text-muted-foreground">Personal vault</p>
           </div>
         </div>

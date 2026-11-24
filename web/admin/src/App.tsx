@@ -69,6 +69,7 @@ import {
   useSidebar
 } from '@/components/ui/sidebar';
 import { TableCell, TableRow } from '@/components/ui/table';
+import { VersionBadge } from '@shared/app-version';
 import { DataTable, type TableColumn } from '@shared/data-table';
 import { matchesTableSearch, timestampSortValue } from '@shared/table-data';
 
@@ -1553,7 +1554,9 @@ function AdminNavigation({ tab, user, onProfileUpdate, onSelect }: {
             <KeyRoundIcon className="size-4" />
           </span>
           <div>
-            <p className="text-sm font-semibold">KeePort</p>
+            <p className="flex items-center gap-1.5 text-sm font-semibold">
+              KeePort <VersionBadge />
+            </p>
             <p className="text-xs text-muted-foreground">Administration</p>
           </div>
         </div>
