@@ -8,5 +8,6 @@
 
 ## Entwicklungs-Workflow
 - jede Änderung muss in CHANGELOG.md gemäss den Richtlinien von https://keepachangelog.com/en/1.1.0/ dokumentiert werden
+- seit Release 0.1.0 (2026-11-24) gibt es keinen `[Unreleased]`-Abschnitt mehr: neue Änderungen kommen unter eine Versionsüberschrift mit Datum `## [x.y.z] - YYYY-MM-DD` (Semantic Versioning: Patch für Fixes, Minor für neue Funktionen), samt Link-Referenz am Dateiende
 - Neue Pläne müssen in docs/plans/open angelegt werden. Niemals ausserhalb des Repositories!
 - Fertige Pläne müssen nach docs/plans/closed verschoben werden

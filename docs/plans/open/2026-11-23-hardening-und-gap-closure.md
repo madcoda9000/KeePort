@@ -113,7 +113,7 @@ HTTP-Verhalten am 2026-11-24 mit isoliertem Kestrel und zwei echten KDBX-Stände
 
 ## AP7 – GitHub-Repository anlegen und pushen (S)
 
-**Status:** Offen bis zum ersten Release. Der README-Platzhalter ist bereits in AP8 entfernt worden.
+**Status:** Offen. Release `v0.1.0` ist lokal getaggt (2026-11-24); Anlegen des öffentlichen Repositorys und Push stehen noch aus. Der README-Platzhalter ist bereits in AP8 entfernt worden.
 
 **Befund:** Prompt verlangt ein GitHub-Repository; aktuell nur lokaler `main` ohne Remote.
 
@@ -139,7 +139,7 @@ HTTP-Verhalten am 2026-11-24 mit isoliertem Kestrel und zwei echten KDBX-Stände
 
 ## AP9 – CHANGELOG- und Plan-Pflege (laufend)
 
-**Status:** Teilweise erledigt. Die abgeschlossenen Änderungen sind unter `## [Unreleased]` dokumentiert. Versionseintrag und Planabschluss bleiben bis zum Release offen.
+**Status:** Erledigt (2026-11-24). Der Changelog ist als `[0.1.0] - 2026-11-24` (erstes Beta-Release) versioniert und lokal als `v0.1.0` getaggt. Ab jetzt wird er ohne `[Unreleased]` mit datierten Versionsabschnitten geführt (Regel in `AGENTS.md`). Der Plan wird nach Abschluss von AP7 geschlossen.
 
 Nach jedem Paket: `CHANGELOG.md`-Eintrag unter `## [Unreleased]` (Sektionen `Added`/`Changed`/`Fixed`/`Security`); bei Abschluss des Plans Eintrag `## [0.2.0] - <Datum>` und Plan-Status auf `done` setzen.
 
@@ -200,7 +200,7 @@ Nach jedem Paket: `CHANGELOG.md`-Eintrag unter `## [Unreleased]` (Sektionen `Add
 
 ## Noch offen
 
-- **AP7 / AP9:** Beim freigegebenen ersten Release das öffentliche Repository und den Release-Tag anlegen, den Changelog versionieren und den Plan nach `docs/plans/closed` verschieben.
+- **AP7:** Öffentliches Repository `madcoda9000/KeePort` anlegen, `main` und Tag `v0.1.0` pushen, danach den Plan nach `docs/plans/closed` verschieben.
 
 ## Risiken
 
