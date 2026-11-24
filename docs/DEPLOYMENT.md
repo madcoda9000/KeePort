@@ -143,7 +143,7 @@ With a Docker volume, use the backup command from [Backup & restore](#-backup--r
 
 Open **`https://192.168.1.20:8081/admin`** — note the `https` — and accept the [certificate warning](#the-admin-certificate-warning) once. Enter the setup token and continue with [first steps](#-first-steps-in-the-admin-console).
 
-Afterwards check **Admin → Settings → Data storage**: it must show **Host folder** with `/docker/keeport-data`. If it shows *Docker volume*, `KEEPORT_DATA` was not picked up — fix `.env` and [move the data](#move-data-from-the-docker-volume-to-a-folder).
+Afterwards check **Admin → Settings → Data storage**: it must show **Host folder** with `/@syno/docker/keeport-data` (DSM's internal name for `/volume1/docker/keeport-data`). If it shows *Docker volume*, `KEEPORT_DATA` was not picked up — fix `.env` and [move the data](#move-data-from-the-docker-volume-to-a-folder).
 
 The web vault is at `http://192.168.1.20:8080` for a first look. To **unlock vaults** in the web vault you need HTTPS ([why](#-secure-connection-required)) — set it up in the next step.
 

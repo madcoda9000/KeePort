@@ -1,10 +1,9 @@
 # Plan: Anzeigen, wo KeePort seine Daten ablegt
 
-- **Status:** umgesetzt, Abnahme auf der NAS offen. Geprüft:
-  - Tests: 67/67 Backend, 13/13 Frontend, `bash -n` für das Update-Skript.
-  - Docker-Image mit Volume: Warnung im Startlog, Banner auf allen Admin-Seiten, Karte in Settings mit „Docker volume“.
-  - Mit eingebundenem Ordner: Info-Zeile „host folder“.
-  - Ohne Einbindung: Warnung „not mounted“.
+- **Status:** closed (2026-11-24). Ausgeliefert in 0.6.0.
+  - Tests: 67/67 Backend, 13/13 Frontend. Im Docker-Image alle drei Fälle geprüft (Volume, eingebundener Ordner, nicht eingebunden).
+  - Abnahme durch Sascha auf der Synology: Update auf 0.6.0, Settings zeigt „Host folder“, kein Warnbanner.
+  - Erkenntnis: DSM meldet den Host-Pfad als `/@syno/docker/keeport-data` (Btrfs-Subvolume von `/volume1`). Das Beispiel in Oberfläche und Doku wurde für 0.6.1 entsprechend korrigiert.
 - **Erstellt:** 2026-11-24
 - **Zielversion:** 0.6.0 (neue Funktion, Changelog `## [0.6.0] - <Datum>`)
 

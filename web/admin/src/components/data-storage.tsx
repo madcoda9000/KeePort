@@ -89,8 +89,8 @@ export function DataStoragePanel({ storage }: { storage: DataStorage | null }) {
             </dl>
             {storage.kind === 'hostFolder' && (
               <p className="text-sm text-muted-foreground">
-                Include this folder in your backups. On a NAS the path may be shown relative to its storage volume, e.g.{' '}
-                <code>/docker/keeport-data</code> for <code>/volume1/docker/keeport-data</code>.
+                Include this folder in your backups. On a NAS the path is shown as the storage system sees it, e.g.{' '}
+                <code>/@syno/docker/keeport-data</code> on Synology for <code>/volume1/docker/keeport-data</code>.
               </p>
             )}
             {storage.kind === 'unknown' && (

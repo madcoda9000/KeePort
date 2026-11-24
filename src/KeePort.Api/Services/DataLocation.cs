@@ -18,7 +18,7 @@ public enum DataStorageKind
 /// <summary>Describes the data directory's storage for the startup log and the admin console.</summary>
 /// <param name="Kind">The kind of storage behind the data directory.</param>
 /// <param name="DataDir">The data directory inside the container, e.g. /data.</param>
-/// <param name="Source">The source path on the host's file system, if known. On NAS systems it can be relative to the storage volume.</param>
+/// <param name="Source">The source path on the host's file system, if known. On NAS systems it is the storage system's view, e.g. /@syno/docker/keeport-data on Synology.</param>
 /// <param name="VolumeName">The Docker volume name for <see cref="DataStorageKind.DockerVolume"/>, otherwise null.</param>
 public sealed record DataStorageInfo(DataStorageKind Kind, string DataDir, string? Source, string? VolumeName)
 {
