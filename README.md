@@ -17,7 +17,7 @@
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/vault-entries-dark.webp">
-  <img src="docs/images/vault-entries-light.webp" alt="KeePort web vault showing the unlocked family.kdbx with its entries" width="100%">
+  <img src="docs/images/vault-entries-light.webp" alt="KeePort web vault with the unlocked family.kdbx, its folder tree and entries" width="100%">
 </picture>
 
 </div>
@@ -61,6 +61,22 @@ KeePass files are great: open format, strong encryption, dozens of apps. Keeping
         <img src="docs/images/vault-entry-light.webp" alt="Entry details with live TOTP code, decrypted only in the browser">
       </picture>
       <p align="center"><b>Entry details & TOTP</b><br><sub>Edit entries and copy one-time codes — decrypted only in your browser.</sub></p>
+    </td>
+    <td width="50%">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/images/vault-card-dark.webp">
+        <img src="docs/images/vault-card-light.webp" alt="A KeePass2Android credit card with its template fields">
+      </picture>
+      <p align="center"><b>Templates & custom fields</b><br><sub>Credit cards and other KeePass2Android templates show their own fields.</sub></p>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/images/admin-dashboard-dark.webp">
+        <img src="docs/images/admin-dashboard-light.webp" alt="Admin dashboard with status, sign-ins and WebDAV activity">
+      </picture>
+      <p align="center"><b>Admin dashboard</b><br><sub>Status, storage, sign-ins and sync activity at a glance.</sub></p>
     </td>
     <td width="50%">
       <picture>

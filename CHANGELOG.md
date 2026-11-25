@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.1] - 2026-11-25
+
+### Fixed
+
+- Since 0.9.0 the live TOTP code with its countdown and copy buttons appeared below the additional fields and the expiry date, so it was often out of view. It is shown directly below the TOTP field again.
+
+### Changed
+
+- The README screenshots show the current version: the folder tree in the web vault, a KeePass2Android credit card with its template fields, and the admin dashboard.
+
 ## [0.10.0] - 2026-11-25
 
 ### Added
@@ -234,6 +244,7 @@ First beta release.
 - Login and setup share a configurable per-IP rate limit; session checks and sign-out are exempt. WebDAV has a separate configurable limit applied before authentication.
 - Admin accounts can only sign in to the Admin console; Vault and WebDAV require a separate user account. Admin sessions are scoped to the Admin API, so existing admins need to sign in again after updating.
 
+[0.10.1]: https://github.com/madcoda9000/KeePort/compare/v0.10.0...v0.10.1
 [0.10.0]: https://github.com/madcoda9000/KeePort/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/madcoda9000/KeePort/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/madcoda9000/KeePort/compare/v0.7.2...v0.8.0

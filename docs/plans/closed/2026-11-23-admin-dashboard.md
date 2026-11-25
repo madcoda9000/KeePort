@@ -1,7 +1,7 @@
 # KeePort – Plan: Admin-Dashboard
 
 - **Datum:** 2026-11-23
-- **Status:** umgesetzt (2026-11-25), Zielversion 0.10.0, Abnahme auf der NAS ausstehend
+- **Status:** abgeschlossen (2026-11-25), ausgeliefert in 0.10.0
 - **Ziel:** Nach dem Admin-Login auf einen Blick sehen, ob KeePort erreichbar ist, welcher Build läuft und wie viele Tresore, Nutzerkonten und fehlgeschlagene Anmeldungen es gibt.
 
 ## Ausgangslage
@@ -79,3 +79,14 @@ Ports werden als Ports **im Container** beschriftet. Die Host-Ports aus der `.en
 - Geprüft:
   - Backend-Tests: Summen mit gelöschtem Tresor, Konfliktkopie und deaktiviertem Konto; Anmeldezähler je Kanal und Ergebnis; Zugriff anonym und als Vault-Nutzer abgelehnt; keine Passwörter in der Antwort; Zeitfenster 24 h und 7 Tage an den Grenzen; Bereinigung nach 30 Tagen; Zähler überstehen den Neustart.
   - Browser-Test in einer Testinstanz: Das Dashboard öffnet als Erstes und ist in der Sidebar gewählt. Zähler, System- und Zugangsdaten werden angezeigt, Refresh und Navigation funktionieren, hell und dunkel, mobil ohne waagrechtes Scrollen.
+
+## Abnahme (2026-11-25, Sascha, Synology mit 0.10.0)
+
+- Nach der Anmeldung öffnet sich das Dashboard und ist in der Sidebar gewählt.
+- Die Anzeige stimmt:
+  - Docker erkannt, Alpine Linux, .NET 8.0.34
+  - Container-IP 172.22.0.2, Ports 8080/8081
+  - Admin-HTTPS mit Fingerabdruck und Ablaufdatum
+  - Proxys „loopback, 172.22.0.1 (gateway)“
+- Eine fehlgeschlagene Admin-Anmeldung wird gezählt und unter „Needs attention“ gemeldet.
+- 62 WebDAV-Anfragen von KeePass2Android, 0 Fehler. Die 401-Anmeldeaufrufe zählen nicht als Fehler.
