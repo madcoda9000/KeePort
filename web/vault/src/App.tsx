@@ -1544,6 +1544,32 @@ export default function App() {
                           </Field>
                         )}
                       </FieldGroup>
+                      {totp && (
+                        <div className="flex flex-wrap items-center gap-3 rounded-lg border bg-muted/40 p-3">
+                          <span className="font-mono text-lg tracking-widest">{totp.code}</span>
+                          <Badge variant="secondary">{totp.secondsLeft}s</Badge>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="ms-auto"
+                            type="button"
+                            onClick={/** Copies the current TOTP code to the clipboard. */ () => void copyValue(totp.code, 'TOTP code')}
+                          >
+                            <CopyIcon /> Copy code
+                          </Button>
+                          {otpUri && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              type="button"
+                              title="Copy the provisioning URI, including the secret"
+                              onClick={/** Copies the provisioning URI without displaying its secret. */ () => void copyValue(otpUri, 'TOTP URI')}
+                            >
+                              <CopyIcon /> Copy TOTP URI
+                            </Button>
+                          )}
+                        </div>
+                      )}
                       {draftTemplate && !showAllFields && STANDARD_INPUTS.some(/**
                        * Checks whether a standard field is hidden by the template.
                        * @param item - One standard input.
@@ -1584,32 +1610,6 @@ export default function App() {
                         />
                         <FieldDescription id="expires-help">Optional. KeePass apps show the entry as expired after this date.</FieldDescription>
                       </Field>
-                      {totp && (
-                        <div className="flex flex-wrap items-center gap-3 rounded-lg border bg-muted/40 p-3">
-                          <span className="font-mono text-lg tracking-widest">{totp.code}</span>
-                          <Badge variant="secondary">{totp.secondsLeft}s</Badge>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="ms-auto"
-                            type="button"
-                            onClick={/** Copies the current TOTP code to the clipboard. */ () => void copyValue(totp.code, 'TOTP code')}
-                          >
-                            <CopyIcon /> Copy code
-                          </Button>
-                          {otpUri && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              type="button"
-                              title="Copy the provisioning URI, including the secret"
-                              onClick={/** Copies the provisioning URI without displaying its secret. */ () => void copyValue(otpUri, 'TOTP URI')}
-                            >
-                              <CopyIcon /> Copy TOTP URI
-                            </Button>
-                          )}
-                        </div>
-                      )}
                       <EntryAttachments
                         draft={edits.attachments}
                         canWrite={canEditEntry}
