@@ -282,7 +282,7 @@ web/admin                 React + TypeScript admin console (shadcn/ui)
 web/shared                Shared table components and helpers
 tests/KeePort.Api.Tests   xUnit integration tests
 scripts/                  build-web.sh, keeport-update.sh (NAS update with backup and rollback)
-docs/                     Deployment guide, images and project plans
+docs/                     Deployment guide and images
 ```
 
 ## 🗺️ Roadmap

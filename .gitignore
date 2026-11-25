@@ -20,3 +20,7 @@ src/KeePort.Api/wwwroot/
 .data/
 /data/
 *.user
+
+# Local working notes, kept out of the public repository
+/AGENTS.md
+/docs/plans/
