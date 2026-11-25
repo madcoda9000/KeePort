@@ -1,6 +1,6 @@
 # Plan: Spalten ein- und ausblenden, Favicons in der KDBX speichern, Abgleich mit „Have I Been Pwned“
 
-- **Status:** umgesetzt (2026-11-25), Abnahme auf der NAS ausstehend
+- **Status:** abgeschlossen (2026-11-25), ausgeliefert in 0.14.0
 - **Erstellt:** 2026-11-25
 - **Zielversion:** 0.14.0 (neue Funktionen, Changelog `## [0.14.0] - <Datum>`)
 - **Herkunft:** Vorschläge 13, 16 und 18 aus `docs/plans/open/2026-11-25-eintragsliste-spaeter.md`. Sascha hat die Umsetzung direkt beauftragt (2026-11-25), Vorschlag 12 (Tastaturkürzel) ist gestrichen.
@@ -101,3 +101,7 @@
     - „Save website icon“ mit echtem Abruf von github.com über den Testserver; das Symbol steht danach in der KDBX
     - Lokale Adresse abgelehnt
   - Alle früheren Browser-Tests laufen weiter.
+
+## Abnahme (2026-11-25, Sascha, NAS mit 0.14.0)
+
+- Update eingespielt, Test erfolgreich.
