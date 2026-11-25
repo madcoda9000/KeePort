@@ -1,6 +1,6 @@
 # Plan: Doppelklick, Spalte „Modified“, Sicherheitsbericht und Passphrasen
 
-- **Status:** umgesetzt (2026-11-25), Abnahme auf der NAS ausstehend
+- **Status:** abgeschlossen (2026-11-25), ausgeliefert in 0.13.0
 - **Erstellt:** 2026-11-25
 - **Zielversion:** 0.13.0 (neue Funktionen, Changelog `## [0.13.0] - <Datum>`)
 - **Herkunft:** Vorschläge 10, 14, 15 und 17 aus `docs/plans/open/2026-11-25-eintragsliste-spaeter.md`
@@ -136,6 +136,10 @@
     - Berichtskacheln filtern
     - Passphrase mit Leerzeichen übernommen, danach verschwindet die Warnung
   - Alle früheren Browser-Tests laufen weiter.
+
+## Abnahme (2026-11-25, Sascha, NAS mit 0.13.0)
+
+- Update eingespielt, Test erfolgreich.
 
 ## Ursprünglich offene Fragen
 
