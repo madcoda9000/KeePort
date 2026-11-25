@@ -17,7 +17,7 @@
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/vault-entries-dark.webp">
-  <img src="docs/images/vault-entries-light.webp" alt="KeePort web vault with the unlocked family.kdbx, its folder tree and entries" width="100%">
+  <img src="docs/images/vault-entries-light.webp" alt="KeePort web vault with the unlocked family.kdbx: folder tree, tags, security report and entries with copy buttons" width="100%">
 </picture>
 
 </div>
@@ -40,18 +40,19 @@ KeePass files are great: open format, strong encryption, dozens of apps. Keeping
 
 | | |
 |---|---|
-| 🧠 **Zero-knowledge web vault** | Unlock, search, edit and save KDBX files in the browser. Copy usernames, passwords and TOTP codes with one click, choose the columns you see, generate passwords, store website icons in the vault, delete to the recycle bin and spot expired entries. Master passwords and key files never leave your device. |
-| 🛡️ **Security report** | Finds weak, reused, old and empty passwords and expired entries, computed only in your browser, plus an opt-in check against Have I Been Pwned; the generator also creates passphrases from the EFF wordlist. |
+| 🧠 **Zero-knowledge web vault** | Unlock, search, edit and save KDBX files in the browser. Master passwords and key files never leave your device. |
+| ⚡ **Everyday comfort** | Copy usernames, passwords and TOTP codes straight from the list, open entries with a double-click, choose the columns you see, generate passwords or passphrases, open websites, and have the clipboard cleared automatically. |
+| 🔍 **Security report** | Finds weak, reused, old and empty passwords and expired entries — computed only in your browser — plus an opt-in check against Have I Been Pwned. |
 | 🕘 **History & tags** | See every earlier version of an entry, restore one or delete old versions; tag entries and filter by tag — compatible with KeePass2Android, KeePassXC and KeePassium. |
-| 📁 **Folders** | Browse the KDBX folder tree, create, rename and delete folders, and move several entries at once — the structure stays the same in KeePassXC, KeePass2Android and KeePassium. |
-| 🧾 **Templates & custom fields** | Credit cards, IDs and other KeePass2Android templates show their own fields; add, edit and protect custom fields on any entry and set expiry dates. |
+| 📁 **Folders & recycle bin** | Browse the KDBX folder tree, create, rename and delete folders, move several entries at once, and delete to the recycle bin with restore — the structure stays the same in KeePassXC, KeePass2Android and KeePassium. |
+| 🧾 **Templates, fields & icons** | Credit cards, IDs and other KeePass2Android templates show their own fields; add, edit and protect custom fields, set expiry dates, and store website icons in the vault so every KeePass app shows them. |
 | 🔑 **Full KDBX support** | KDBX 3.1 and 4.x, Argon2id/AES-KDF, optional key files, attachments up to 10 MiB, and TOTP codes with live countdown. |
 | 📱 **WebDAV for mobile apps** | Works with KeePass2Android and KeePassium, including transactional saves, conflict-safe sync and merging. |
 | 👥 **Users & per-vault ACLs** | `read` or `read-write` per vault, enforced the same way in the API, web vault and WebDAV. |
 | 🛡️ **No silent overwrites** | Every write is checked against the version the client last saw. Stale saves are kept as admin-only conflict copies. |
 | 🧰 **Admin console** | A dashboard with status, storage, sign-ins and sync activity; manage vault files, users, permissions, WebDAV app passwords and rate limits; inspect WebDAV request logs. |
-| 💾 **Crash-safe storage** | Atomic writes (temp file → fsync → rename), soft delete with restore, plain files on a Docker volume. |
-| 🐳 **One container** | Single Docker image with a persistent `/data` volume and an optional, separately bound admin port. |
+| 💾 **Crash-safe storage** | Atomic writes (temp file → fsync → rename), soft delete with restore, plain files in a host folder or Docker volume. |
+| 🐳 **One container** | Single Docker image with a persistent `/data` folder and a separate admin port served over HTTPS. |
 
 ## 📸 Screenshots
 
@@ -63,6 +64,22 @@ KeePass files are great: open format, strong encryption, dozens of apps. Keeping
         <img src="docs/images/vault-entry-light.webp" alt="Entry details with live TOTP code, decrypted only in the browser">
       </picture>
       <p align="center"><b>Entry details & TOTP</b><br><sub>Edit entries and copy one-time codes — decrypted only in your browser.</sub></p>
+    </td>
+    <td width="50%">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/images/vault-history-dark.webp">
+        <img src="docs/images/vault-history-light.webp" alt="Entry history with an earlier version opened and a restore button">
+      </picture>
+      <p align="center"><b>Entry history</b><br><sub>See what changed, view old values and restore any version.</sub></p>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/images/vault-security-dark.webp">
+        <img src="docs/images/vault-security-light.webp" alt="Security report with tiles for weak, reused, old, empty, expired and breached passwords">
+      </picture>
+      <p align="center"><b>Security report</b><br><sub>Weak, reused and old passwords at a glance — checked only in your browser.</sub></p>
     </td>
     <td width="50%">
       <picture>
@@ -171,10 +188,18 @@ flowchart LR
         FS[("/data/vault<br/>encrypted .kdbx files")]
     end
 
+    subgraph Internet["Internet — only if users opt in"]
+        HIBP["Have I Been Pwned<br/>range API"]
+        WEB["Websites<br/>favicons"]
+    end
+
     B -- "encrypted KDBX + ETag" --> API
     M -- "WebDAV (Basic auth, app password)" --> API
     API --> DB
     API --> FS
+    B -. "5-character hash prefix" .-> HIBP
+    B -. "load website icons" .-> WEB
+    API -. "Save website icon (host name only)" .-> WEB
 ```
 
 - The server stores `.kdbx` files as **opaque encrypted blobs**. It never parses vault contents and never receives a master password or key file.
@@ -204,6 +229,8 @@ Setup instructions per client are in the [deployment guide](docs/DEPLOYMENT.md#-
 - **Explicit proxy trust:** client addresses from `X-Forwarded-For` are only accepted from reverse proxies you list; catch-all entries are refused.
 - **Admin isolation:** admin endpoints only answer on the admin port, which is served over HTTPS with a self-signed certificate created on first start.
 - **Privacy-aware logging:** WebDAV logs record method, path, status and headers such as `If-Match` — never passwords or file contents.
+- **Outside contact only on request:** website icons and the breach check are off until a user turns them on. Icon downloads by the server reach public HTTPS sites only — addresses in your network, loopback and reserved ranges are refused, also after redirects — and can be turned off with `KEEPORT_FAVICON_DOWNLOAD=false`.
+- **Browser hardening:** a strict Content-Security-Policy, copied secrets cleared from the clipboard after 30 seconds (configurable) and when the vault locks, and auto-lock when the tab stays in the background.
 
 Use HTTPS (for example behind a reverse proxy) before exposing the web vault or WebDAV beyond your LAN. The [deployment guide](docs/DEPLOYMENT.md) covers HTTPS with the Synology and QNAP reverse proxies as well as Caddy and nginx.
 
@@ -218,10 +245,10 @@ Copy `.env.example` to `.env` and adjust as needed:
 | `KEEPORT_ADMIN_BIND` | `0.0.0.0` | Host address the admin port is published on; `127.0.0.1` on a VPS. |
 | `KEEPORT_ADMIN_HTTPS` | `true` | HTTPS with a self-signed certificate for the admin console; `false` if a reverse proxy does TLS. |
 | `KEEPORT_ADMIN_TLS_HOSTS` | *(empty)* | Extra names/IPs for the admin certificate, e.g. `192.168.1.20, nas.local`. |
-| `KEEPORT_FAVICON_DOWNLOAD` | `true` | Allow "Save website icon": the server fetches a site's icon once (public HTTPS sites only). |
 | `KEEPORT_ADMIN_HOST_PORT` | `8081` | Host port of the admin console (the container side is always `8081`). |
 | `KEEPORT_COOKIE_SECURE` | `false` | Set to `true` when KeePort is served over HTTPS. |
 | `KEEPORT_TRUSTED_PROXIES` | *(empty)* | `gateway` for a reverse proxy on the same host (NAS proxy, Caddy, nginx), or the proxy's IP/network, so KeePort sees each device's own address ([details](docs/DEPLOYMENT.md#-trust-your-reverse-proxy)). |
+| `KEEPORT_FAVICON_DOWNLOAD` | `true` | Allow "Save website icon": the server fetches a site's icon once (public HTTPS sites only). |
 
 Sign-in and WebDAV rate limits are changed at runtime in **Admin → Settings**. Everything else — NAS setup, backups, reverse proxy examples, troubleshooting — is in the [deployment guide](docs/DEPLOYMENT.md).
 
@@ -240,8 +267,10 @@ cd web/admin && npm install && npm run dev
 ./scripts/build-web.sh
 dotnet run --project src/KeePort.Api
 
-# Tests
+# Tests and lint
 dotnet test
+node --test web/vault/src/lib/*.test.mjs web/shared/*.test.mjs
+(cd web/vault && npm run lint) && (cd web/admin && npm run lint)
 ```
 
 The web vault is served at `/`, the admin console at `/admin` and WebDAV at `/webdav`.
@@ -252,7 +281,8 @@ web/vault                 React + TypeScript web vault (shadcn/ui)
 web/admin                 React + TypeScript admin console (shadcn/ui)
 web/shared                Shared table components and helpers
 tests/KeePort.Api.Tests   xUnit integration tests
-docs/                     Deployment guide and project plans
+scripts/                  build-web.sh, keeport-update.sh (NAS update with backup and rollback)
+docs/                     Deployment guide, images and project plans
 ```
 
 ## 🗺️ Roadmap
