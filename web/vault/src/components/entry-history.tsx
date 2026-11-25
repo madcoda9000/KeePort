@@ -198,10 +198,10 @@ export function EntryHistory({
          * @param item - One state of the entry.
          */ (item) => (
           <li key={item.index ?? 'current'}>
-            <Collapsible className="rounded-lg border">
+            <Collapsible className="min-w-0 rounded-lg border">
               <div className="flex items-start gap-2 p-2">
                 <CollapsibleTrigger asChild>
-                  <Button type="button" variant="ghost" className="group h-auto min-w-0 flex-1 justify-start gap-2 px-2 py-1.5 text-start">
+                  <Button type="button" variant="ghost" className="group h-auto min-w-0 flex-1 justify-start gap-2 px-2 py-1.5 text-start whitespace-normal">
                     <ChevronRightIcon className="mt-0.5 shrink-0 transition-transform group-data-[state=open]:rotate-90" />
                     <span className="grid min-w-0 gap-0.5">
                       <span className="flex flex-wrap items-center gap-2 text-sm font-medium">
