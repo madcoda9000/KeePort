@@ -58,6 +58,8 @@ export interface EntryView {
   groupPath: string;
   /** The base64 UUID of the folder that directly contains the entry. */
   groupId: string;
+  /** Whether the entry is a template or in the recycle bin; such entries are left out of "All entries" and the search. */
+  hidden: boolean;
   entry: kdbxweb.KdbxEntry;
 }
 
@@ -73,13 +75,28 @@ function fieldText(field: kdbxweb.KdbxEntryField | undefined): string {
 }
 
 /**
+ * Checks whether a group is the recycle bin or the entry templates group of the database.
+ * @param db - The unlocked database providing the special group references.
+ * @param group - The group to check.
+ */
+function isSpecialGroup(db: kdbxweb.Kdbx, group: kdbxweb.KdbxGroup): boolean {
+  return [db.meta.recycleBinUuid, db.meta.entryTemplatesGroup].some(/**
+   * Compares the group with one special group reference.
+   * @param uuid - The reference stored in the database metadata, if any.
+   */ (uuid) => Boolean(uuid && !uuid.empty && group.uuid.equals(uuid)));
+}
+
+/**
  * Collects entry views recursively with each group's path.
+ * @param db - The unlocked database providing the recycle bin and templates references.
  * @param group - The KDBX group whose entries and child groups should be visited.
  * @param path - The path of the parent group, used to build the full entry group path.
  * @param out - The array to which the entry views are appended.
+ * @param inSpecial - Whether a parent group is the recycle bin or the templates group.
  */
-function walkGroup(group: kdbxweb.KdbxGroup, path: string, out: EntryView[]) {
+function walkGroup(db: kdbxweb.Kdbx, group: kdbxweb.KdbxGroup, path: string, out: EntryView[], inSpecial: boolean) {
   const groupPath = path ? `${path} / ${group.name ?? 'Group'}` : group.name ?? 'Root';
+  const hidden = inSpecial || isSpecialGroup(db, group);
   for (const entry of group.entries) {
     out.push({
       id: entry.uuid.id,
@@ -92,11 +109,12 @@ function walkGroup(group: kdbxweb.KdbxGroup, path: string, out: EntryView[]) {
       tags: [...entry.tags],
       groupPath,
       groupId: group.uuid.id,
+      hidden,
       entry
     });
   }
   for (const child of group.groups) {
-    walkGroup(child, groupPath, out);
+    walkGroup(db, child, groupPath, out, hidden);
   }
 }
 
@@ -107,7 +125,7 @@ function walkGroup(group: kdbxweb.KdbxGroup, path: string, out: EntryView[]) {
 export function listEntries(db: kdbxweb.Kdbx): EntryView[] {
   const out: EntryView[] = [];
   for (const group of db.groups) {
-    walkGroup(group, '', out);
+    walkGroup(db, group, '', out, false);
   }
   return out.sort(/**
    * Compares entry titles without case or accent distinctions.

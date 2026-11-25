@@ -232,6 +232,17 @@ export default function App() {
    * @param entry - One entry of the vault.
    */
   const browseFilter = useMemo(() => (currentFolder ? (entry: EntryView) => entry.groupId === currentFolder.id : undefined), [currentFolder]);
+  /**
+   * The entries the table works on: templates and recycled entries only while their own folder is selected.
+   */
+  const tableEntries = useMemo(/** Selects the entries shown for the current folder. */ () => entries.filter(/**
+   * Keeps regular entries and the hidden ones of the selected folder.
+   * @param entry - One entry of the vault.
+   */ (entry) => !entry.hidden || entry.groupId === currentFolder?.id), [entries, currentFolder]);
+  const visibleCount = useMemo(/** Counts the regular entries. */ () => entries.filter(/**
+   * Counts entries that are neither templates nor in the recycle bin.
+   * @param entry - One entry of the vault.
+   */ (entry) => !entry.hidden).length, [entries]);
   const selectedFolderIds = useMemo(/** Collects the folders that contain the selected entries. */ () => new Set(entries.filter(/**
    * Keeps the selected entries.
    * @param entry - One entry of the vault.
@@ -904,7 +915,7 @@ export default function App() {
           <FolderTree
             vaultName={selectedFile.name}
             folders={folders}
-            totalEntries={entries.length}
+            totalEntries={visibleCount}
             selectedId={folderId}
             canWrite={canWrite}
             disabled={busy !== null}
@@ -1152,7 +1163,7 @@ export default function App() {
                 <Card size="sm">
                   <CardHeader>
                     <CardDescription>Entries</CardDescription>
-                    <CardTitle className="text-xl tabular-nums">{entries.length}</CardTitle>
+                    <CardTitle className="text-xl tabular-nums">{visibleCount}</CardTitle>
                   </CardHeader>
                 </Card>
                 <Card size="sm">
@@ -1177,7 +1188,7 @@ export default function App() {
                       <CardDescription className="break-words">
                         {currentFolder
                           ? `${currentFolder.path} · ${currentFolder.entryCount} ${currentFolder.entryCount === 1 ? 'entry' : 'entries'}`
-                          : `${entries.length} ${entries.length === 1 ? 'entry' : 'entries'} in all folders`}
+                          : `${visibleCount} ${visibleCount === 1 ? 'entry' : 'entries'} in all folders, without templates and recycle bin`}
                       </CardDescription>
                     </div>
                     <div className="flex flex-wrap gap-2">
@@ -1195,7 +1206,7 @@ export default function App() {
                 <DataTable
                   key={`${selectedFile.id}:${folderId ?? 'all'}`}
                   label={currentFolder ? `Entries in ${currentFolder.name}` : 'Vault entries'}
-                  rows={entries}
+                  rows={tableEntries}
                   columns={ENTRY_COLUMNS}
                   searchLabel="Search all folders"
                   matches={entryMatches}

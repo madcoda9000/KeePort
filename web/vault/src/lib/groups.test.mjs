@@ -192,3 +192,21 @@ test('saves changes and reloads the last saved state when the save is rejected',
   assert.ok(names.includes('Kept'));
   assert.ok(!names.includes('Lost'));
 });
+
+/** Verifies that templates and recycled entries are marked hidden so "All entries" and the search leave them out. */
+test('marks templates and recycled entries as hidden', () => {
+  const db = testVault();
+  const rootId = listFolders(db)[0].id;
+  const templates = createFolder(db, rootId, 'Templates');
+  db.meta.entryTemplatesGroup = templates.uuid;
+  const nested = createFolder(db, templates.uuid.id, 'Cards');
+  createEntry(db, { ...fields, title: 'Regular' });
+  createEntry(db, { ...fields, title: 'Template' }, templates.uuid.id);
+  createEntry(db, { ...fields, title: 'Nested template' }, nested.uuid.id);
+  createEntry(db, { ...fields, title: 'Recycled' }, db.meta.recycleBinUuid.id);
+  const hidden = Object.fromEntries(listEntries(db).map(/**
+   * Maps each title to its hidden flag.
+   * @param view - One entry view.
+   */ (view) => [view.title, view.hidden]));
+  assert.deepEqual(hidden, { 'Nested template': true, Recycled: true, Regular: false, Template: true });
+});
