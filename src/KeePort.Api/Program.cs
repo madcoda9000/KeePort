@@ -200,9 +200,7 @@ app.Use(async (context, next) =>
     context.Response.Headers["X-Content-Type-Options"] = "nosniff";
     context.Response.Headers["X-Frame-Options"] = "DENY";
     context.Response.Headers["Referrer-Policy"] = "no-referrer";
-    context.Response.Headers.ContentSecurityPolicy = path.StartsWith("/api", StringComparison.OrdinalIgnoreCase) || path.StartsWith("/webdav", StringComparison.OrdinalIgnoreCase)
-        ? "default-src 'none'; frame-ancestors 'none'; base-uri 'none'"
-        : "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'";
+    context.Response.Headers.ContentSecurityPolicy = ContentSecurity.For(path);
     await next();
 });
 

@@ -14,7 +14,9 @@ import {
   type CustomField,
   type TemplateInfo
 } from './fields.ts';
+import { isExpired } from './entry-actions.ts';
 import { requireGroup, rootGroup } from './groups.ts';
+import { customIconUrl } from './icons.ts';
 import { storedOtpValue } from './totp.ts';
 
 let argon2Ready: Promise<void> | null = null;
@@ -87,6 +89,10 @@ export interface EntryView {
   isTemplate: boolean;
   /** The template the entry was created from, or null. */
   template: TemplateInfo | null;
+  /** The entry's own icon from the KDBX as a data URL, or null. */
+  iconUrl: string | null;
+  /** Whether the entry's expiry date has passed. */
+  expired: boolean;
   entry: kdbxweb.KdbxEntry;
 }
 
@@ -121,6 +127,7 @@ function isSpecialGroup(db: kdbxweb.Kdbx, group: kdbxweb.KdbxGroup): boolean {
  * @param out - The array to which the entry views are appended.
  * @param inSpecial - Whether a parent group is the recycle bin or the templates group.
  * @param templates - The templates of the database, used to resolve each entry's template.
+ * @param now - The current time, used to mark expired entries.
  */
 function walkGroup(
   db: kdbxweb.Kdbx,
@@ -128,7 +135,8 @@ function walkGroup(
   path: string,
   out: EntryView[],
   inSpecial: boolean,
-  templates: readonly TemplateInfo[]
+  templates: readonly TemplateInfo[],
+  now: Date
 ) {
   const groupPath = path ? `${path} / ${group.name ?? 'Group'}` : group.name ?? 'Root';
   const hidden = inSpecial || isSpecialGroup(db, group);
@@ -150,11 +158,13 @@ function walkGroup(
       expires: readExpiry(entry),
       isTemplate: isTemplateEntry(entry),
       template,
+      iconUrl: customIconUrl(db, entry),
+      expired: isExpired(entry, now),
       entry
     });
   }
   for (const child of group.groups) {
-    walkGroup(db, child, groupPath, out, hidden, templates);
+    walkGroup(db, child, groupPath, out, hidden, templates, now);
   }
 }
 
@@ -165,8 +175,9 @@ function walkGroup(
 export function listEntries(db: kdbxweb.Kdbx): EntryView[] {
   const out: EntryView[] = [];
   const templates = listTemplates(db);
+  const now = new Date();
   for (const group of db.groups) {
-    walkGroup(db, group, '', out, false, templates);
+    walkGroup(db, group, '', out, false, templates, now);
   }
   return out.sort(/**
    * Compares entry titles without case or accent distinctions.

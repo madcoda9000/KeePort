@@ -89,8 +89,8 @@ public static class AuthEndpoints
             return Results.Ok(new AuthResponse(ToDto(user), csrfToken));
         }).RequireRateLimiting(CredentialRateLimitPolicy);
 
-        // Updates the signed-in vault user's auto-lock preference.
-        // <param name="request">The update containing the user's auto-lock preference.</param>
+        // Updates the signed-in vault user's preferences; fields left out stay unchanged.
+        // <param name="request">The update containing the auto-lock, website icon and clipboard preferences.</param>
         // <param name="context">The current HTTP request and response context.</param>
         // <param name="db">The SQLite store for KeePort metadata.</param>
         vault.MapPut("/settings", (UpdateSettingsRequest request, HttpContext context, KeePortDb db) =>
@@ -104,7 +104,22 @@ public static class AuthEndpoints
             {
                 return Results.Json(new ErrorResponse("invalid_settings", "Auto-lock minutes must be between 1 and 1440."), statusCode: StatusCodes.Status400BadRequest);
             }
-            db.UpdateUserAutoLockMinutes(user.Id, request.AutoLockMinutes);
+            if (request.ClipboardClearSeconds is < 0 or > 600)
+            {
+                return Results.Json(new ErrorResponse("invalid_settings", "Clipboard clearing must be between 0 (off) and 600 seconds."), statusCode: StatusCodes.Status400BadRequest);
+            }
+            if (request.AutoLockMinutes is { } minutes)
+            {
+                db.UpdateUserAutoLockMinutes(user.Id, minutes);
+            }
+            if (request.ShowFavicons is { } showFavicons)
+            {
+                db.UpdateUserShowFavicons(user.Id, showFavicons);
+            }
+            if (request.ClipboardClearSeconds is { } seconds)
+            {
+                db.UpdateUserClipboardClearSeconds(user.Id, seconds);
+            }
             return Results.Ok(ToDto(db.GetUserById(user.Id)!));
         });
     }
@@ -228,7 +243,7 @@ public static class AuthEndpoints
     /// <param name="user">The user account associated with the operation.</param>
     internal static UserDto ToDto(UserRecord user)
     {
-        return new UserDto(user.Id, user.Username, user.Role.ToString().ToLowerInvariant(), user.Disabled, user.CreatedAt, user.LastLoginAt, user.AutoLockMinutes, user.Email);
+        return new UserDto(user.Id, user.Username, user.Role.ToString().ToLowerInvariant(), user.Disabled, user.CreatedAt, user.LastLoginAt, user.AutoLockMinutes, user.Email, user.ShowFavicons, user.ClipboardClearSeconds);
     }
 
     /// <summary>

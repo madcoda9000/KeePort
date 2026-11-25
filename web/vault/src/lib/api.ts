@@ -7,6 +7,10 @@ export interface User {
   createdAt: string;
   lastLoginAt: string | null;
   autoLockMinutes: number | null;
+  /** Whether the web vault loads website icons directly from the sites (opt-in). */
+  showFavicons: boolean;
+  /** Seconds until copied values are cleared from the clipboard; null for the default, 0 for off. */
+  clipboardClearSeconds: number | null;
 }
 
 export interface VaultFile {
@@ -158,10 +162,10 @@ export const api = {
     return request<User>('/api/auth/email', { method: 'PUT', body: JSON.stringify({ email }) });
   },
   /**
-   * Saves the auto-lock preference and returns the updated profile.
-   * @param payload - The user's auto-lock delay in minutes.
+   * Saves the vault preferences and returns the updated profile; fields left out stay unchanged.
+   * @param payload - The auto-lock delay in minutes, the website icon opt-in and the clipboard clearing delay.
    */
-  async updateSettings(payload: { autoLockMinutes: number }) {
+  async updateSettings(payload: { autoLockMinutes?: number; showFavicons?: boolean; clipboardClearSeconds?: number }) {
     return request<User>('/api/auth/settings', { method: 'PUT', body: JSON.stringify(payload) });
   },
   /** Lists vault files the signed-in account can access. */

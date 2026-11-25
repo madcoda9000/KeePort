@@ -155,6 +155,8 @@ public sealed class KeePortDb : IDisposable
 
         EnsureColumn("users", "auto_lock_minutes", "INTEGER NULL");
         EnsureColumn("users", "email", "TEXT NULL");
+        EnsureColumn("users", "show_favicons", "INTEGER NOT NULL DEFAULT 0");
+        EnsureColumn("users", "clipboard_clear_seconds", "INTEGER NULL");
         Execute(connection, "INSERT INTO app_state (key, value) VALUES ('login_stats_since', @now) ON CONFLICT(key) DO NOTHING;",
             new SqliteParameter("@now", DateTimeOffset.UtcNow.ToString("O")));
         EnsureSetupToken();
@@ -268,7 +270,7 @@ public sealed class KeePortDb : IDisposable
         connection.Open();
         using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT id, username, password_hash, role, disabled, created_at, last_login_at, auto_lock_minutes, email
+            SELECT id, username, password_hash, role, disabled, created_at, last_login_at, auto_lock_minutes, email, show_favicons, clipboard_clear_seconds
             FROM users WHERE username = @username COLLATE NOCASE;
             """;
         command.Parameters.AddWithValue("@username", username);
@@ -284,7 +286,7 @@ public sealed class KeePortDb : IDisposable
         connection.Open();
         using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT id, username, password_hash, role, disabled, created_at, last_login_at, auto_lock_minutes, email
+            SELECT id, username, password_hash, role, disabled, created_at, last_login_at, auto_lock_minutes, email, show_favicons, clipboard_clear_seconds
             FROM users WHERE id = @id;
             """;
         command.Parameters.AddWithValue("@id", id);
@@ -299,7 +301,7 @@ public sealed class KeePortDb : IDisposable
         connection.Open();
         using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT id, username, password_hash, role, disabled, created_at, last_login_at, auto_lock_minutes, email
+            SELECT id, username, password_hash, role, disabled, created_at, last_login_at, auto_lock_minutes, email, show_favicons, clipboard_clear_seconds
             FROM users ORDER BY username COLLATE NOCASE;
             """;
         var users = new List<UserRecord>();
@@ -383,6 +385,30 @@ public sealed class KeePortDb : IDisposable
             new SqliteParameter("@autoLockMinutes", DbValue(autoLockMinutes)));
     }
 
+    /// <summary>Stores whether the web vault may load website icons directly from the sites in the user's entries.</summary>
+    /// <param name="id">The user's identifier.</param>
+    /// <param name="showFavicons">Whether website icons are loaded.</param>
+    public void UpdateUserShowFavicons(string id, bool showFavicons)
+    {
+        using var connection = Open();
+        connection.Open();
+        Execute(connection, "UPDATE users SET show_favicons = @value WHERE id = @id;",
+            new SqliteParameter("@id", id),
+            new SqliteParameter("@value", showFavicons ? 1 : 0));
+    }
+
+    /// <summary>Stores after how many seconds the web vault clears copied values from the clipboard.</summary>
+    /// <param name="id">The user's identifier.</param>
+    /// <param name="seconds">The delay in seconds; 0 turns clearing off.</param>
+    public void UpdateUserClipboardClearSeconds(string id, int seconds)
+    {
+        using var connection = Open();
+        connection.Open();
+        Execute(connection, "UPDATE users SET clipboard_clear_seconds = @value WHERE id = @id;",
+            new SqliteParameter("@id", id),
+            new SqliteParameter("@value", seconds));
+    }
+
     /// <summary>Records the time of a user's last successful sign-in.</summary>
     /// <param name="id">The user account ID.</param>
     /// <param name="lastLoginAt">The time of the last successful sign-in.</param>
@@ -439,7 +465,7 @@ public sealed class KeePortDb : IDisposable
         using var command = connection.CreateCommand();
         command.CommandText = """
             SELECT s.id, s.user_id, s.token_hash, s.csrf_token, s.created_at, s.expires_at, s.last_seen_at, s.user_agent, s.ip_address,
-                   u.id, u.username, u.password_hash, u.role, u.disabled, u.created_at, u.last_login_at, u.auto_lock_minutes, u.email
+                   u.id, u.username, u.password_hash, u.role, u.disabled, u.created_at, u.last_login_at, u.auto_lock_minutes, u.email, u.show_favicons, u.clipboard_clear_seconds
             FROM sessions s
             JOIN users u ON u.id = s.user_id
             WHERE s.token_hash = @tokenHash;
@@ -769,7 +795,7 @@ public sealed class KeePortDb : IDisposable
         using var command = connection.CreateCommand();
         command.CommandText = """
             SELECT c.id, c.user_id, c.username, c.label, c.password_hash, c.created_at, c.last_used_at, c.revoked_at,
-                   u.id, u.username, u.password_hash, u.role, u.disabled, u.created_at, u.last_login_at, u.auto_lock_minutes, u.email
+                   u.id, u.username, u.password_hash, u.role, u.disabled, u.created_at, u.last_login_at, u.auto_lock_minutes, u.email, u.show_favicons, u.clipboard_clear_seconds
             FROM webdav_credentials c
             JOIN users u ON u.id = c.user_id
             WHERE c.username = @username COLLATE NOCASE;
@@ -804,7 +830,7 @@ public sealed class KeePortDb : IDisposable
         using var command = connection.CreateCommand();
         command.CommandText = """
             SELECT c.id, c.user_id, c.username, c.label, c.password_hash, c.created_at, c.last_used_at, c.revoked_at,
-                   u.id, u.username, u.password_hash, u.role, u.disabled, u.created_at, u.last_login_at, u.auto_lock_minutes, u.email
+                   u.id, u.username, u.password_hash, u.role, u.disabled, u.created_at, u.last_login_at, u.auto_lock_minutes, u.email, u.show_favicons, u.clipboard_clear_seconds
             FROM webdav_credentials c
             JOIN users u ON u.id = c.user_id
             ORDER BY c.created_at DESC;
@@ -1156,7 +1182,9 @@ public sealed class KeePortDb : IDisposable
             CreatedAt = ParseDate(reader.GetString(offset + 5)),
             LastLoginAt = reader.IsDBNull(offset + 6) ? null : ParseDate(reader.GetString(offset + 6)),
             AutoLockMinutes = reader.IsDBNull(offset + 7) ? null : reader.GetInt32(offset + 7),
-            Email = reader.IsDBNull(offset + 8) ? null : reader.GetString(offset + 8)
+            Email = reader.IsDBNull(offset + 8) ? null : reader.GetString(offset + 8),
+            ShowFavicons = !reader.IsDBNull(offset + 9) && reader.GetInt32(offset + 9) != 0,
+            ClipboardClearSeconds = reader.IsDBNull(offset + 10) ? null : reader.GetInt32(offset + 10)
         };
     }
 

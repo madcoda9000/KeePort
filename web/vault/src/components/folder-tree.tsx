@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import {
+  CalendarX2Icon,
   ChevronRightIcon,
   EllipsisIcon,
   FolderIcon,
@@ -73,6 +74,12 @@ interface FolderTreeProps extends FolderActions {
   folders: readonly FolderNode[];
   totalEntries: number;
   selectedId: string | null;
+  /** Whether "All entries" is the current view. */
+  allSelected: boolean;
+  /** The number of expired entries; the "Expired" view is listed only when there are some. */
+  expiredCount: number;
+  expiredSelected: boolean;
+  onSelectExpired: () => void;
   canWrite: boolean;
   disabled: boolean;
 }
@@ -102,7 +109,19 @@ function FolderGlyph({ folder, open }: { folder: FolderNode; open: boolean }) {
  * Renders the folder tree of the open vault as its own sidebar group below the vault list.
  * @param props - The folders, the selection, write permission and the callbacks for folder actions.
  */
-export function FolderTree({ vaultName, folders, totalEntries, selectedId, canWrite, disabled, ...actions }: FolderTreeProps) {
+export function FolderTree({
+  vaultName,
+  folders,
+  totalEntries,
+  selectedId,
+  allSelected,
+  expiredCount,
+  expiredSelected,
+  onSelectExpired,
+  canWrite,
+  disabled,
+  ...actions
+}: FolderTreeProps) {
   const { setOpenMobile } = useSidebar();
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   const root = folders[0];
@@ -246,8 +265,8 @@ export function FolderTree({ vaultName, folders, totalEntries, selectedId, canWr
             <SidebarMenuButton
               type="button"
               className="pe-8"
-              isActive={selectedId === null}
-              aria-current={selectedId === null ? 'true' : undefined}
+              isActive={allSelected}
+              aria-current={allSelected ? 'true' : undefined}
               disabled={disabled}
               onClick={/** Shows the entries of all folders. */ () => select(null)}
             >
@@ -256,6 +275,25 @@ export function FolderTree({ vaultName, folders, totalEntries, selectedId, canWr
             </SidebarMenuButton>
             <SidebarMenuBadge aria-label={`${totalEntries} entries`}>{totalEntries}</SidebarMenuBadge>
           </SidebarMenuItem>
+          {(expiredCount > 0 || expiredSelected) && (
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                type="button"
+                className="pe-8"
+                isActive={expiredSelected}
+                aria-current={expiredSelected ? 'true' : undefined}
+                disabled={disabled}
+                onClick={/** Shows the expired entries and closes the sidebar sheet on small screens. */ () => {
+                  onSelectExpired();
+                  setOpenMobile(false);
+                }}
+              >
+                <CalendarX2Icon className="text-destructive" />
+                <span>Expired</span>
+              </SidebarMenuButton>
+              <SidebarMenuBadge className="text-destructive" aria-label={`${expiredCount} expired entries`}>{expiredCount}</SidebarMenuBadge>
+            </SidebarMenuItem>
+          )}
           {folders.map(renderFolder)}
         </SidebarMenu>
       </SidebarGroupContent>

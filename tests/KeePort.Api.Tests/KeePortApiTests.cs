@@ -508,6 +508,39 @@ public class KeePortApiTests : IDisposable
         Assert.Equal("legacy@example.test", db.GetUserById(account.Id)?.Email);
     }
 
+    /// <summary>Verifies the website icon and clipboard preferences: off and default at first, partial updates and validation.</summary>
+    [Fact]
+    public async Task Vault_Preferences_For_Icons_And_Clipboard_Are_Stored_Per_User()
+    {
+        var csrf = await SetupAdminAsync(_admin);
+        await CreateUserAsync(_admin, csrf, "alice", "user");
+        var (userCsrf, _) = await LoginAsync(_user, "alice", "User passphrase 123");
+
+        var initial = await GetJsonAsync(_user, "/api/auth/me");
+        Assert.False(initial.GetProperty("showFavicons").GetBoolean());
+        Assert.Equal(JsonValueKind.Null, initial.GetProperty("clipboardClearSeconds").ValueKind);
+
+        using (var autoLock = await SendAsync(_user, HttpMethod.Put, "/api/auth/settings", json: new { autoLockMinutes = 20 }, csrf: userCsrf))
+        {
+            autoLock.EnsureSuccessStatusCode();
+        }
+        using (var icons = await SendAsync(_user, HttpMethod.Put, "/api/auth/settings", json: new { showFavicons = true, clipboardClearSeconds = 0 }, csrf: userCsrf))
+        {
+            icons.EnsureSuccessStatusCode();
+        }
+        var updated = await GetJsonAsync(_user, "/api/auth/me");
+        Assert.True(updated.GetProperty("showFavicons").GetBoolean());
+        Assert.Equal(0, updated.GetProperty("clipboardClearSeconds").GetInt32());
+        Assert.Equal(20, updated.GetProperty("autoLockMinutes").GetInt32());
+
+        using var invalid = await SendAsync(_user, HttpMethod.Put, "/api/auth/settings", json: new { clipboardClearSeconds = 601 }, csrf: userCsrf);
+        Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+
+        // The vault pages may load website icons over HTTPS; the APIs stay locked down.
+        using var page = await _user.GetAsync("/");
+        Assert.Contains("img-src 'self' data: https:", page.Headers.GetValues("Content-Security-Policy").Single());
+    }
+
     /// <summary>Verifies the dashboard totals, the sign-in counters and that only administrators get the data.</summary>
     [Fact]
     public async Task Dashboard_Reports_Totals_And_Sign_Ins_To_Admins_Only()

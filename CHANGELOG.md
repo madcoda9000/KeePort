@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.0] - 2026-11-25
+
+### Added
+
+- **Copy buttons in the entry list:** username, password and the current TOTP code can be copied right from the table, with a tooltip, without opening the entry.
+- **TOTP column** in the entry list, showing whether an entry has TOTP set up (sortable).
+- **Delete entries** in the web vault, from the entry form or for several selected entries:
+  - Deleted entries move to the recycle bin.
+  - Entries already in the recycle bin are deleted permanently, as are all deleted entries in vaults without a recycle bin. KeePass apps remove permanently deleted entries when they sync.
+  - "Empty recycle bin" removes everything in it.
+- **Expired entries** carry an "Expired" badge, and the folder sidebar gets an "Expired" view while any entry has expired.
+- **Entry icons:**
+  - Icons stored in the vault (for example favicons that KeePassXC downloaded) replace the key symbol.
+  - "Load website icons" in the account settings additionally shows each site's favicon. It is off by default, applies per user, and the browser requests the icon directly from the site, which then sees the user's IP address. The KeePort server never sees the URLs.
+- **Password generator** in the entry form: length, character groups, an option to avoid look-alike characters and a strength estimate. It uses the browser's cryptographic random source.
+- **Show password** button in the entry form.
+- **Open website** buttons in the entry list and the form, for http(s) addresses.
+- **Clipboard clearing:** copied values are removed from the clipboard after 30 seconds and when the vault locks. The delay can be changed or turned off in the account settings. Browsers allow this only while the KeePort tab is in front.
+
+### Changed
+
+- The web vault's Content-Security-Policy allows images over HTTPS for website icons. The admin console keeps its stricter policy.
+- `PUT /api/auth/settings` accepts `showFavicons` and `clipboardClearSeconds`; fields left out stay unchanged.
+
 ## [0.10.1] - 2026-11-25
 
 ### Fixed
@@ -244,6 +268,7 @@ First beta release.
 - Login and setup share a configurable per-IP rate limit; session checks and sign-out are exempt. WebDAV has a separate configurable limit applied before authentication.
 - Admin accounts can only sign in to the Admin console; Vault and WebDAV require a separate user account. Admin sessions are scoped to the Admin API, so existing admins need to sign in again after updating.
 
+[0.11.0]: https://github.com/madcoda9000/KeePort/compare/v0.10.1...v0.11.0
 [0.10.1]: https://github.com/madcoda9000/KeePort/compare/v0.10.0...v0.10.1
 [0.10.0]: https://github.com/madcoda9000/KeePort/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/madcoda9000/KeePort/compare/v0.8.0...v0.9.0

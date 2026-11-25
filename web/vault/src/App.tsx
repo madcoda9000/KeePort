@@ -29,7 +29,12 @@ import { parseOtpSecret, totpCode, totpUri } from './lib/totp';
 import { getTheme, toggleTheme } from './theme';
 import {
   ChevronDownIcon,
+  CircleCheckIcon,
+  CircleXIcon,
   CopyIcon,
+  ExternalLinkIcon,
+  EyeIcon,
+  EyeOffIcon,
   DatabaseIcon,
   FolderInputIcon,
   KeyRoundIcon,
@@ -41,12 +46,19 @@ import {
   RefreshCwIcon,
   ShieldCheckIcon,
   SunIcon,
+  Trash2Icon,
   UserRoundIcon,
   XIcon
 } from 'lucide-react';
 import { AuthLayout } from '@/components/auth-layout';
 import { EntryAttachments } from '@/components/entry-attachments';
+import { CopyButton } from '@/components/copy-button';
 import { EntryFields } from '@/components/entry-fields';
+import { EntryIcon } from '@/components/entry-icon';
+import { PasswordGenerator } from '@/components/password-generator';
+import { openableUrl } from './lib/icons';
+import { deleteEntries, emptyRecycleBin } from './lib/entry-actions';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   DeleteFolderDialog,
   FolderNameDialog,
@@ -60,6 +72,16 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle
+} from '@/components/ui/alert-dialog';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
   DropdownMenu,
@@ -107,6 +129,8 @@ type Message = { kind: 'notice' | 'error'; text: string } | null;
 type EntryDraft = EntryEdits & { attachments: AttachmentDraft };
 
 const DEFAULT_AUTO_LOCK_MINUTES = 5;
+/** Seconds after which copied values are cleared from the clipboard unless the user chose otherwise. */
+const DEFAULT_CLIPBOARD_CLEAR_SECONDS = 30;
 
 /** The standard inputs a template may hide, with their KDBX field name and draft key. */
 const STANDARD_INPUTS = [
@@ -133,6 +157,11 @@ const ENTRY_COLUMNS: readonly TableColumn<EntryView>[] = [
    * @param entry - The unlocked entry supplying this column's sort value.
    */
   { id: 'password', label: 'Password', sortValue: (entry) => Number(Boolean(entry.password)), className: 'hidden sm:table-cell' },
+  /**
+   * Sorts by whether TOTP is configured.
+   * @param entry - The unlocked entry supplying this column's sort value.
+   */
+  { id: 'totp', label: 'TOTP', sortValue: (entry) => Number(Boolean(entry.otp)), className: 'hidden sm:table-cell' },
   /**
    * Sorts by website URL, treating a blank URL as missing.
    * @param entry - The unlocked entry supplying this column's sort value.
@@ -205,6 +234,8 @@ export default function App() {
   const vaultGeneration = useRef(0);
   /** The encrypted bytes of the last loaded or saved revision; a failed folder change reloads the vault from them. */
   const savedBytes = useRef<Uint8Array | null>(null);
+  /** The pending timer that clears copied values from the clipboard. */
+  const clipboardTimer = useRef<number | undefined>(undefined);
   const [folders, setFolders] = useState<FolderNode[]>([]);
   const [folderId, setFolderId] = useState<string | null>(null);
   const [selection, setSelection] = useState<ReadonlySet<string>>(new Set());
@@ -212,6 +243,10 @@ export default function App() {
   const [folderToDelete, setFolderToDelete] = useState<FolderNode | null>(null);
   const [moving, setMoving] = useState(false);
   const [showAllFields, setShowAllFields] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [expiredView, setExpiredView] = useState(false);
+  const [deleteRequest, setDeleteRequest] = useState<{ ids: string[]; permanent: boolean; fromSheet: boolean } | null>(null);
+  const [confirmEmptyBin, setConfirmEmptyBin] = useState(false);
   const [totp, setTotp] = useState<{ code: string; secondsLeft: number } | null>(null);
 
   /** Starts periodic TOTP updates while the current draft has a usable secret. */
@@ -252,6 +287,7 @@ export default function App() {
    * @param file - One accessible file whose ID is compared with the current selection.
    */ (file) => file.id === selectedId) ?? null, [files, selectedId]);
   const canWrite = permission === 'read-write';
+  const showFavicons = user?.showFavicons ?? false;
   const unlocked = Boolean(db && selectedFile);
   const currentFolder = folderId ? findFolder(folders, folderId) : null;
   // Templates are entries, so the list follows every change of the entries.
@@ -277,7 +313,9 @@ export default function App() {
    * Shows only the entries directly in the selected folder; a search still covers all folders.
    * @param entry - One entry of the vault.
    */
-  const browseFilter = useMemo(() => (currentFolder ? (entry: EntryView) => entry.groupId === currentFolder.id : undefined), [currentFolder]);
+  const browseFilter = useMemo(() => (expiredView
+    ? (entry: EntryView) => entry.expired
+    : currentFolder ? (entry: EntryView) => entry.groupId === currentFolder.id : undefined), [currentFolder, expiredView]);
   /**
    * The entries the table works on: templates and recycled entries only while their own folder is selected.
    */
@@ -285,6 +323,10 @@ export default function App() {
    * Keeps regular entries and the hidden ones of the selected folder.
    * @param entry - One entry of the vault.
    */ (entry) => !entry.hidden || entry.groupId === currentFolder?.id), [entries, currentFolder]);
+  const expiredCount = useMemo(/** Counts expired entries outside templates and the recycle bin. */ () => entries.filter(/**
+   * Keeps expired regular entries.
+   * @param entry - One entry of the vault.
+   */ (entry) => entry.expired && !entry.hidden).length, [entries]);
   const visibleCount = useMemo(/** Counts the regular entries. */ () => entries.filter(/**
    * Counts entries that are neither templates nor in the recycle bin.
    * @param entry - One entry of the vault.
@@ -329,6 +371,9 @@ export default function App() {
     setFolderRequest(null);
     setFolderToDelete(null);
     setMoving(false);
+    setExpiredView(false);
+    setDeleteRequest(null);
+    setConfirmEmptyBin(false);
   }, []);
 
   /**
@@ -337,6 +382,10 @@ export default function App() {
    */
   function lockVault(notify = false) {
     vaultGeneration.current += 1;
+    if (clipboardTimer.current !== undefined) {
+      window.clearTimeout(clipboardTimer.current);
+      clearClipboard();
+    }
     clearVaultCredentials(db);
     resetFolderState();
     setDb(null);
@@ -454,6 +503,7 @@ export default function App() {
   function startNewEntry(template: TemplateInfo | null = null) {
     setSelectedEntry(null);
     setShowAllFields(false);
+    setShowPassword(false);
     setEdits(entryDraft(null, template));
     setMessage(null);
   }
@@ -640,6 +690,65 @@ export default function App() {
   }
 
   /**
+   * Asks to delete entries. Entries go to the recycle bin; entries already in it (or all entries when the vault has no
+   * recycle bin) are deleted permanently, which the confirmation says.
+   * @param ids - The entries to delete.
+   * @param fromSheet - Whether the request comes from the open entry form, which closes after deleting.
+   */
+  function requestDelete(ids: string[], fromSheet: boolean) {
+    const permanent = db?.meta.recycleBinEnabled === false || ids.every(/**
+     * Checks whether an entry already lies in the recycle bin.
+     * @param id - One entry ID.
+     */ (id) => {
+      const entry = entries.find(/**
+       * Finds the entry view.
+       * @param item - One entry of the vault.
+       */ (item) => item.id === id);
+      return Boolean(entry && findFolder(folders, entry.groupId)?.inRecycleBin);
+    });
+    setDeleteRequest({ ids, permanent, fromSheet });
+  }
+
+  /** Deletes the confirmed entries and saves the vault. */
+  async function confirmDelete() {
+    const request = deleteRequest;
+    if (!request) return;
+    const ok = await runVaultChange(/**
+     * Deletes the entries.
+     * @param vault - The vault to change.
+     */ (vault) => deleteEntries(vault, request.ids), /**
+     * Closes the dialogs and describes the result.
+     * @param result - How many entries went to the recycle bin and how many were removed permanently.
+     */ (result) => {
+      setDeleteRequest(null);
+      setSelection(new Set());
+      if (request.fromSheet) {
+        setSelectedEntry(null);
+        setEdits(null);
+      }
+      const parts = [
+        result.recycled ? `${result.recycled} moved to the recycle bin` : '',
+        result.removed ? `${result.removed} deleted permanently` : ''
+      ].filter(Boolean);
+      return `${result.recycled + result.removed === 1 ? 'Entry' : 'Entries'}: ${parts.join(', ')}.`;
+    });
+    if (!ok) setDeleteRequest(null);
+  }
+
+  /** Empties the recycle bin and saves the vault. */
+  async function confirmEmptyRecycleBin() {
+    const ok = await runVaultChange(emptyRecycleBin, /**
+     * Closes the dialog and describes the result.
+     * @param count - The number of entries removed.
+     */ (count) => {
+      setConfirmEmptyBin(false);
+      setSelection(new Set());
+      return `Recycle bin emptied: ${count} ${count === 1 ? 'entry' : 'entries'} deleted permanently.`;
+    });
+    if (!ok) setConfirmEmptyBin(false);
+  }
+
+  /**
    * Moves the selected entries into a folder and saves the vault.
    * @param targetId - The destination folder.
    */
@@ -687,6 +796,7 @@ export default function App() {
      */
     onSelect: (id) => {
       setFolderId(id);
+      setExpiredView(false);
       setSelection(new Set());
     },
     /**
@@ -751,6 +861,9 @@ export default function App() {
         <span className="font-medium tabular-nums" aria-live="polite">{selection.size} selected</span>
         <Button size="sm" disabled={busy !== null} onClick={/** Opens the destination folder picker. */ () => setMoving(true)}>
           <FolderInputIcon /> Move to…
+        </Button>
+        <Button size="sm" variant="destructive" disabled={busy !== null} onClick={/** Asks to delete the selected entries. */ () => requestDelete([...selection], false)}>
+          <Trash2Icon /> Delete
         </Button>
         {pageSelected && !allSelected && (
           <Button
@@ -865,15 +978,25 @@ export default function App() {
    */
   async function handleSaveAutoLock(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const minutes = Number(new FormData(event.currentTarget).get('autoLockMinutes'));
+    const data = new FormData(event.currentTarget);
+    const minutes = Number(data.get('autoLockMinutes'));
+    const clipboardSeconds = Number(data.get('clipboardClearSeconds'));
     if (!Number.isFinite(minutes) || minutes < 1 || minutes > 1440) {
       setProfileMessage({ kind: 'error', text: 'Auto-lock must be between 1 and 1440 minutes.' });
+      return;
+    }
+    if (!Number.isFinite(clipboardSeconds) || clipboardSeconds < 0 || clipboardSeconds > 600) {
+      setProfileMessage({ kind: 'error', text: 'Clipboard clearing must be between 0 (off) and 600 seconds.' });
       return;
     }
     setBusy('settings');
     setProfileMessage(null);
     try {
-      const updated = await api.updateSettings({ autoLockMinutes: Math.round(minutes) });
+      const updated = await api.updateSettings({
+        autoLockMinutes: Math.round(minutes),
+        clipboardClearSeconds: Math.round(clipboardSeconds),
+        showFavicons: data.get('showFavicons') === 'on'
+      });
       setUser(updated);
       setAutoLockMinutes(updated.autoLockMinutes ?? DEFAULT_AUTO_LOCK_MINUTES);
       setProfileMessage({ kind: 'notice', text: 'Settings saved.' });
@@ -942,17 +1065,31 @@ export default function App() {
   }, [db, autoLockMinutes, resetFolderState]);
 
   /**
+   * Overwrites a copied value in the clipboard. Browsers only allow this while the tab has focus; otherwise the value
+   * stays, which the settings explain.
+   */
+  function clearClipboard() {
+    clipboardTimer.current = undefined;
+    void navigator.clipboard.writeText('').catch(/** Ignores a refused write while the tab is in the background. */ () => undefined);
+  }
+
+  /**
    * Copies a single entry value without showing it in feedback.
    * @param value - The current draft field text or generated TOTP code to copy.
    * @param label - The field name to use in the clipboard status message.
    */
-  async function copyValue(value: string, label: string) {
+  async function copyValue(value: string, label: string): Promise<boolean> {
     try {
       await navigator.clipboard.writeText(value);
-      setMessage({ kind: 'notice', text: `${label} copied.` });
     } catch {
       setMessage({ kind: 'error', text: 'Clipboard unavailable. Use HTTPS or localhost and allow clipboard access.' });
+      return false;
     }
+    const seconds = user?.clipboardClearSeconds ?? DEFAULT_CLIPBOARD_CLEAR_SECONDS;
+    window.clearTimeout(clipboardTimer.current);
+    clipboardTimer.current = seconds > 0 ? window.setTimeout(clearClipboard, seconds * 1000) : undefined;
+    setMessage({ kind: 'notice', text: seconds > 0 ? `${label} copied. The clipboard is cleared in ${seconds} seconds.` : `${label} copied.` });
+    return true;
   }
 
   const themeAction = (
@@ -1024,7 +1161,15 @@ export default function App() {
             vaultName={selectedFile.name}
             folders={folders}
             totalEntries={visibleCount}
-            selectedId={folderId}
+            selectedId={expiredView ? null : folderId}
+            allSelected={!expiredView && folderId === null}
+            expiredCount={expiredCount}
+            expiredSelected={expiredView}
+            onSelectExpired={/** Shows the expired entries of all folders. */ () => {
+              setFolderId(null);
+              setExpiredView(true);
+              setSelection(new Set());
+            }}
             canWrite={canWrite}
             disabled={busy !== null}
             {...folderActions}
@@ -1098,6 +1243,35 @@ export default function App() {
                   <FieldDescription id="auto-lock-help">
                     How long to keep the vault unlocked after you leave this tab.
                   </FieldDescription>
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="clipboard-clear">Clear clipboard after (seconds)</FieldLabel>
+                  <Input
+                    id="clipboard-clear"
+                    name="clipboardClearSeconds"
+                    className="max-w-32"
+                    type="number"
+                    min={0}
+                    max={600}
+                    defaultValue={user.clipboardClearSeconds ?? DEFAULT_CLIPBOARD_CLEAR_SECONDS}
+                    required
+                    aria-describedby="clipboard-clear-help"
+                  />
+                  <FieldDescription id="clipboard-clear-help">
+                    Copied passwords and codes are removed from the clipboard after this time; 0 turns it off. Browsers
+                    only allow this while the KeePort tab is in front, so clear it yourself if you switch away.
+                  </FieldDescription>
+                </Field>
+                <Field orientation="horizontal">
+                  <Checkbox id="show-favicons" name="showFavicons" defaultChecked={user.showFavicons} aria-describedby="show-favicons-help" />
+                  <div className="grid gap-1">
+                    <FieldLabel htmlFor="show-favicons" className="font-normal">Load website icons</FieldLabel>
+                    <FieldDescription id="show-favicons-help">
+                      Shows the favicon of each entry's website. Your browser requests it directly from that site, so
+                      the site sees your IP address and may conclude that you have an account there. Icons stored in
+                      the vault (e.g. by KeePassXC) are always shown.
+                    </FieldDescription>
+                  </div>
                 </Field>
                 <Button type="submit" size="sm" className="justify-self-start" disabled={busy !== null}>
                   {busy === 'settings' ? 'Saving…' : 'Save preferences'}
@@ -1292,9 +1466,11 @@ export default function App() {
                 <CardHeader className="gap-4 border-b py-5">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0 space-y-1">
-                      <CardTitle className="break-words">{currentFolder ? currentFolder.name : 'All entries'}</CardTitle>
+                      <CardTitle className="break-words">{expiredView ? 'Expired entries' : currentFolder ? currentFolder.name : 'All entries'}</CardTitle>
                       <CardDescription className="break-words">
-                        {currentFolder
+                        {expiredView
+                          ? `${expiredCount} ${expiredCount === 1 ? 'entry has' : 'entries have'} passed their expiry date`
+                          : currentFolder
                           ? `${currentFolder.path} · ${currentFolder.entryCount} ${currentFolder.entryCount === 1 ? 'entry' : 'entries'}`
                           : `${visibleCount} ${visibleCount === 1 ? 'entry' : 'entries'} in all folders, without templates and recycle bin`}
                       </CardDescription>
@@ -1310,6 +1486,11 @@ export default function App() {
                         <RefreshCwIcon className={busy === 'reload' ? 'animate-spin' : undefined} />
                         {busy === 'reload' ? 'Reloading…' : 'Reload'}
                       </Button>
+                      {canWrite && currentFolder?.isRecycleBin && currentFolder.totalEntryCount > 0 && (
+                        <Button variant="outline" size="sm" disabled={busy !== null} onClick={/** Asks to empty the recycle bin. */ () => setConfirmEmptyBin(true)}>
+                          <Trash2Icon /> Empty recycle bin
+                        </Button>
+                      )}
                       <Button variant="outline" size="sm" disabled={busy === 'save' || busy === 'reload'} onClick={/** Locks the vault and notifies the user. */ () => lockVault(true)}>
                         <LockKeyholeIcon /> Lock vault
                       </Button>
@@ -1355,13 +1536,13 @@ export default function App() {
                   </div>
                 </CardHeader>
                 <DataTable
-                  key={`${selectedFile.id}:${folderId ?? 'all'}`}
-                  label={currentFolder ? `Entries in ${currentFolder.name}` : 'Vault entries'}
+                  key={`${selectedFile.id}:${expiredView ? 'expired' : folderId ?? 'all'}`}
+                  label={expiredView ? 'Expired entries' : currentFolder ? `Entries in ${currentFolder.name}` : 'Vault entries'}
                   rows={tableEntries}
                   columns={ENTRY_COLUMNS}
                   searchLabel="Search all folders"
                   matches={entryMatches}
-                  emptyMessage={currentFolder ? 'This folder has no entries.' : 'This vault has no entries yet.'}
+                  emptyMessage={expiredView ? 'No entry has expired.' : currentFolder ? 'This folder has no entries.' : 'This vault has no entries yet.'}
                   browseFilter={browseFilter}
                   leadingHeader={canWrite ? renderSelectAll : undefined}
                   toolbar={canWrite ? renderSelectionBar : undefined}
@@ -1390,14 +1571,19 @@ export default function App() {
                           onClick={/** Clears the workspace message and opens a draft for the selected entry. */ () => {
                             setMessage(null);
                             setShowAllFields(false);
+                            setShowPassword(false);
+    setShowPassword(false);
                             setSelectedEntry(entry);
                             setEdits(entryDraft(entry));
                           }}
                         >
-                          <KeyRoundIcon className="mt-0.5 shrink-0 text-muted-foreground" />
+                          <EntryIcon iconUrl={entry.iconUrl} url={entry.url} showFavicons={showFavicons} className="mt-0.5" />
                           <span className="min-w-0">
                             <span className="block truncate font-medium">{entry.title}</span>
                             <span className="flex min-w-0 items-center gap-1.5 text-xs font-normal text-muted-foreground">
+                              {entry.expired && (
+                                <Badge variant="destructive" className="h-4 shrink-0 px-1.5 text-[0.65rem]">Expired</Badge>
+                              )}
                               {(entry.template || entry.isTemplate) && (
                                 <Badge variant="outline" className="h-4 shrink-0 px-1.5 text-[0.65rem]">
                                   {entry.isTemplate ? 'Template' : entry.template?.title}
@@ -1408,14 +1594,83 @@ export default function App() {
                           </span>
                         </Button>
                       </TableCell>
-                      <TableCell className="max-w-32 truncate text-muted-foreground sm:max-w-52">
-                        {entry.username || '—'}
+                      <TableCell className="text-muted-foreground">
+                        <span className="flex max-w-36 min-w-0 items-center gap-1 sm:max-w-56">
+                          {entry.username && (
+                            <CopyButton
+                              label={`Copy username of ${entry.title}`}
+                              tooltip="Copy username"
+                              getValue={/** Returns the username. */ () => entry.username}
+                              onCopy={/**
+                               * Copies the username.
+                               * @param value - The username.
+                               */ (value) => copyValue(value, 'Username')}
+                            />
+                          )}
+                          <span className="truncate">{entry.username || '—'}</span>
+                        </span>
                       </TableCell>
-                      <TableCell className="hidden font-mono tracking-wider text-muted-foreground sm:table-cell">
-                        {entry.password ? '••••••••' : '—'}
+                      <TableCell className="hidden text-muted-foreground sm:table-cell">
+                        <span className="flex items-center gap-1">
+                          {entry.password && (
+                            <CopyButton
+                              label={`Copy password of ${entry.title}`}
+                              tooltip="Copy password"
+                              getValue={/** Returns the password. */ () => entry.password}
+                              onCopy={/**
+                               * Copies the password.
+                               * @param value - The password.
+                               */ (value) => copyValue(value, 'Password')}
+                            />
+                          )}
+                          <span className="font-mono tracking-wider">{entry.password ? '••••••••' : '—'}</span>
+                        </span>
                       </TableCell>
-                      <TableCell className="hidden max-w-56 truncate text-muted-foreground md:table-cell">
-                        {entry.url || '—'}
+                      <TableCell className="hidden sm:table-cell">
+                        <span className="flex items-center gap-1">
+                          {entry.otp && parseOtpSecret(entry.otp) && (
+                            <CopyButton
+                              label={`Copy TOTP code of ${entry.title}`}
+                              tooltip="Copy TOTP code"
+                              getValue={/** Calculates the current TOTP code at the moment of copying. */ async () => {
+                                const config = parseOtpSecret(entry.otp);
+                                if (!config) throw new Error('The TOTP setting of this entry is not valid.');
+                                return (await totpCode(config)).code;
+                              }}
+                              onCopy={/**
+                               * Copies the TOTP code.
+                               * @param value - The current code.
+                               */ (value) => copyValue(value, 'TOTP code')}
+                            />
+                          )}
+                          {entry.otp ? (
+                            <CircleCheckIcon aria-label="TOTP configured" className="size-4 text-emerald-600 dark:text-emerald-400" />
+                          ) : (
+                            <CircleXIcon aria-label="No TOTP" className="size-4 text-muted-foreground/60" />
+                          )}
+                        </span>
+                      </TableCell>
+                      <TableCell className="hidden text-muted-foreground md:table-cell">
+                        <span className="flex max-w-56 min-w-0 items-center gap-1">
+                          {openableUrl(entry.url) && (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button asChild variant="ghost" size="icon-sm" className="size-7 shrink-0 text-muted-foreground hover:text-foreground">
+                                  <a
+                                    href={openableUrl(entry.url) ?? undefined}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    aria-label={`Open website of ${entry.title}`}
+                                  >
+                                    <ExternalLinkIcon />
+                                  </a>
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>Open website</TooltipContent>
+                            </Tooltip>
+                          )}
+                          <span className="truncate">{entry.url || '—'}</span>
+                        </span>
                       </TableCell>
                     </TableRow>
                   )}
@@ -1484,31 +1739,65 @@ export default function App() {
                         {showStandard('Password', edits.password) && (
                           <Field>
                             <FieldLabel htmlFor="entry-password">Password</FieldLabel>
-                            <Input
-                              id="entry-password"
-                              type="password"
-                              autoComplete="off"
-                              value={edits.password}
-                              readOnly={!canEditEntry || busy === 'save'}
-                              onChange={/**
-                               * Updates the draft entry password.
-                               * @param event - The entry password input change event.
-                               */ (event) => setEdits({ ...edits, password: event.target.value })}
-                            />
+                            <div className="flex gap-2">
+                              <Input
+                                id="entry-password"
+                                type={showPassword ? 'text' : 'password'}
+                                autoComplete="off"
+                                className="font-mono"
+                                value={edits.password}
+                                readOnly={!canEditEntry || busy === 'save'}
+                                onChange={/**
+                                 * Updates the draft entry password.
+                                 * @param event - The entry password input change event.
+                                 */ (event) => setEdits({ ...edits, password: event.target.value })}
+                              />
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="icon"
+                                aria-label={showPassword ? 'Hide password' : 'Show password'}
+                                title={showPassword ? 'Hide password' : 'Show password'}
+                                onClick={/** Shows or hides the password. */ () => setShowPassword(!showPassword)}
+                              >
+                                {showPassword ? <EyeOffIcon /> : <EyeIcon />}
+                              </Button>
+                              {canEditEntry && (
+                                <PasswordGenerator
+                                  disabled={busy === 'save'}
+                                  onUse={/**
+                                   * Puts the generated password into the draft and shows it once.
+                                   * @param password - The generated password.
+                                   */ (password) => {
+                                    setEdits({ ...edits, password });
+                                    setShowPassword(true);
+                                  }}
+                                />
+                              )}
+                            </div>
                           </Field>
                         )}
                         {showStandard('URL', edits.url) && (
                           <Field>
                             <FieldLabel htmlFor="entry-url">Website</FieldLabel>
-                            <Input
-                              id="entry-url"
-                              value={edits.url}
-                              readOnly={!canEditEntry || busy === 'save'}
-                              onChange={/**
-                               * Updates the draft website URL.
-                               * @param event - The website URL input change event.
-                               */ (event) => setEdits({ ...edits, url: event.target.value })}
-                            />
+                            <div className="flex gap-2">
+                              <Input
+                                id="entry-url"
+                                value={edits.url}
+                                readOnly={!canEditEntry || busy === 'save'}
+                                onChange={/**
+                                 * Updates the draft website URL.
+                                 * @param event - The website URL input change event.
+                                 */ (event) => setEdits({ ...edits, url: event.target.value })}
+                              />
+                              {openableUrl(edits.url) && (
+                                <Button asChild variant="outline" size="icon">
+                                  <a href={openableUrl(edits.url) ?? undefined} target="_blank" rel="noopener noreferrer" aria-label="Open website" title="Open website">
+                                    <ExternalLinkIcon />
+                                  </a>
+                                </Button>
+                              )}
+                            </div>
                           </Field>
                         )}
                         {showStandard('Notes', edits.notes) && (
@@ -1633,6 +1922,16 @@ export default function App() {
                             {busy === 'save' ? 'Saving…' : selectedEntry ? 'Save entry' : 'Create entry'}
                           </Button>
                         )}
+                        {canEditEntry && selectedEntry && (
+                          <Button
+                            type="button"
+                            variant="destructive"
+                            disabled={busy === 'save'}
+                            onClick={/** Asks to delete the open entry. */ () => requestDelete([selectedEntry.id], true)}
+                          >
+                            <Trash2Icon /> Delete
+                          </Button>
+                        )}
                         <Button
                           variant="outline"
                           size="sm"
@@ -1688,6 +1987,74 @@ export default function App() {
                  */ (targetId) => void moveSelection(targetId)}
                 onClose={/** Closes the move dialog. */ () => setMoving(false)}
               />
+              <AlertDialog open={deleteRequest !== null} onOpenChange={/**
+               * Closes the confirmation unless a save is running.
+               * @param open - The requested dialog state.
+               */ (open) => {
+                if (!open && busy !== 'save') setDeleteRequest(null);
+              }}>
+                {deleteRequest && (
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>
+                        {deleteRequest.permanent ? 'Delete permanently' : 'Move to recycle bin'}: {deleteRequest.ids.length} {deleteRequest.ids.length === 1 ? 'entry' : 'entries'}?
+                      </AlertDialogTitle>
+                      <AlertDialogDescription>
+                        {deleteRequest.permanent
+                          ? 'The entries are removed for good. KeePass apps remove them too when they sync.'
+                          : 'The entries move to the recycle bin, where you can restore them with “Move to…” or delete them permanently. Entries already in the recycle bin are deleted permanently.'}
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel disabled={busy === 'save'}>Cancel</AlertDialogCancel>
+                      <AlertDialogAction
+                        variant="destructive"
+                        disabled={busy === 'save'}
+                        onClick={/**
+                         * Deletes the entries and keeps the dialog open until the save finishes.
+                         * @param event - The click event, prevented so the dialog does not close early.
+                         */ (event) => {
+                          event.preventDefault();
+                          void confirmDelete();
+                        }}
+                      >
+                        {busy === 'save' ? 'Deleting…' : deleteRequest.permanent ? 'Delete permanently' : 'Move to recycle bin'}
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                )}
+              </AlertDialog>
+              <AlertDialog open={confirmEmptyBin} onOpenChange={/**
+               * Closes the confirmation unless a save is running.
+               * @param open - The requested dialog state.
+               */ (open) => {
+                if (!open && busy !== 'save') setConfirmEmptyBin(false);
+              }}>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Empty the recycle bin?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      All entries and folders in the recycle bin are deleted permanently. KeePass apps remove them too when they sync.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel disabled={busy === 'save'}>Cancel</AlertDialogCancel>
+                    <AlertDialogAction
+                      variant="destructive"
+                      disabled={busy === 'save'}
+                      onClick={/**
+                       * Empties the recycle bin and keeps the dialog open until the save finishes.
+                       * @param event - The click event, prevented so the dialog does not close early.
+                       */ (event) => {
+                        event.preventDefault();
+                        void confirmEmptyRecycleBin();
+                      }}
+                    >
+                      {busy === 'save' ? 'Deleting…' : 'Empty recycle bin'}
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
             </>
           )}
         </div>

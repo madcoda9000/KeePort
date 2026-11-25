@@ -32,6 +32,10 @@ public sealed class UserRecord
     public DateTimeOffset? LastLoginAt { get; init; }
     public int? AutoLockMinutes { get; init; }
     public string? Email { get; init; }
+    /// <summary>Whether the web vault loads website icons directly from the sites in the user's entries (opt-in).</summary>
+    public bool ShowFavicons { get; init; }
+    /// <summary>Seconds after which the web vault clears copied values from the clipboard; null for the default, 0 for off.</summary>
+    public int? ClipboardClearSeconds { get; init; }
 }
 
 public sealed record SessionRecord
@@ -97,7 +101,19 @@ public sealed class WebDavCredentialRecord
 /// <param name="LastLoginAt">The most recent successful sign-in time, if any.</param>
 /// <param name="AutoLockMinutes">The delay in minutes before auto-lock, or null to clear the user override.</param>
 /// <param name="Email">The account's contact email address.</param>
-public sealed record UserDto(string Id, string Username, string Role, bool Disabled, DateTimeOffset CreatedAt, DateTimeOffset? LastLoginAt, int? AutoLockMinutes = null, string? Email = null);
+/// <param name="ShowFavicons">Whether the web vault loads website icons directly from the sites (opt-in).</param>
+/// <param name="ClipboardClearSeconds">Seconds after which copied values are cleared, null for the default, 0 for off.</param>
+public sealed record UserDto(
+    string Id,
+    string Username,
+    string Role,
+    bool Disabled,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset? LastLoginAt,
+    int? AutoLockMinutes = null,
+    string? Email = null,
+    bool ShowFavicons = false,
+    int? ClipboardClearSeconds = null);
 
 /// <summary>Represents vault file metadata without the encrypted file contents.</summary>
 /// <param name="Id">The stable identifier for this resource.</param>
@@ -141,8 +157,10 @@ public sealed record LoginRequest(string Username, string Password);
 public sealed record ChangePasswordRequest(string CurrentPassword, string NewPassword);
 
 /// <summary>Carries the user's auto-lock preference, or null to clear it.</summary>
-/// <param name="AutoLockMinutes">The delay in minutes before auto-lock, or null to clear the user override.</param>
-public sealed record UpdateSettingsRequest(int? AutoLockMinutes);
+/// <param name="AutoLockMinutes">The delay in minutes before auto-lock, or null to leave it unchanged.</param>
+/// <param name="ShowFavicons">Whether the web vault loads website icons from the sites, or null to leave it unchanged.</param>
+/// <param name="ClipboardClearSeconds">Seconds until copied values are cleared (0 = off), or null to leave it unchanged.</param>
+public sealed record UpdateSettingsRequest(int? AutoLockMinutes, bool? ShowFavicons = null, int? ClipboardClearSeconds = null);
 
 /// <summary>Carries a replacement email address for the signed-in account.</summary>
 /// <param name="Email">The account's contact email address.</param>
