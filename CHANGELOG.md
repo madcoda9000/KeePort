@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.14.2] - 2026-11-25
 
+### Added
+
+- A **user manual** in the [GitHub wiki](https://github.com/madcoda9000/KeePort/wiki): first steps, every page of the admin console and the web vault, KeePass apps, privacy and security, and an FAQ. The README links to it.
+
 ### Changed
 
 - The web vault and the admin console use the canonical Tailwind CSS class names (`wrap-break-word`, `-left-(--sidebar-width)`, `inset-s-1/2`, `w-0.5`) instead of the older spellings. The look does not change.

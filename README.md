@@ -11,7 +11,7 @@
 [![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white)](#-quickstart)
 [![KDBX 3.1 / 4](https://img.shields.io/badge/KDBX-3.1%20%2F%204-6c757d)](#-compatibility)
 
-[Quickstart](#-quickstart) · [Features](#-features) · [Screenshots](#-screenshots) · [How it works](#-how-it-works) · [Deployment guide](docs/DEPLOYMENT.md) · [Changelog](CHANGELOG.md)
+[Quickstart](#-quickstart) · [Features](#-features) · [Screenshots](#-screenshots) · [How it works](#-how-it-works) · [📖 User manual](https://github.com/madcoda9000/KeePort/wiki) · [Deployment guide](docs/DEPLOYMENT.md) · [Changelog](CHANGELOG.md)
 
 <br>
 
@@ -24,6 +24,8 @@
 
 > [!NOTE]
 > KeePort is in **beta** (`v0.14.1`). Keep regular backups of your `.kdbx` files and of the `/data` volume.
+>
+> The **[user manual](https://github.com/madcoda9000/KeePort/wiki)** in the wiki explains every page of the admin console and the web vault step by step.
 
 ---
 
