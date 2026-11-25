@@ -9,6 +9,7 @@ import {
   LayoutTemplateIcon,
   LibraryIcon,
   PencilIcon,
+  TagIcon,
   Trash2Icon
 } from 'lucide-react';
 import type { FolderNode } from '@/lib/groups';
@@ -80,6 +81,10 @@ interface FolderTreeProps extends FolderActions {
   expiredCount: number;
   expiredSelected: boolean;
   onSelectExpired: () => void;
+  /** The tags of the vault with their counts; the "Tags" group is listed only when there are some. */
+  tags: readonly { tag: string; count: number }[];
+  selectedTag: string | null;
+  onSelectTag: (tag: string) => void;
   canWrite: boolean;
   disabled: boolean;
 }
@@ -118,6 +123,9 @@ export function FolderTree({
   expiredCount,
   expiredSelected,
   onSelectExpired,
+  tags,
+  selectedTag,
+  onSelectTag,
   canWrite,
   disabled,
   ...actions
@@ -244,7 +252,8 @@ export function FolderTree({
   }
 
   return (
-    <SidebarGroup aria-label={`Folders of ${vaultName}`}>
+    <>
+    <SidebarGroup role="group" aria-label={`Folders of ${vaultName}`}>
       <SidebarGroupLabel className="min-w-0 pe-8">
         <span className="truncate" title={vaultName}>Folders · {vaultName}</span>
       </SidebarGroupLabel>
@@ -298,6 +307,38 @@ export function FolderTree({
         </SidebarMenu>
       </SidebarGroupContent>
     </SidebarGroup>
+    {tags.length > 0 && (
+      <SidebarGroup role="group" aria-label={`Tags of ${vaultName}`}>
+        <SidebarGroupLabel>Tags</SidebarGroupLabel>
+        <SidebarGroupContent>
+          <SidebarMenu>
+            {tags.map(/**
+             * Renders one tag as a filter.
+             * @param item - A tag of the vault with its count.
+             */ (item) => (
+              <SidebarMenuItem key={item.tag}>
+                <SidebarMenuButton
+                  type="button"
+                  className="pe-8"
+                  isActive={selectedTag?.toLowerCase() === item.tag.toLowerCase()}
+                  aria-current={selectedTag?.toLowerCase() === item.tag.toLowerCase() ? 'true' : undefined}
+                  disabled={disabled}
+                  onClick={/** Shows the entries with this tag and closes the sidebar sheet on small screens. */ () => {
+                    onSelectTag(item.tag);
+                    setOpenMobile(false);
+                  }}
+                >
+                  <TagIcon />
+                  <span>{item.tag}</span>
+                </SidebarMenuButton>
+                <SidebarMenuBadge aria-label={`${item.count} entries`}>{item.count}</SidebarMenuBadge>
+              </SidebarMenuItem>
+            ))}
+          </SidebarMenu>
+        </SidebarGroupContent>
+      </SidebarGroup>
+    )}
+    </>
   );
 }
 

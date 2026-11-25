@@ -6,9 +6,9 @@
 
 ## Vorschläge
 
-9. **Verlauf eines Eintrags:** Die KDBX speichert frühere Versionen (`entry.history`). Ein Reiter „History“ im Formular zeigt sie mit Datum, und man kann eine Version wiederherstellen.
+9. **Verlauf eines Eintrags** (geplant in `2026-11-25-verlauf-und-tags.md`): Die KDBX speichert frühere Versionen (`entry.history`). Ein Reiter „History“ im Formular zeigt sie mit Datum, und man kann eine Version wiederherstellen.
 10. **Spalte „Modified“:** Das Datum der letzten Änderung, sortierbar, damit man „zuletzt geändert“ schnell findet.
-11. **Tags:**
+11. **Tags** (geplant in `2026-11-25-verlauf-und-tags.md`):
     - Tags werden in der Tabelle angezeigt und lassen sich im Formular bearbeiten (`entry.tags`).
     - Ein Klick auf einen Tag filtert die Liste.
 12. **Tastaturkürzel:**

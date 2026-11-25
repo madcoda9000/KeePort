@@ -51,3 +51,17 @@ export async function encodeAttachments(db: Kdbx, draft: AttachmentDraft): Promi
   }
   return binaries;
 }
+
+/**
+ * Downloads one local attachment without rendering or navigating to its contents.
+ * @param name - The filename to suggest to the browser.
+ * @param attachment - The binary or local file to download.
+ */
+export function downloadAttachment(name: string, attachment: Attachment) {
+  const url = URL.createObjectURL(attachmentBlob(attachment));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = name;
+  link.click();
+  window.setTimeout(/** Releases the temporary URL after the browser has started the download. */ () => URL.revokeObjectURL(url), 1000);
+}

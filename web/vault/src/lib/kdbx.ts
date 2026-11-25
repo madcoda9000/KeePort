@@ -16,6 +16,7 @@ import {
 } from './fields.ts';
 import { isExpired } from './entry-actions.ts';
 import { requireGroup, rootGroup } from './groups.ts';
+import { backupEntry } from './history.ts';
 import { customIconUrl } from './icons.ts';
 import { storedOtpValue } from './totp.ts';
 
@@ -65,6 +66,8 @@ export interface EntryEdits {
   expires?: string;
   /** For a new entry: the base64 UUID of the template it is created from. */
   templateId?: string;
+  /** The complete list of tags; omit to leave them unchanged. */
+  tags?: string[];
 }
 
 export interface EntryView {
@@ -245,9 +248,11 @@ export async function reopenVault(bytes: ArrayBuffer, credentials: kdbxweb.KdbxC
  * Applies edited fields, including the TOTP setting, and updates the modification time.
  * @param entry - The unlocked KDBX entry to modify in place.
  * @param edits - The draft field values to apply to the encrypted entry.
+ * @param db - The database whose history limits trim the entry's history; omit to keep the full history.
  */
-export function applyEntryEdits(entry: kdbxweb.KdbxEntry, edits: EntryEdits) {
-  entry.pushHistory();
+export function applyEntryEdits(entry: kdbxweb.KdbxEntry, edits: EntryEdits, db?: kdbxweb.Kdbx) {
+  if (db) backupEntry(db, entry);
+  else entry.pushHistory();
   entry.fields.set('Title', edits.title);
   entry.fields.set('UserName', edits.username);
   entry.fields.set('Password', kdbxweb.ProtectedValue.fromString(edits.password));
@@ -266,6 +271,7 @@ export function applyEntryEdits(entry: kdbxweb.KdbxEntry, edits: EntryEdits) {
 function applyExtraEdits(entry: kdbxweb.KdbxEntry, edits: EntryEdits) {
   if (edits.customFields) writeCustomFields(entry, edits.customFields);
   if (edits.expires !== undefined) writeExpiry(entry, edits.expires);
+  if (edits.tags) entry.tags = [...edits.tags];
 }
 
 /**
@@ -342,6 +348,7 @@ export async function saveEntryUpdate<T>(
     binaries: entry.binaries,
     times: entry.times.clone(),
     history: entry.history.slice(),
+    tags: entry.tags.slice(),
     _editState: entry._editState && { added: [...entry._editState.added], deleted: [...entry._editState.deleted] }
   };
   const originalBinaries = db.binaries.getAllWithHashes();
@@ -349,7 +356,7 @@ export async function saveEntryUpdate<T>(
   try {
     const binaries = await encodeAttachments(db, attachments);
     const edited = entry ?? (created = createEntry(db, edits, groupId));
-    if (entry) applyEntryEdits(entry, edits);
+    if (entry) applyEntryEdits(entry, edits, db);
     edited.binaries = binaries;
     return { entryId: edited.uuid.id, updated: await persist(await saveVault(db)) };
   } catch (error) {

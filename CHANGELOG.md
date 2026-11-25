@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.0] - 2026-11-25
+
+### Added
+
+- **Entry history** in the web vault:
+  - The entry form has a "History" tab that lists the current state and all saved versions, newest first, with the time and what changed (e.g. "Password, Website"). The overview never shows values.
+  - A version can be opened to see all of its fields, attachments, tags and expiry. Passwords and protected fields are masked with show and copy buttons.
+  - **Restore** works like KeePass: the current state is saved as a version first, then the entry takes over the old values.
+  - Single versions can be **deleted**, e.g. to remove an old password from the history.
+  - Read-only users can view the history.
+- **Tags:**
+  - Entries show up to three tags in the list. The entry form edits them as chips, with suggestions from the tags already used in the vault.
+  - The sidebar lists all tags with their counts. Clicking a tag there or in the list filters the entries across all folders.
+  - "Tags…" in the selection bar adds or removes tags on several entries at once.
+  - Tags are stored the way KeePass expects, so KeePass2Android, KeePassXC and KeePassium show them; commas, semicolons and colons are not allowed inside a tag.
+
+### Fixed
+
+- The web vault never trimmed an entry's history, so vaults edited mostly in the browser kept growing. Saving an entry now keeps at most the number of versions and the history size set in the vault (KeePass defaults: 10 versions, 6 MiB), like KeePass and KeePass2Android do.
+- Messages in the entry form (e.g. "Vault saved.") are now visible on every tab.
+
 ## [0.11.0] - 2026-11-25
 
 ### Added
@@ -268,6 +289,7 @@ First beta release.
 - Login and setup share a configurable per-IP rate limit; session checks and sign-out are exempt. WebDAV has a separate configurable limit applied before authentication.
 - Admin accounts can only sign in to the Admin console; Vault and WebDAV require a separate user account. Admin sessions are scoped to the Admin API, so existing admins need to sign in again after updating.
 
+[0.12.0]: https://github.com/madcoda9000/KeePort/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/madcoda9000/KeePort/compare/v0.10.1...v0.11.0
 [0.10.1]: https://github.com/madcoda9000/KeePort/compare/v0.10.0...v0.10.1
 [0.10.0]: https://github.com/madcoda9000/KeePort/compare/v0.9.0...v0.10.0

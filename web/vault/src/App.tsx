@@ -46,6 +46,7 @@ import {
   RefreshCwIcon,
   ShieldCheckIcon,
   SunIcon,
+  TagIcon,
   Trash2Icon,
   UserRoundIcon,
   XIcon
@@ -54,7 +55,13 @@ import { AuthLayout } from '@/components/auth-layout';
 import { EntryAttachments } from '@/components/entry-attachments';
 import { CopyButton } from '@/components/copy-button';
 import { EntryFields } from '@/components/entry-fields';
+import { EntryHistory } from '@/components/entry-history';
 import { EntryIcon } from '@/components/entry-icon';
+import { TagInput } from '@/components/tag-input';
+import { TagsDialog } from '@/components/tags-dialog';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { deleteVersion, requireEntry, restoreVersion } from './lib/history';
+import { hasTag, listTags, setEntryTags } from './lib/tags';
 import { PasswordGenerator } from '@/components/password-generator';
 import { openableUrl } from './lib/icons';
 import { deleteEntries, emptyRecycleBin } from './lib/entry-actions';
@@ -215,6 +222,7 @@ function entryDraft(entry: EntryView | null, template: TemplateInfo | null = nul
     customFields: entry ? entry.customFields : template ? templateStartFields(template) : [],
     expires: entry?.expires ?? '',
     templateId: entry ? undefined : template?.id,
+    tags: entry ? [...entry.tags] : [],
     attachments: entry?.entry.binaries ?? new Map()
   };
 }
@@ -245,6 +253,9 @@ export default function App() {
   const [showAllFields, setShowAllFields] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [expiredView, setExpiredView] = useState(false);
+  const [tagView, setTagView] = useState<string | null>(null);
+  const [tagging, setTagging] = useState(false);
+  const [sheetTab, setSheetTab] = useState<'details' | 'history'>('details');
   const [deleteRequest, setDeleteRequest] = useState<{ ids: string[]; permanent: boolean; fromSheet: boolean } | null>(null);
   const [confirmEmptyBin, setConfirmEmptyBin] = useState(false);
   const [totp, setTotp] = useState<{ code: string; secondsLeft: number } | null>(null);
@@ -313,9 +324,11 @@ export default function App() {
    * Shows only the entries directly in the selected folder; a search still covers all folders.
    * @param entry - One entry of the vault.
    */
-  const browseFilter = useMemo(() => (expiredView
-    ? (entry: EntryView) => entry.expired
-    : currentFolder ? (entry: EntryView) => entry.groupId === currentFolder.id : undefined), [currentFolder, expiredView]);
+  const browseFilter = useMemo(() => (tagView
+    ? (entry: EntryView) => hasTag(entry.tags, tagView)
+    : expiredView
+      ? (entry: EntryView) => entry.expired
+      : currentFolder ? (entry: EntryView) => entry.groupId === currentFolder.id : undefined), [currentFolder, expiredView, tagView]);
   /**
    * The entries the table works on: templates and recycled entries only while their own folder is selected.
    */
@@ -327,6 +340,10 @@ export default function App() {
    * Keeps expired regular entries.
    * @param entry - One entry of the vault.
    */ (entry) => entry.expired && !entry.hidden).length, [entries]);
+  const vaultTags = useMemo(/** Lists the tags of regular entries with their counts. */ () => listTags(entries.filter(/**
+   * Keeps regular entries.
+   * @param entry - One entry of the vault.
+   */ (entry) => !entry.hidden)), [entries]);
   const visibleCount = useMemo(/** Counts the regular entries. */ () => entries.filter(/**
    * Counts entries that are neither templates nor in the recycle bin.
    * @param entry - One entry of the vault.
@@ -372,6 +389,8 @@ export default function App() {
     setFolderToDelete(null);
     setMoving(false);
     setExpiredView(false);
+    setTagView(null);
+    setTagging(false);
     setDeleteRequest(null);
     setConfirmEmptyBin(false);
   }, []);
@@ -504,6 +523,7 @@ export default function App() {
     setSelectedEntry(null);
     setShowAllFields(false);
     setShowPassword(false);
+    setSheetTab('details');
     setEdits(entryDraft(null, template));
     setMessage(null);
   }
@@ -749,6 +769,70 @@ export default function App() {
   }
 
   /**
+   * Shows the entries with a tag across all folders.
+   * @param tag - The tag to filter by.
+   */
+  function showTag(tag: string) {
+    setTagView(tag);
+    setFolderId(null);
+    setExpiredView(false);
+    setSelection(new Set());
+  }
+
+  /**
+   * Restores or deletes a saved version of the open entry and saves the vault. The form shows the result afterwards;
+   * if saving fails, the form closes because the vault was reloaded from the last saved state.
+   * @param kind - Whether to restore or delete the version.
+   * @param index - The index of the version in the entry's history.
+   */
+  async function changeVersion(kind: 'restore' | 'delete', index: number): Promise<boolean> {
+    const id = selectedEntry?.id;
+    if (!id) return false;
+    const ok = await runVaultChange(/**
+     * Restores or deletes the version.
+     * @param vault - The vault to change.
+     */ (vault) => {
+      const entry = requireEntry(vault, id);
+      if (kind === 'restore') restoreVersion(vault, entry, index);
+      else deleteVersion(entry, index);
+    }, /** Shows the changed entry in the form and describes the result. */ () => {
+      const refreshed = db ? listEntries(db).find(/**
+       * Finds the changed entry.
+       * @param entry - One entry of the vault.
+       */ (entry) => entry.id === id) ?? null : null;
+      setSelectedEntry(refreshed);
+      setEdits(refreshed ? entryDraft(refreshed) : null);
+      if (kind === 'restore') setSheetTab('details');
+      return kind === 'restore' ? 'Version restored. The previous state is kept in the history.' : 'Version deleted from the history.';
+    });
+    if (!ok) {
+      setSelectedEntry(null);
+      setEdits(null);
+    }
+    return ok;
+  }
+
+  /**
+   * Adds and removes tags on the selected entries and saves the vault.
+   * @param add - Tags to add.
+   * @param remove - Tags to remove.
+   */
+  async function applySelectionTags(add: string[], remove: string[]) {
+    const ids = [...selection];
+    const ok = await runVaultChange(/**
+     * Changes the tags.
+     * @param vault - The vault to change.
+     */ (vault) => setEntryTags(vault, ids, add, remove), /**
+     * Closes the dialog and describes the result.
+     * @param changed - The number of entries that changed.
+     */ (changed) => {
+      setTagging(false);
+      return `Tags updated on ${changed} ${changed === 1 ? 'entry' : 'entries'}.`;
+    });
+    if (!ok) setTagging(false);
+  }
+
+  /**
    * Moves the selected entries into a folder and saves the vault.
    * @param targetId - The destination folder.
    */
@@ -797,6 +881,7 @@ export default function App() {
     onSelect: (id) => {
       setFolderId(id);
       setExpiredView(false);
+      setTagView(null);
       setSelection(new Set());
     },
     /**
@@ -861,6 +946,9 @@ export default function App() {
         <span className="font-medium tabular-nums" aria-live="polite">{selection.size} selected</span>
         <Button size="sm" disabled={busy !== null} onClick={/** Opens the destination folder picker. */ () => setMoving(true)}>
           <FolderInputIcon /> Move to…
+        </Button>
+        <Button size="sm" variant="outline" disabled={busy !== null} onClick={/** Opens the tags dialog for the selection. */ () => setTagging(true)}>
+          <TagIcon /> Tags…
         </Button>
         <Button size="sm" variant="destructive" disabled={busy !== null} onClick={/** Asks to delete the selected entries. */ () => requestDelete([...selection], false)}>
           <Trash2Icon /> Delete
@@ -1161,15 +1249,19 @@ export default function App() {
             vaultName={selectedFile.name}
             folders={folders}
             totalEntries={visibleCount}
-            selectedId={expiredView ? null : folderId}
-            allSelected={!expiredView && folderId === null}
+            selectedId={expiredView || tagView ? null : folderId}
+            allSelected={!expiredView && !tagView && folderId === null}
             expiredCount={expiredCount}
             expiredSelected={expiredView}
             onSelectExpired={/** Shows the expired entries of all folders. */ () => {
               setFolderId(null);
               setExpiredView(true);
+              setTagView(null);
               setSelection(new Set());
             }}
+            tags={vaultTags}
+            selectedTag={tagView}
+            onSelectTag={showTag}
             canWrite={canWrite}
             disabled={busy !== null}
             {...folderActions}
@@ -1466,9 +1558,11 @@ export default function App() {
                 <CardHeader className="gap-4 border-b py-5">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0 space-y-1">
-                      <CardTitle className="break-words">{expiredView ? 'Expired entries' : currentFolder ? currentFolder.name : 'All entries'}</CardTitle>
+                      <CardTitle className="break-words">{tagView ? `Tag: ${tagView}` : expiredView ? 'Expired entries' : currentFolder ? currentFolder.name : 'All entries'}</CardTitle>
                       <CardDescription className="break-words">
-                        {expiredView
+                        {tagView
+                          ? 'Entries with this tag in all folders'
+                          : expiredView
                           ? `${expiredCount} ${expiredCount === 1 ? 'entry has' : 'entries have'} passed their expiry date`
                           : currentFolder
                           ? `${currentFolder.path} · ${currentFolder.entryCount} ${currentFolder.entryCount === 1 ? 'entry' : 'entries'}`
@@ -1536,13 +1630,13 @@ export default function App() {
                   </div>
                 </CardHeader>
                 <DataTable
-                  key={`${selectedFile.id}:${expiredView ? 'expired' : folderId ?? 'all'}`}
-                  label={expiredView ? 'Expired entries' : currentFolder ? `Entries in ${currentFolder.name}` : 'Vault entries'}
+                  key={`${selectedFile.id}:${tagView ? `tag:${tagView}` : expiredView ? 'expired' : folderId ?? 'all'}`}
+                  label={tagView ? `Entries tagged ${tagView}` : expiredView ? 'Expired entries' : currentFolder ? `Entries in ${currentFolder.name}` : 'Vault entries'}
                   rows={tableEntries}
                   columns={ENTRY_COLUMNS}
                   searchLabel="Search all folders"
                   matches={entryMatches}
-                  emptyMessage={expiredView ? 'No entry has expired.' : currentFolder ? 'This folder has no entries.' : 'This vault has no entries yet.'}
+                  emptyMessage={tagView ? 'No entry has this tag.' : expiredView ? 'No entry has expired.' : currentFolder ? 'This folder has no entries.' : 'This vault has no entries yet.'}
                   browseFilter={browseFilter}
                   leadingHeader={canWrite ? renderSelectAll : undefined}
                   toolbar={canWrite ? renderSelectionBar : undefined}
@@ -1572,6 +1666,7 @@ export default function App() {
                             setMessage(null);
                             setShowAllFields(false);
                             setShowPassword(false);
+                            setSheetTab('details');
     setShowPassword(false);
                             setSelectedEntry(entry);
                             setEdits(entryDraft(entry));
@@ -1593,6 +1688,23 @@ export default function App() {
                             </span>
                           </span>
                         </Button>
+                        {entry.tags.length > 0 && (
+                          <span className="flex max-w-44 flex-wrap gap-1 ps-9 pb-1 sm:max-w-72">
+                            {entry.tags.slice(0, 3).map(/**
+                             * Renders one tag as a filter button.
+                             * @param tag - One tag of the entry.
+                             */ (tag) => (
+                              <Badge key={tag} asChild variant="outline" className="h-4 px-1.5 text-[0.65rem]">
+                                <button type="button" title={`Show entries tagged ${tag}`} onClick={/** Filters the list by this tag. */ () => showTag(tag)}>
+                                  {tag}
+                                </button>
+                              </Badge>
+                            ))}
+                            {entry.tags.length > 3 && (
+                              <span className="text-[0.65rem] text-muted-foreground" title={entry.tags.slice(3).join(', ')}>+{entry.tags.length - 3}</span>
+                            )}
+                          </span>
+                        )}
                       </TableCell>
                       <TableCell className="text-muted-foreground">
                         <span className="flex max-w-36 min-w-0 items-center gap-1 sm:max-w-56">
@@ -1703,12 +1815,27 @@ export default function App() {
                             : 'You can view and copy this entry, but you cannot edit it.'}
                       </SheetDescription>
                     </SheetHeader>
+                    <Tabs
+                      value={selectedEntry ? sheetTab : 'details'}
+                      onValueChange={/**
+                       * Switches between the entry details and its history.
+                       * @param value - The chosen tab.
+                       */ (value) => setSheetTab(value === 'history' ? 'history' : 'details')}
+                      className="gap-0"
+                    >
+                    {message && (
+                      <Alert variant={message.kind === 'error' ? 'destructive' : 'default'} className="mx-6 mt-4 w-auto">
+                        <AlertDescription>{message.text}</AlertDescription>
+                      </Alert>
+                    )}
+                    {selectedEntry && (
+                      <TabsList className="mx-6 mt-4">
+                        <TabsTrigger value="details">Details</TabsTrigger>
+                        <TabsTrigger value="history">History ({selectedEntry.entry.history.length})</TabsTrigger>
+                      </TabsList>
+                    )}
+                    <TabsContent value="details">
                     <form className="grid gap-5 p-6" onSubmit={handleSave}>
-                      {message && (
-                        <Alert variant={message.kind === 'error' ? 'destructive' : 'default'}>
-                          <AlertDescription>{message.text}</AlertDescription>
-                        </Alert>
-                      )}
                       <FieldGroup className="gap-4">
                         <Field>
                           <FieldLabel htmlFor="entry-title">Title</FieldLabel>
@@ -1814,6 +1941,22 @@ export default function App() {
                             />
                           </Field>
                         )}
+                        <Field>
+                          <FieldLabel htmlFor="entry-tags">Tags</FieldLabel>
+                          <TagInput
+                            id="entry-tags"
+                            tags={edits.tags ?? []}
+                            suggestions={vaultTags.map(/**
+                             * Selects the tag name.
+                             * @param item - One tag of the vault.
+                             */ (item) => item.tag)}
+                            canWrite={canEditEntry && busy !== 'save'}
+                            onChange={/**
+                             * Updates the tags in the draft.
+                             * @param tags - The new list of tags.
+                             */ (tags) => setEdits({ ...edits, tags })}
+                          />
+                        </Field>
                         {showStandard('otp', edits.otp) && (
                           <Field>
                             <FieldLabel htmlFor="entry-otp">TOTP secret</FieldLabel>
@@ -1952,6 +2095,32 @@ export default function App() {
                         </Button>
                       </div>
                     </form>
+                    </TabsContent>
+                    {selectedEntry && db && (
+                      <TabsContent value="history" className="p-6">
+                        <EntryHistory
+                          key={`${selectedEntry.id}:${selectedEntry.entry.history.length}`}
+                          entry={selectedEntry.entry}
+                          maxVersions={db.meta.historyMaxItems}
+                          canWrite={canEditEntry}
+                          busy={busy === 'save'}
+                          onRestore={/**
+                           * Restores a version.
+                           * @param index - The version's index in the history.
+                           */ (index) => changeVersion('restore', index)}
+                          onDelete={/**
+                           * Deletes a version.
+                           * @param index - The version's index in the history.
+                           */ (index) => changeVersion('delete', index)}
+                          onCopy={/**
+                           * Copies a value of an old version.
+                           * @param value - The value to copy.
+                           * @param label - The field name for the status message.
+                           */ (value, label) => void copyValue(value, label)}
+                        />
+                      </TabsContent>
+                    )}
+                    </Tabs>
                   </SheetContent>
                 )}
               </Sheet>
@@ -1986,6 +2155,25 @@ export default function App() {
                  * @param targetId - The destination folder.
                  */ (targetId) => void moveSelection(targetId)}
                 onClose={/** Closes the move dialog. */ () => setMoving(false)}
+              />
+              <TagsDialog
+                open={tagging}
+                count={selection.size}
+                vaultTags={vaultTags.map(/**
+                 * Selects the tag name.
+                 * @param item - One tag of the vault.
+                 */ (item) => item.tag)}
+                selectionTags={listTags(entries.filter(/**
+                 * Keeps the selected entries.
+                 * @param entry - One entry of the vault.
+                 */ (entry) => selection.has(entry.id)))}
+                busy={busy === 'save'}
+                onApply={/**
+                 * Applies the tag changes to the selection.
+                 * @param add - Tags to add.
+                 * @param remove - Tags to remove.
+                 */ (add, remove) => void applySelectionTags(add, remove)}
+                onClose={/** Closes the tags dialog. */ () => setTagging(false)}
               />
               <AlertDialog open={deleteRequest !== null} onOpenChange={/**
                * Closes the confirmation unless a save is running.
