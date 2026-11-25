@@ -1,6 +1,6 @@
 # Plan: Eintragsverlauf und Tags im Web-Vault
 
-- **Status:** umgesetzt (2026-11-25), Abnahme auf der NAS ausstehend
+- **Status:** abgeschlossen (2026-11-25), ausgeliefert in 0.12.0
 - **Erstellt:** 2026-11-25
 - **Zielversion:** 0.12.0 (neue Funktionen, Changelog `## [0.12.0] - <Datum>`)
 - **Herkunft:** Vorschläge 9 (Verlauf) und 11 (Tags) aus `docs/plans/open/2026-11-25-eintragsliste-spaeter.md`
@@ -160,6 +160,10 @@ Komponenten sind ausschließlich shadcn/ui: `Tabs` und bei Bedarf `Popover` komm
     - Bestand nach Sperren und Entsperren
     - Nur-Lese-Ansicht
   - Alle früheren Browser-Tests laufen weiter.
+
+## Abnahme (2026-11-25, Sascha, NAS mit 0.12.0)
+
+- Update eingespielt, Test erfolgreich.
 
 ## Ursprünglich offene Fragen
 
