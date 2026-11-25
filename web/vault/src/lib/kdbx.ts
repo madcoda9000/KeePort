@@ -1,6 +1,19 @@
 import * as kdbxweb from 'kdbxweb';
 import argon2 from 'argon2-browser/dist/argon2-bundled.min.js';
 import { encodeAttachments, type AttachmentDraft } from './attachments.ts';
+import {
+  findTemplate,
+  isTemplateEntry,
+  linkTemplate,
+  listTemplates,
+  readCustomFields,
+  readExpiry,
+  writeCustomFields,
+  withTemplateProtection,
+  writeExpiry,
+  type CustomField,
+  type TemplateInfo
+} from './fields.ts';
 import { requireGroup, rootGroup } from './groups.ts';
 import { storedOtpValue } from './totp.ts';
 
@@ -44,6 +57,12 @@ export interface EntryEdits {
   url: string;
   notes: string;
   otp: string;
+  /** The complete list of custom fields; omit to leave them unchanged. */
+  customFields?: CustomField[];
+  /** The expiry date as YYYY-MM-DD, an empty string for none; omit to leave it unchanged. */
+  expires?: string;
+  /** For a new entry: the base64 UUID of the template it is created from. */
+  templateId?: string;
 }
 
 export interface EntryView {
@@ -60,6 +79,14 @@ export interface EntryView {
   groupId: string;
   /** Whether the entry is a template or in the recycle bin; such entries are left out of "All entries" and the search. */
   hidden: boolean;
+  /** Custom fields without standard and internal fields. */
+  customFields: CustomField[];
+  /** The expiry date as YYYY-MM-DD, or an empty string. */
+  expires: string;
+  /** Whether the entry is itself a template definition. */
+  isTemplate: boolean;
+  /** The template the entry was created from, or null. */
+  template: TemplateInfo | null;
   entry: kdbxweb.KdbxEntry;
 }
 
@@ -93,11 +120,20 @@ function isSpecialGroup(db: kdbxweb.Kdbx, group: kdbxweb.KdbxGroup): boolean {
  * @param path - The path of the parent group, used to build the full entry group path.
  * @param out - The array to which the entry views are appended.
  * @param inSpecial - Whether a parent group is the recycle bin or the templates group.
+ * @param templates - The templates of the database, used to resolve each entry's template.
  */
-function walkGroup(db: kdbxweb.Kdbx, group: kdbxweb.KdbxGroup, path: string, out: EntryView[], inSpecial: boolean) {
+function walkGroup(
+  db: kdbxweb.Kdbx,
+  group: kdbxweb.KdbxGroup,
+  path: string,
+  out: EntryView[],
+  inSpecial: boolean,
+  templates: readonly TemplateInfo[]
+) {
   const groupPath = path ? `${path} / ${group.name ?? 'Group'}` : group.name ?? 'Root';
   const hidden = inSpecial || isSpecialGroup(db, group);
   for (const entry of group.entries) {
+    const template = findTemplate(templates, entry);
     out.push({
       id: entry.uuid.id,
       title: fieldText(entry.fields.get('Title')) || 'Untitled',
@@ -110,11 +146,15 @@ function walkGroup(db: kdbxweb.Kdbx, group: kdbxweb.KdbxGroup, path: string, out
       groupPath,
       groupId: group.uuid.id,
       hidden,
+      customFields: withTemplateProtection(readCustomFields(entry), template),
+      expires: readExpiry(entry),
+      isTemplate: isTemplateEntry(entry),
+      template,
       entry
     });
   }
   for (const child of group.groups) {
-    walkGroup(db, child, groupPath, out, hidden);
+    walkGroup(db, child, groupPath, out, hidden, templates);
   }
 }
 
@@ -124,8 +164,9 @@ function walkGroup(db: kdbxweb.Kdbx, group: kdbxweb.KdbxGroup, path: string, out
  */
 export function listEntries(db: kdbxweb.Kdbx): EntryView[] {
   const out: EntryView[] = [];
+  const templates = listTemplates(db);
   for (const group of db.groups) {
-    walkGroup(db, group, '', out, false);
+    walkGroup(db, group, '', out, false, templates);
   }
   return out.sort(/**
    * Compares entry titles without case or accent distinctions.
@@ -142,7 +183,14 @@ export function listEntries(db: kdbxweb.Kdbx): EntryView[] {
 export function entryMatches(entry: EntryView, query: string): boolean {
   const q = query.trim().toLowerCase();
   if (!q) return true;
-  return [entry.title, entry.username, entry.url, entry.notes, entry.groupPath, ...entry.tags]
+  const fields = entry.customFields.filter(/**
+   * Keeps unprotected custom fields; protected ones are treated like passwords.
+   * @param field - One custom field.
+   */ (field) => !field.protected).map(/**
+   * Selects the field value.
+   * @param field - One unprotected custom field.
+   */ (field) => field.value);
+  return [entry.title, entry.username, entry.url, entry.notes, entry.groupPath, entry.template?.title ?? '', ...fields, ...entry.tags]
     .join('\n')
     .toLowerCase()
     .includes(q);
@@ -195,7 +243,18 @@ export function applyEntryEdits(entry: kdbxweb.KdbxEntry, edits: EntryEdits) {
   entry.fields.set('URL', edits.url);
   entry.fields.set('Notes', kdbxweb.ProtectedValue.fromString(edits.notes));
   setOtpField(entry, edits);
+  applyExtraEdits(entry, edits);
   entry.times.update();
+}
+
+/**
+ * Writes the custom fields and the expiry date when the draft provides them.
+ * @param entry - The entry to change.
+ * @param edits - The draft values.
+ */
+function applyExtraEdits(entry: kdbxweb.KdbxEntry, edits: EntryEdits) {
+  if (edits.customFields) writeCustomFields(entry, edits.customFields);
+  if (edits.expires !== undefined) writeExpiry(entry, edits.expires);
 }
 
 /**
@@ -221,13 +280,22 @@ function setOtpField(entry: kdbxweb.KdbxEntry, edits: EntryEdits) {
  */
 export function createEntry(db: kdbxweb.Kdbx, edits: EntryEdits, groupId?: string): kdbxweb.KdbxEntry {
   const group = groupId ? requireGroup(db, groupId) : rootGroup(db);
+  const template = edits.templateId
+    ? listTemplates(db).find(/**
+       * Finds the chosen template.
+       * @param item - One template of the database.
+       */ (item) => item.id === edits.templateId)
+    : undefined;
+  if (edits.templateId && !template) throw new Error('The template no longer exists. Reload the vault and try again.');
   const entry = db.createEntry(group);
+  if (template) linkTemplate(entry, template);
   entry.fields.set('Title', edits.title);
   entry.fields.set('UserName', edits.username);
   entry.fields.set('Password', kdbxweb.ProtectedValue.fromString(edits.password));
   entry.fields.set('URL', edits.url);
   entry.fields.set('Notes', kdbxweb.ProtectedValue.fromString(edits.notes));
   setOtpField(entry, edits);
+  applyExtraEdits(entry, edits);
   entry.times.update();
   return entry;
 }

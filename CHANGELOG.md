@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] - 2026-11-25
+
+### Added
+
+- **Additional fields** in the web vault. Entries show all their custom fields, e.g. the card number, CVV and PIN of a KeePass2Android credit card or the "Additional attributes" of KeePassXC. Protected fields are masked with show and copy buttons. Users with read-write access edit them, add new fields (optionally protected) and remove fields. The search covers unprotected custom fields.
+- **KeePass2Android templates.** Entries created from a template (credit card, ID card, Wi-Fi, membership, …) show the template's fields in the template's order and hide empty standard fields the template does not use ("Show all fields" brings them back). A badge with the template name appears in the table. Fields a template defines as protected stay protected even while they are empty.
+- **New entries from templates:** the arrow next to "Add entry" lists the vault's templates. The new entry is linked to its template and gets its icon and fields, exactly as KeePass2Android creates it.
+- **Expiry date** for every entry ("Expires"), stored as the KeePass expiry date that KeePass2Android, KeePassium and KeePassXC show.
+- Template entries in the templates folder open read-only, with a hint to edit them in KeePass2Android.
+
+### Fixed
+
+- After saving in the web vault, locking and unlocking the same vault again opened it read-only until the page was reloaded, because the save response reported the permission as `none`. The API now returns the caller's real permission, and the web vault keeps the permission from the file list.
+
 ## [0.8.0] - 2026-11-25
 
 ### Added
@@ -204,6 +218,7 @@ First beta release.
 - Login and setup share a configurable per-IP rate limit; session checks and sign-out are exempt. WebDAV has a separate configurable limit applied before authentication.
 - Admin accounts can only sign in to the Admin console; Vault and WebDAV require a separate user account. Admin sessions are scoped to the Admin API, so existing admins need to sign in again after updating.
 
+[0.9.0]: https://github.com/madcoda9000/KeePort/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/madcoda9000/KeePort/compare/v0.7.2...v0.8.0
 [0.7.2]: https://github.com/madcoda9000/KeePort/compare/v0.7.1...v0.7.2
 [0.7.1]: https://github.com/madcoda9000/KeePort/compare/v0.7.0...v0.7.1

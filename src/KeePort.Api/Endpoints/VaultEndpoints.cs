@@ -110,7 +110,8 @@ public static class VaultEndpoints
 
             return result.Status switch
             {
-                VaultWriteStatus.Success => SuccessResult(context, result.File!),
+                // The stored record does not know the caller's access level; return the real one so clients keep write access.
+                VaultWriteStatus.Success => SuccessResult(context, result.File! with { Permission = vault.GetEffectivePermission(user, result.File!) }),
                 VaultWriteStatus.PreconditionRequired => Results.Json(
                     new ErrorResponse("precondition_required", "Expected ETag is required.", result.CurrentETag),
                     statusCode: StatusCodes.Status428PreconditionRequired),

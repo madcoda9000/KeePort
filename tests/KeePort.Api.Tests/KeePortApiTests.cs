@@ -80,6 +80,8 @@ public class KeePortApiTests : IDisposable
         await SetPermissionsAsync(_admin, adminCsrf, vault.Id, alice.Id, "read-write");
         var writeContent = await SendAsync(_user, HttpMethod.Put, $"/api/vault/files/{vault.Id}/content", bytes: KdbxBytes("v2"), csrf: aliceLogin.csrf, etag: readETag);
         Assert.Equal(HttpStatusCode.OK, writeContent.StatusCode);
+        // The saved metadata must carry the caller's real permission; the web vault keeps it for the next unlock.
+        Assert.Equal("read-write", (await writeContent.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("permission").GetString());
         var writeETag = writeContent.Headers.GetValues("ETag").Single();
 
         var webDavWrite = await SendAsync(_user, HttpMethod.Put, "/webdav/shared.kdbx", bytes: KdbxBytes("v3"), basic: webDav.BasicAuth, etag: writeETag);

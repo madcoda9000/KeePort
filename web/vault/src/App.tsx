@@ -23,10 +23,12 @@ import {
   renameFolder
 } from './lib/groups';
 import type { FolderNode } from './lib/groups';
+import { listTemplates, templateStartFields, type TemplateInfo } from './lib/fields';
 import type { AttachmentDraft } from './lib/attachments';
 import { parseOtpSecret, totpCode, totpUri } from './lib/totp';
 import { getTheme, toggleTheme } from './theme';
 import {
+  ChevronDownIcon,
   CopyIcon,
   DatabaseIcon,
   FolderInputIcon,
@@ -44,6 +46,7 @@ import {
 } from 'lucide-react';
 import { AuthLayout } from '@/components/auth-layout';
 import { EntryAttachments } from '@/components/entry-attachments';
+import { EntryFields } from '@/components/entry-fields';
 import {
   DeleteFolderDialog,
   FolderNameDialog,
@@ -58,6 +61,14 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger
+} from '@/components/ui/dropdown-menu';
 import {
   Dialog,
   DialogContent,
@@ -96,6 +107,15 @@ type Message = { kind: 'notice' | 'error'; text: string } | null;
 type EntryDraft = EntryEdits & { attachments: AttachmentDraft };
 
 const DEFAULT_AUTO_LOCK_MINUTES = 5;
+
+/** The standard inputs a template may hide, with their KDBX field name and draft key. */
+const STANDARD_INPUTS = [
+  { key: 'UserName', draft: 'username' },
+  { key: 'Password', draft: 'password' },
+  { key: 'URL', draft: 'url' },
+  { key: 'Notes', draft: 'notes' },
+  { key: 'otp', draft: 'otp' }
+] as const;
 
 const ENTRY_COLUMNS: readonly TableColumn<EntryView>[] = [
   /**
@@ -153,8 +173,9 @@ function errorText(error: unknown, fallback: string) {
 /**
  * Creates a local draft without changing the entry or its stored attachments.
  * @param entry - The unlocked entry to edit, or null for a new entry.
+ * @param template - For a new entry: the template it is created from.
  */
-function entryDraft(entry: EntryView | null): EntryDraft {
+function entryDraft(entry: EntryView | null, template: TemplateInfo | null = null): EntryDraft {
   return {
     title: entry?.title ?? '',
     username: entry?.username ?? '',
@@ -162,6 +183,9 @@ function entryDraft(entry: EntryView | null): EntryDraft {
     url: entry?.url ?? '',
     notes: entry?.notes ?? '',
     otp: entry?.otp ?? '',
+    customFields: entry ? entry.customFields : template ? templateStartFields(template) : [],
+    expires: entry?.expires ?? '',
+    templateId: entry ? undefined : template?.id,
     attachments: entry?.entry.binaries ?? new Map()
   };
 }
@@ -187,6 +211,7 @@ export default function App() {
   const [folderRequest, setFolderRequest] = useState<FolderNameRequest | null>(null);
   const [folderToDelete, setFolderToDelete] = useState<FolderNode | null>(null);
   const [moving, setMoving] = useState(false);
+  const [showAllFields, setShowAllFields] = useState(false);
   const [totp, setTotp] = useState<{ code: string; secondsLeft: number } | null>(null);
 
   /** Starts periodic TOTP updates while the current draft has a usable secret. */
@@ -229,6 +254,25 @@ export default function App() {
   const canWrite = permission === 'read-write';
   const unlocked = Boolean(db && selectedFile);
   const currentFolder = folderId ? findFolder(folders, folderId) : null;
+  // Templates are entries, so the list follows every change of the entries.
+  const templates = useMemo(/** Lists the templates of the open vault. */ () => (db && entries.length ? listTemplates(db) : []), [db, entries]);
+  const draftTemplate = selectedEntry ? selectedEntry.template : templates.find(/**
+   * Finds the template of a new entry draft.
+   * @param template - One template of the vault.
+   */ (template) => template.id === edits?.templateId) ?? null;
+  const editingTemplate = selectedEntry?.isTemplate ?? false;
+  const canEditEntry = canWrite && !editingTemplate;
+  /**
+   * Decides whether a standard field is shown: always without a template, otherwise only if the template lists it,
+   * it has a value, or the user asked for all fields — like KeePass2Android.
+   * @param name - The KDBX name of the standard field.
+   * @param value - The field's current draft value.
+   */
+  const showStandard = (name: string, value: string) => !draftTemplate || showAllFields || Boolean(value)
+    || draftTemplate.fields.some(/**
+     * Checks whether the template lists the field.
+     * @param field - One template field.
+     */ (field) => field.kind === 'standard' && field.name === name);
   /**
    * Shows only the entries directly in the selected folder; a search still covers all folders.
    * @param entry - One entry of the vault.
@@ -403,10 +447,14 @@ export default function App() {
     }
   }
 
-  /** Opens an empty draft for creating an entry in the unlocked vault. */
-  function startNewEntry() {
+  /**
+   * Opens a draft for creating an entry in the unlocked vault, optionally from a template.
+   * @param template - The template to start from, or null for an empty entry.
+   */
+  function startNewEntry(template: TemplateInfo | null = null) {
     setSelectedEntry(null);
-    setEdits(entryDraft(null));
+    setShowAllFields(false);
+    setEdits(entryDraft(null, template));
     setMessage(null);
   }
 
@@ -445,9 +493,9 @@ export default function App() {
        * @param current - The vault metadata list currently shown to the user.
        */
       setFiles((current) => current.map(/**
-       * Merges the new metadata into only the saved vault's row.
+       * Merges the new metadata into only the saved vault's row, keeping the permission from the file list.
        * @param file - One listed vault whose metadata may need to be refreshed.
-       */ (file) => (file.id === updated.id ? { ...file, ...updated } : file)));
+       */ (file) => (file.id === updated.id ? { ...file, ...updated, permission: file.permission } : file)));
       setEtag(updated.etag);
       refreshView(db);
       setSelectedEntry(refreshed);
@@ -501,9 +549,9 @@ export default function App() {
        * @param current - The vault metadata list currently shown to the user.
        */
       setFiles((current) => current.map(/**
-       * Merges the new metadata into only the saved vault's row.
+       * Merges the new metadata into only the saved vault's row, keeping the permission from the file list.
        * @param file - One listed vault whose metadata may need to be refreshed.
-       */ (file) => (file.id === updated.id ? { ...file, ...updated } : file)));
+       */ (file) => (file.id === updated.id ? { ...file, ...updated, permission: file.permission } : file)));
       setEtag(updated.etag);
       refreshView(db);
       setMessage({ kind: 'notice', text: success(result) });
@@ -1266,9 +1314,42 @@ export default function App() {
                         <LockKeyholeIcon /> Lock vault
                       </Button>
                       {canWrite && (
-                        <Button size="sm" disabled={busy === 'save' || busy === 'reload'} onClick={startNewEntry}>
-                          <PlusIcon /> Add entry
-                        </Button>
+                        <div className="flex">
+                          <Button
+                            size="sm"
+                            className={templates.length ? 'rounded-e-none' : undefined}
+                            disabled={busy === 'save' || busy === 'reload'}
+                            onClick={/** Opens an empty entry draft. */ () => startNewEntry()}
+                          >
+                            <PlusIcon /> Add entry
+                          </Button>
+                          {templates.length > 0 && (
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  size="sm"
+                                  className="rounded-s-none border-s border-s-primary-foreground/25 px-2"
+                                  aria-label="Add entry from a template"
+                                  disabled={busy === 'save' || busy === 'reload'}
+                                >
+                                  <ChevronDownIcon />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" className="w-56">
+                                <DropdownMenuLabel>New entry from template</DropdownMenuLabel>
+                                <DropdownMenuSeparator />
+                                {templates.map(/**
+                                 * Renders one template as a menu item.
+                                 * @param template - A template of the vault.
+                                 */ (template) => (
+                                  <DropdownMenuItem key={template.id} onSelect={/** Opens a draft from this template. */ () => startNewEntry(template)}>
+                                    {template.title}
+                                  </DropdownMenuItem>
+                                ))}
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          )}
+                        </div>
                       )}
                     </div>
                   </div>
@@ -1308,6 +1389,7 @@ export default function App() {
                           className="h-auto max-w-44 items-start gap-2 px-3 py-1.5 text-start sm:max-w-72"
                           onClick={/** Clears the workspace message and opens a draft for the selected entry. */ () => {
                             setMessage(null);
+                            setShowAllFields(false);
                             setSelectedEntry(entry);
                             setEdits(entryDraft(entry));
                           }}
@@ -1315,8 +1397,13 @@ export default function App() {
                           <KeyRoundIcon className="mt-0.5 shrink-0 text-muted-foreground" />
                           <span className="min-w-0">
                             <span className="block truncate font-medium">{entry.title}</span>
-                            <span className="block truncate text-xs font-normal text-muted-foreground">
-                              {entry.groupPath}
+                            <span className="flex min-w-0 items-center gap-1.5 text-xs font-normal text-muted-foreground">
+                              {(entry.template || entry.isTemplate) && (
+                                <Badge variant="outline" className="h-4 shrink-0 px-1.5 text-[0.65rem]">
+                                  {entry.isTemplate ? 'Template' : entry.template?.title}
+                                </Badge>
+                              )}
+                              <span className="truncate">{entry.groupPath}</span>
                             </span>
                           </span>
                         </Button>
@@ -1351,12 +1438,14 @@ export default function App() {
                   <SheetContent className="w-full gap-0 overflow-y-auto sm:max-w-xl">
                     <SheetHeader className="border-b p-6 pe-12">
                       <SheetTitle className="break-words">
-                        {selectedEntry ? selectedEntry.title : 'New entry'}
+                        {selectedEntry ? selectedEntry.title : draftTemplate ? `New ${draftTemplate.title}` : 'New entry'}
                       </SheetTitle>
                       <SheetDescription>
-                        {canWrite
-                          ? 'Changes are encrypted in your browser before saving.'
-                          : 'You can view and copy this entry, but you cannot edit it.'}
+                        {editingTemplate
+                          ? 'This is a template for new entries. Edit templates in KeePass2Android.'
+                          : canWrite
+                            ? 'Changes are encrypted in your browser before saving.'
+                            : 'You can view and copy this entry, but you cannot edit it.'}
                       </SheetDescription>
                     </SheetHeader>
                     <form className="grid gap-5 p-6" onSubmit={handleSave}>
@@ -1371,80 +1460,130 @@ export default function App() {
                           <Input
                             id="entry-title"
                             value={edits.title}
-                            readOnly={!canWrite || busy === 'save'}
+                            readOnly={!canEditEntry || busy === 'save'}
                             onChange={/**
                              * Updates the draft entry title.
                              * @param event - The entry title input change event.
                              */ (event) => setEdits({ ...edits, title: event.target.value })}
                           />
                         </Field>
-                        <Field>
-                          <FieldLabel htmlFor="entry-username">Username</FieldLabel>
-                          <Input
-                            id="entry-username"
-                            value={edits.username}
-                            readOnly={!canWrite || busy === 'save'}
-                            onChange={/**
-                             * Updates the draft entry username.
-                             * @param event - The entry username input change event.
-                             */ (event) => setEdits({ ...edits, username: event.target.value })}
-                          />
-                        </Field>
-                        <Field>
-                          <FieldLabel htmlFor="entry-password">Password</FieldLabel>
-                          <Input
-                            id="entry-password"
-                            type="password"
-                            autoComplete="off"
-                            value={edits.password}
-                            readOnly={!canWrite || busy === 'save'}
-                            onChange={/**
-                             * Updates the draft entry password.
-                             * @param event - The entry password input change event.
-                             */ (event) => setEdits({ ...edits, password: event.target.value })}
-                          />
-                        </Field>
-                        <Field>
-                          <FieldLabel htmlFor="entry-url">Website</FieldLabel>
-                          <Input
-                            id="entry-url"
-                            value={edits.url}
-                            readOnly={!canWrite || busy === 'save'}
-                            onChange={/**
-                             * Updates the draft website URL.
-                             * @param event - The website URL input change event.
-                             */ (event) => setEdits({ ...edits, url: event.target.value })}
-                          />
-                        </Field>
-                        <Field>
-                          <FieldLabel htmlFor="entry-notes">Notes</FieldLabel>
-                          <Textarea
-                            id="entry-notes"
-                            value={edits.notes}
-                            readOnly={!canWrite || busy === 'save'}
-                            onChange={/**
-                             * Updates the draft notes.
-                             * @param event - The entry notes input change event.
-                             */ (event) => setEdits({ ...edits, notes: event.target.value })}
-                          />
-                        </Field>
-                        <Field>
-                          <FieldLabel htmlFor="entry-otp">TOTP secret</FieldLabel>
-                          <Input
-                            id="entry-otp"
-                            type="password"
-                            autoComplete="off"
-                            value={edits.otp}
-                            readOnly={!canWrite || busy === 'save'}
-                            onChange={/**
-                             * Updates the draft TOTP secret or provisioning URI.
-                             * @param event - The TOTP field change event containing a secret or provisioning URI.
-                             */ (event) => setEdits({ ...edits, otp: event.target.value })}
-                            aria-describedby="otp-help"
-                          />
-                          <FieldDescription id="otp-help">Use an otpauth URI or a Base32 secret. A Base32 secret is saved as an otpauth URI so KeePass apps such as KeePass2Android and KeePassXC show it as TOTP.</FieldDescription>
-                        </Field>
+                        {showStandard('UserName', edits.username) && (
+                          <Field>
+                            <FieldLabel htmlFor="entry-username">Username</FieldLabel>
+                            <Input
+                              id="entry-username"
+                              value={edits.username}
+                              readOnly={!canEditEntry || busy === 'save'}
+                              onChange={/**
+                               * Updates the draft entry username.
+                               * @param event - The entry username input change event.
+                               */ (event) => setEdits({ ...edits, username: event.target.value })}
+                            />
+                          </Field>
+                        )}
+                        {showStandard('Password', edits.password) && (
+                          <Field>
+                            <FieldLabel htmlFor="entry-password">Password</FieldLabel>
+                            <Input
+                              id="entry-password"
+                              type="password"
+                              autoComplete="off"
+                              value={edits.password}
+                              readOnly={!canEditEntry || busy === 'save'}
+                              onChange={/**
+                               * Updates the draft entry password.
+                               * @param event - The entry password input change event.
+                               */ (event) => setEdits({ ...edits, password: event.target.value })}
+                            />
+                          </Field>
+                        )}
+                        {showStandard('URL', edits.url) && (
+                          <Field>
+                            <FieldLabel htmlFor="entry-url">Website</FieldLabel>
+                            <Input
+                              id="entry-url"
+                              value={edits.url}
+                              readOnly={!canEditEntry || busy === 'save'}
+                              onChange={/**
+                               * Updates the draft website URL.
+                               * @param event - The website URL input change event.
+                               */ (event) => setEdits({ ...edits, url: event.target.value })}
+                            />
+                          </Field>
+                        )}
+                        {showStandard('Notes', edits.notes) && (
+                          <Field>
+                            <FieldLabel htmlFor="entry-notes">Notes</FieldLabel>
+                            <Textarea
+                              id="entry-notes"
+                              value={edits.notes}
+                              readOnly={!canEditEntry || busy === 'save'}
+                              onChange={/**
+                               * Updates the draft notes.
+                               * @param event - The entry notes input change event.
+                               */ (event) => setEdits({ ...edits, notes: event.target.value })}
+                            />
+                          </Field>
+                        )}
+                        {showStandard('otp', edits.otp) && (
+                          <Field>
+                            <FieldLabel htmlFor="entry-otp">TOTP secret</FieldLabel>
+                            <Input
+                              id="entry-otp"
+                              type="password"
+                              autoComplete="off"
+                              value={edits.otp}
+                              readOnly={!canEditEntry || busy === 'save'}
+                              onChange={/**
+                               * Updates the draft TOTP secret or provisioning URI.
+                               * @param event - The TOTP field change event containing a secret or provisioning URI.
+                               */ (event) => setEdits({ ...edits, otp: event.target.value })}
+                              aria-describedby="otp-help"
+                            />
+                            <FieldDescription id="otp-help">Use an otpauth URI or a Base32 secret. A Base32 secret is saved as an otpauth URI so KeePass apps such as KeePass2Android and KeePassXC show it as TOTP.</FieldDescription>
+                          </Field>
+                        )}
                       </FieldGroup>
+                      {draftTemplate && !showAllFields && STANDARD_INPUTS.some(/**
+                       * Checks whether a standard field is hidden by the template.
+                       * @param item - One standard input.
+                       */ (item) => !showStandard(item.key, edits[item.draft])) && (
+                        <Button type="button" variant="link" size="sm" className="justify-self-start px-0" onClick={/** Shows the standard fields the template hides. */ () => setShowAllFields(true)}>
+                          Show all fields
+                        </Button>
+                      )}
+                      <EntryFields
+                        key={selectedEntry?.id ?? `new:${edits.templateId ?? ''}`}
+                        fields={edits.customFields ?? []}
+                        template={draftTemplate}
+                        canWrite={canEditEntry}
+                        disabled={busy === 'save'}
+                        onChange={/**
+                         * Updates the custom fields in the draft.
+                         * @param customFields - The complete new list of custom fields.
+                         */ (customFields) => setEdits({ ...edits, customFields })}
+                        onCopy={/**
+                         * Copies a custom field value.
+                         * @param value - The value to copy.
+                         * @param label - The field label for the status message.
+                         */ (value, label) => void copyValue(value, label)}
+                      />
+                      <Field>
+                        <FieldLabel htmlFor="entry-expires">Expires</FieldLabel>
+                        <Input
+                          id="entry-expires"
+                          type="date"
+                          className="max-w-48"
+                          value={edits.expires ?? ''}
+                          readOnly={!canEditEntry || busy === 'save'}
+                          onChange={/**
+                           * Updates the draft expiry date; an empty value means the entry does not expire.
+                           * @param event - The date input change event.
+                           */ (event) => setEdits({ ...edits, expires: event.target.value })}
+                          aria-describedby="expires-help"
+                        />
+                        <FieldDescription id="expires-help">Optional. KeePass apps show the entry as expired after this date.</FieldDescription>
+                      </Field>
                       {totp && (
                         <div className="flex flex-wrap items-center gap-3 rounded-lg border bg-muted/40 p-3">
                           <span className="font-mono text-lg tracking-widest">{totp.code}</span>
@@ -1473,7 +1612,7 @@ export default function App() {
                       )}
                       <EntryAttachments
                         draft={edits.attachments}
-                        canWrite={canWrite}
+                        canWrite={canEditEntry}
                         disabled={busy === 'save'}
                         onChange={/**
                          * Updates only the attachments in the open draft.
@@ -1489,7 +1628,7 @@ export default function App() {
                       />
                       <Separator />
                       <div className="flex flex-wrap gap-2">
-                        {canWrite && (
+                        {canEditEntry && (
                           <Button type="submit" disabled={busy === 'save'}>
                             {busy === 'save' ? 'Saving…' : selectedEntry ? 'Save entry' : 'Create entry'}
                           </Button>
