@@ -165,6 +165,24 @@ export async function loadVault(bytes: ArrayBuffer, password: string, keyFileByt
 }
 
 /**
+ * Opens newer KDBX bytes of an already unlocked vault with the credentials still held in the browser, so the user does
+ * not have to enter the master password again. Fails with a clear message if the file now uses other credentials.
+ * @param bytes - The encrypted KDBX bytes downloaded from the server.
+ * @param credentials - The credentials of the open vault (derived hashes, not the plain password).
+ */
+export async function reopenVault(bytes: ArrayBuffer, credentials: kdbxweb.KdbxCredentials): Promise<kdbxweb.Kdbx> {
+  await ensureKdbxCrypto();
+  try {
+    return await kdbxweb.Kdbx.load(bytes, credentials);
+  } catch (error) {
+    if (error instanceof kdbxweb.KdbxError && error.code === kdbxweb.Consts.ErrorCodes.InvalidKey) {
+      throw new Error('The vault on the server now uses a different master password or key file. Lock the vault and unlock it again.', { cause: error });
+    }
+    throw error;
+  }
+}
+
+/**
  * Applies edited fields, including the TOTP setting, and updates the modification time.
  * @param entry - The unlocked KDBX entry to modify in place.
  * @param edits - The draft field values to apply to the encrypted entry.

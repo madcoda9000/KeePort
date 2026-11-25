@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] - 2026-11-25
+
+### Added
+
+- **Reload** button in the web vault next to "Lock vault". It loads the latest version of the open vault from the server, e.g. after KeePass2Android or KeePassium synced a change, without entering the master password again. The selected folder stays selected. If nothing changed, KeePort says the vault is already up to date. If the file now uses a different master password or key file, the open vault stays as it is and KeePort asks you to lock and unlock it.
+
 ## [0.7.2] - 2026-11-25
 
 ### Fixed
@@ -198,6 +204,7 @@ First beta release.
 - Login and setup share a configurable per-IP rate limit; session checks and sign-out are exempt. WebDAV has a separate configurable limit applied before authentication.
 - Admin accounts can only sign in to the Admin console; Vault and WebDAV require a separate user account. Admin sessions are scoped to the Admin API, so existing admins need to sign in again after updating.
 
+[0.8.0]: https://github.com/madcoda9000/KeePort/compare/v0.7.2...v0.8.0
 [0.7.2]: https://github.com/madcoda9000/KeePort/compare/v0.7.1...v0.7.2
 [0.7.1]: https://github.com/madcoda9000/KeePort/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/madcoda9000/KeePort/compare/v0.6.1...v0.7.0

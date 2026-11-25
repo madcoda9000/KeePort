@@ -1,6 +1,6 @@
 # Plan: Ordner (KDBX-Gruppen) im Web-Vault verwalten
 
-- **Status:** umgesetzt (2026-11-25), Abnahme auf der NAS ausstehend
+- **Status:** abgeschlossen (2026-11-25), ausgeliefert in 0.7.0 bis 0.7.2
 - **Erstellt:** 2026-11-24
 - **Zielversion:** 0.7.0 (neue Funktion, Changelog `## [0.7.0] - <Datum>`)
 
@@ -114,7 +114,17 @@ Komponenten ausschließlich aus shadcn/ui: Sidebar-Bausteine (`SidebarGroup`, `S
 - Geprüft:
   - Ablauf in einer Testinstanz mit Playwright: anlegen, umbenennen, verschieben, wiederherstellen, löschen, neuer Eintrag im Ordner, Sperren und Neuöffnen, Nur-Lese-Ansicht, Handyansicht.
   - Die gespeicherte KDBX mit kdbxweb gelesen: Struktur stimmt, `DeletedObjects` und `LocationChanged` sind gesetzt.
-  - `keepassxc-cli` ist hier nicht installiert, die Prüfung mit KeePassXC und KeePass2Android steht noch aus.
+  - `keepassxc-cli` ist hier nicht installiert.
+
+## Abnahme (2026-11-25, Sascha, NAS mit 0.7.2)
+
+- Im Web-Vault die Ordner Hans, Klaus und Ernst angelegt und in Hans den Eintrag test2000 erstellt.
+- In KeePass2Android test2000 nach Klaus verschoben und den Ordner Hans gelöscht.
+- Nach dem erneuten Entsperren im Web-Vault war alles wie erwartet.
+- Nachträge aus der Abnahme:
+  - 0.7.1: Vorlagen und Papierkorb erscheinen nicht unter „All entries“.
+  - 0.7.2: Beim Anlegen erscheint keine falsche Duplikat-Meldung mehr.
+- Idee für später: ein Knopf, der den geöffneten Tresor neu vom Server lädt, ohne Sperren und Entsperren.
 
 ## Ursprünglich offene Fragen
 

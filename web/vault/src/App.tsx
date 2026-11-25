@@ -7,6 +7,7 @@ import {
   entryMatches,
   listEntries,
   loadVault,
+  reopenVault,
   saveEntryUpdate
 } from './lib/kdbx';
 import type { EntryEdits, EntryView } from './lib/kdbx';
@@ -35,6 +36,7 @@ import {
   LogOutIcon,
   MoonIcon,
   PlusIcon,
+  RefreshCwIcon,
   ShieldCheckIcon,
   SunIcon,
   UserRoundIcon,
@@ -347,6 +349,55 @@ export default function App() {
       setMessage({ kind: 'notice', text: `Unlocked ${selectedFile.name}. Data stays in this browser only.` });
     } catch (error) {
       setMessage({ kind: 'error', text: errorText(error, 'Unable to unlock vault. Check the password and key file.') });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  /**
+   * Downloads the latest revision of the open vault and opens it with the credentials still held in this tab, keeping
+   * the selected folder and the still existing part of the selection.
+   */
+  async function handleReload() {
+    if (!db || !selectedFile || busy) return;
+    const generation = vaultGeneration.current;
+    setBusy('reload');
+    setMessage(null);
+    try {
+      const content = await api.getFileBytes(selectedFile.id);
+      if (generation !== vaultGeneration.current) return;
+      if (content.etag && content.etag === etag) {
+        setMessage({ kind: 'notice', text: 'The vault is already up to date.' });
+        return;
+      }
+      const loaded = new Uint8Array(content.bytes.slice(0));
+      const vault = await reopenVault(content.bytes, db.credentials);
+      if (generation !== vaultGeneration.current) return;
+      savedBytes.current = loaded;
+      setDb(vault);
+      setEtag(content.etag);
+      refreshView(vault);
+      const ids = new Set(listEntries(vault).map(/**
+       * Selects the entry ID.
+       * @param entry - One entry of the reloaded vault.
+       */ (entry) => entry.id));
+      /**
+       * Keeps only selected entries that still exist.
+       * @param current - The currently selected entry IDs.
+       */
+      setSelection((current) => new Set([...current].filter(/**
+       * Checks whether a selected entry still exists.
+       * @param id - One selected entry ID.
+       */ (id) => ids.has(id))));
+      setMessage({ kind: 'notice', text: 'Vault reloaded. You now see the latest saved version.' });
+      try {
+        await refreshFiles();
+      } catch {
+        /* the reloaded vault is shown; the file metadata refreshes on the next save */
+      }
+    } catch (error) {
+      if (generation !== vaultGeneration.current) return;
+      setMessage({ kind: 'error', text: errorText(error, 'Unable to reload the vault.') });
     } finally {
       setBusy(null);
     }
@@ -918,7 +969,7 @@ export default function App() {
         files={files}
         selectedId={selectedId}
         openId={unlocked ? selectedId : null}
-        disabled={busy === 'unlock' || busy === 'save'}
+        disabled={busy === 'unlock' || busy === 'save' || busy === 'reload'}
         onSelect={selectFile}
         folderTree={unlocked && selectedFile ? (
           <FolderTree
@@ -1201,11 +1252,21 @@ export default function App() {
                       </CardDescription>
                     </div>
                     <div className="flex flex-wrap gap-2">
-                      <Button variant="outline" size="sm" disabled={busy === 'save'} onClick={/** Locks the vault and notifies the user. */ () => lockVault(true)}>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={busy !== null}
+                        title="Load the latest version from the server, e.g. after a KeePass app synced"
+                        onClick={/** Reloads the open vault from the server. */ () => void handleReload()}
+                      >
+                        <RefreshCwIcon className={busy === 'reload' ? 'animate-spin' : undefined} />
+                        {busy === 'reload' ? 'Reloading…' : 'Reload'}
+                      </Button>
+                      <Button variant="outline" size="sm" disabled={busy === 'save' || busy === 'reload'} onClick={/** Locks the vault and notifies the user. */ () => lockVault(true)}>
                         <LockKeyholeIcon /> Lock vault
                       </Button>
                       {canWrite && (
-                        <Button size="sm" disabled={busy === 'save'} onClick={startNewEntry}>
+                        <Button size="sm" disabled={busy === 'save' || busy === 'reload'} onClick={startNewEntry}>
                           <PlusIcon /> Add entry
                         </Button>
                       )}

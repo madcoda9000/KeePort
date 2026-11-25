@@ -13,7 +13,7 @@ import {
   moveEntries,
   renameFolder
 } from './groups.ts';
-import { createEntry, listEntries } from './kdbx.ts';
+import { createEntry, listEntries, reopenVault } from './kdbx.ts';
 
 // Use the browser DOM code path rather than kdbxweb's legacy xmldom constructor options.
 Object.assign(globalThis, { DOMParser, XMLSerializer });
@@ -209,4 +209,22 @@ test('marks templates and recycled entries as hidden', () => {
    * @param view - One entry view.
    */ (view) => [view.title, view.hidden]));
   assert.deepEqual(hidden, { 'Nested template': true, Recycled: true, Regular: false, Template: true });
+});
+
+/** Verifies that a changed file opens with the credentials of the open vault and that other credentials are rejected. */
+test('reopens a changed vault with the credentials of the open one', async () => {
+  const db = testVault();
+  const original = new Uint8Array(await db.save());
+  const other = await Kdbx.load(original.slice().buffer, db.credentials);
+  createFolder(other, listFolders(other)[0].id, 'Synced by an app');
+  const changed = new Uint8Array(await other.save());
+
+  const reopened = await reopenVault(changed.slice().buffer, db.credentials);
+  assert.ok(flattenFolders(listFolders(reopened)).some(/**
+   * Finds the folder created elsewhere.
+   * @param node - One folder node.
+   */ (node) => node.name === 'Synced by an app'));
+
+  const stranger = new KdbxCredentials(ProtectedValue.fromString('another password'));
+  await assert.rejects(reopenVault(changed.slice().buffer, stranger), /different master password/);
 });
