@@ -42,6 +42,7 @@ builder.Services.AddSingleton<SessionService>();
 builder.Services.AddSingleton<VaultService>();
 builder.Services.AddSingleton<WebDavStagingStore>();
 builder.Services.AddSingleton<RateLimitSettingsService>();
+builder.Services.AddSingleton<IFaviconFetcher, FaviconFetcher>();
 
 // Registers the credential and WebDAV limits and their rejection response.
 // <param name="options">The middleware settings for limiter policies and rejection handling.</param>
@@ -55,6 +56,9 @@ builder.Services.AddRateLimiter(options =>
         var limits = context.RequestServices.GetRequiredService<RateLimitSettingsService>().Current;
         return PerIpLimit(context, limits.Settings.AuthPerMinute, limits.AuthVersion);
     });
+    // Limits website icon downloads to 30 per minute and client, so the server cannot be used to scan sites.
+    // <param name="context">The current HTTP request and response context.</param>
+    options.AddPolicy(VaultEndpoints.FaviconRateLimitPolicy, context => PerIpLimit(context, 30, 0));
    // Applies the WebDAV quota only to requests under the WebDAV path.
     // <param name="context">The current HTTP request and response context.</param>
     options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, (string, long)>(context =>
@@ -136,6 +140,7 @@ builder.Services.AddSingleton(new ServerInfo(
 try
 {
     _ = ConfigFlags.CookieSecure(builder.Configuration);
+    _ = VaultEndpoints.FaviconDownloadEnabled(builder.Configuration);
 }
 catch (InvalidOperationException ex)
 {

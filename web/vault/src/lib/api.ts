@@ -11,6 +11,8 @@ export interface User {
   showFavicons: boolean;
   /** Seconds until copied values are cleared from the clipboard; null for the default, 0 for off. */
   clipboardClearSeconds: number | null;
+  /** Whether the web vault checks passwords against "Have I Been Pwned" (opt-in). */
+  checkBreaches: boolean;
 }
 
 export interface VaultFile {
@@ -165,8 +167,19 @@ export const api = {
    * Saves the vault preferences and returns the updated profile; fields left out stay unchanged.
    * @param payload - The auto-lock delay in minutes, the website icon opt-in and the clipboard clearing delay.
    */
-  async updateSettings(payload: { autoLockMinutes?: number; showFavicons?: boolean; clipboardClearSeconds?: number }) {
+  async updateSettings(payload: { autoLockMinutes?: number; showFavicons?: boolean; clipboardClearSeconds?: number; checkBreaches?: boolean }) {
     return request<User>('/api/auth/settings', { method: 'PUT', body: JSON.stringify(payload) });
+  },
+  /**
+   * Asks the server to download a website's icon, for storing it in a vault entry. Only the host name is sent.
+   * @param host - The host name of the entry's website.
+   */
+  async getFavicon(host: string): Promise<Blob> {
+    const response = await fetch(`/api/vault/favicon?host=${encodeURIComponent(host)}`, { credentials: 'include' });
+    if (!response.ok) {
+      throw await parseError(response);
+    }
+    return response.blob();
   },
   /** Lists vault files the signed-in account can access. */
   async listVaultFiles() {

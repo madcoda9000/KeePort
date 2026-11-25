@@ -36,6 +36,8 @@ interface DataTableProps<T> {
   leadingHeader?: (view: DataTableView<T>) => ReactNode;
   /** Renders content between the search box and the table, e.g. an action bar for selected rows. */
   toolbar?: (view: DataTableView<T>) => ReactNode;
+  /** Controls shown to the right of the search box, e.g. a column chooser. */
+  searchActions?: ReactNode;
 }
 
 /**
@@ -52,7 +54,8 @@ export function DataTable<T>({
   renderRow,
   browseFilter,
   leadingHeader,
-  toolbar
+  toolbar,
+  searchActions
 }: DataTableProps<T>) {
   const pageSizeId = useId();
   const [query, setQuery] = useState('');
@@ -92,7 +95,7 @@ export function DataTable<T>({
 
   return (
     <>
-      <div className="px-4 py-3 sm:px-6">
+      <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 sm:px-6">
         <div className="relative w-full sm:max-w-sm">
           <SearchIcon aria-hidden="true" className="pointer-events-none absolute start-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
@@ -110,6 +113,7 @@ export function DataTable<T>({
             }}
           />
         </div>
+        {searchActions}
       </div>
       {toolbar?.(view)}
       <Table aria-label={label}>

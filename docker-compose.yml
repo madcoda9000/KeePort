@@ -14,6 +14,8 @@ services:
       # HTTPS with a self-signed certificate on the admin port; set KEEPORT_ADMIN_HTTPS=false to keep plain HTTP.
       KeePort__AdminHttps: ${KEEPORT_ADMIN_HTTPS:-true}
       KeePort__AdminTlsHosts: ${KEEPORT_ADMIN_TLS_HOSTS:-}
+      # Lets users store a website's icon in a vault entry; KeePort then fetches it from the public site once.
+      KeePort__FaviconDownload: ${KEEPORT_FAVICON_DOWNLOAD:-true}
     ports:
       - "${KEEPORT_HTTP_HOST_PORT:-8080}:8080"
       - "${KEEPORT_ADMIN_BIND:-0.0.0.0}:${KEEPORT_ADMIN_HOST_PORT:-8081}:8081"

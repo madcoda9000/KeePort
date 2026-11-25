@@ -90,7 +90,7 @@ public static class AuthEndpoints
         }).RequireRateLimiting(CredentialRateLimitPolicy);
 
         // Updates the signed-in vault user's preferences; fields left out stay unchanged.
-        // <param name="request">The update containing the auto-lock, website icon and clipboard preferences.</param>
+        // <param name="request">The update containing the auto-lock, website icon, clipboard and breach check preferences.</param>
         // <param name="context">The current HTTP request and response context.</param>
         // <param name="db">The SQLite store for KeePort metadata.</param>
         vault.MapPut("/settings", (UpdateSettingsRequest request, HttpContext context, KeePortDb db) =>
@@ -119,6 +119,10 @@ public static class AuthEndpoints
             if (request.ClipboardClearSeconds is { } seconds)
             {
                 db.UpdateUserClipboardClearSeconds(user.Id, seconds);
+            }
+            if (request.CheckBreaches is { } checkBreaches)
+            {
+                db.UpdateUserCheckBreaches(user.Id, checkBreaches);
             }
             return Results.Ok(ToDto(db.GetUserById(user.Id)!));
         });
@@ -243,7 +247,7 @@ public static class AuthEndpoints
     /// <param name="user">The user account associated with the operation.</param>
     internal static UserDto ToDto(UserRecord user)
     {
-        return new UserDto(user.Id, user.Username, user.Role.ToString().ToLowerInvariant(), user.Disabled, user.CreatedAt, user.LastLoginAt, user.AutoLockMinutes, user.Email, user.ShowFavicons, user.ClipboardClearSeconds);
+        return new UserDto(user.Id, user.Username, user.Role.ToString().ToLowerInvariant(), user.Disabled, user.CreatedAt, user.LastLoginAt, user.AutoLockMinutes, user.Email, user.ShowFavicons, user.ClipboardClearSeconds, user.CheckBreaches);
     }
 
     /// <summary>

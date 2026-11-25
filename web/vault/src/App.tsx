@@ -31,6 +31,8 @@ import { cn } from '@/lib/utils';
 import {
   ChevronDownIcon,
   CircleCheckIcon,
+  Columns3Icon,
+  ImageDownIcon,
   CircleXIcon,
   CopyIcon,
   ExternalLinkIcon,
@@ -65,6 +67,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { deleteVersion, requireEntry, restoreVersion } from './lib/history';
 import { hasTag, listTags, setEntryTags } from './lib/tags';
 import { buildReport, type SecurityIssue } from './lib/security-report';
+import { checkPasswords } from './lib/breach';
+import { OPTIONAL_COLUMNS, readHiddenColumns, writeHiddenColumns, type OptionalColumn } from './lib/column-prefs';
+import { iconToPng } from './lib/icon-image';
+import { faviconUrl, storeEntryIcon } from './lib/icons';
+import type { BreachCheckState } from '@/components/security-report';
 import { SecurityReportTiles } from '@/components/security-report';
 import { PasswordGenerator } from '@/components/password-generator';
 import { openableUrl } from './lib/icons';
@@ -96,6 +103,7 @@ import {
 import { Checkbox } from '@/components/ui/checkbox';
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
@@ -291,6 +299,9 @@ export default function App() {
   const [securityView, setSecurityView] = useState(false);
   const [securityIssue, setSecurityIssue] = useState<SecurityIssue | null>(null);
   const [focusedId, setFocusedId] = useState<string | null>(null);
+  const [hiddenColumns, setHiddenColumns] = useState<ReadonlySet<OptionalColumn>>(/** Reads the column choice of this browser. */ () => readHiddenColumns());
+  const [breachResults, setBreachResults] = useState<ReadonlyMap<string, number>>(new Map());
+  const [breach, setBreach] = useState<Omit<BreachCheckState, 'enabled'>>({ status: 'idle', done: 0, total: 0, error: null });
   /** When the entry list was last built; the security report and relative dates refer to it. */
   const [listedAt, setListedAt] = useState(0);
   const [tagging, setTagging] = useState(false);
@@ -359,7 +370,16 @@ export default function App() {
      * Checks whether the template lists the field.
      * @param field - One template field.
      */ (field) => field.kind === 'standard' && field.name === name);
-  const report = useMemo(/** Checks the passwords of the open vault, only in this browser. */ () => buildReport(entries, new Date(listedAt)), [entries, listedAt]);
+  const report = useMemo(/** Checks the passwords of the open vault, only in this browser. */ () => buildReport(entries, new Date(listedAt), breach.status === 'done' ? breachResults : undefined), [entries, listedAt, breach.status, breachResults]);
+  const visibleColumns = useMemo(/** Lists the columns that are not hidden; the title is always shown. */ () => ENTRY_COLUMNS.filter(/**
+   * Keeps the title and the columns the user did not hide.
+   * @param column - One column.
+   */ (column) => column.id === 'title' || !hiddenColumns.has(column.id as OptionalColumn)), [hiddenColumns]);
+  /**
+   * Checks whether an optional column is shown.
+   * @param column - The column ID.
+   */
+  const showColumn = (column: OptionalColumn) => !hiddenColumns.has(column);
   // Relative dates such as "3 days ago" refer to the time the list was built.
   const renderedAt = listedAt;
   /**
@@ -369,7 +389,8 @@ export default function App() {
   const passwordWarning = (entry: EntryView) => {
     const parts = [
       report.issues.weak.has(entry.id) ? 'Weak password' : '',
-      report.reuseCounts.has(entry.id) ? `Used in ${report.reuseCounts.get(entry.id)} entries` : ''
+      report.reuseCounts.has(entry.id) ? `Used in ${report.reuseCounts.get(entry.id)} entries` : '',
+      report.breachCounts.has(entry.id) ? `Found in data breaches (${report.breachCounts.get(entry.id)?.toLocaleString()} times)` : ''
     ].filter(Boolean);
     return parts.length ? parts.join(' · ') : null;
   };
@@ -449,6 +470,8 @@ export default function App() {
     setSecurityView(false);
     setSecurityIssue(null);
     setFocusedId(null);
+    setBreachResults(new Map());
+    setBreach({ status: 'idle', done: 0, total: 0, error: null });
     setTagging(false);
     setDeleteRequest(null);
     setConfirmEmptyBin(false);
@@ -842,6 +865,91 @@ export default function App() {
   }
 
   /**
+   * Shows or hides a column of the entry list and remembers the choice in this browser.
+   * @param column - The column.
+   * @param shown - Whether it is shown.
+   */
+  function toggleColumn(column: OptionalColumn, shown: boolean) {
+    const next = new Set(hiddenColumns);
+    if (shown) next.delete(column);
+    else next.add(column);
+    setHiddenColumns(next);
+    writeHiddenColumns(next);
+  }
+
+  /**
+   * Checks the passwords of the open vault against "Have I Been Pwned" if the user opted in. Only the first five
+   * characters of each SHA-1 hash leave the browser. Passwords already checked in this session are skipped unless
+   * a full check is requested.
+   * @param full - Whether to check all passwords again.
+   */
+  async function runBreachCheck(full = false) {
+    if (!user?.checkBreaches || breach.status === 'checking') return;
+    const generation = vaultGeneration.current;
+    const passwords = entries.filter(/**
+     * Keeps regular entries with a password that still needs checking.
+     * @param entry - One entry of the vault.
+     */ (entry) => !entry.hidden && entry.password && (full || !breachResults.has(entry.password))).map(/**
+     * Selects the password.
+     * @param entry - One entry.
+     */ (entry) => entry.password);
+    setBreach({ status: 'checking', done: 0, total: new Set(passwords).size, error: null });
+    try {
+      const results = await checkPasswords(passwords, /**
+       * Shows the progress.
+       * @param done - Ranges checked.
+       * @param total - All ranges.
+       */ (done, total) => {
+        if (generation === vaultGeneration.current) setBreach({ status: 'checking', done, total, error: null });
+      });
+      if (generation !== vaultGeneration.current) return;
+      setBreachResults(new Map([...(full ? [] : breachResults), ...results]));
+      setBreach({ status: 'done', done: 0, total: 0, error: null });
+    } catch (error) {
+      if (generation !== vaultGeneration.current) return;
+      setBreach({ status: 'error', done: 0, total: 0, error: errorText(error, 'Have I Been Pwned could not be reached.') });
+    }
+  }
+
+  /**
+   * Downloads the website icon of the open entry through the KeePort server, converts it to a 32×32 PNG and stores
+   * it in the vault, so KeePass apps show it too.
+   */
+  async function saveWebsiteIcon() {
+    const id = selectedEntry?.id;
+    const address = faviconUrl(edits?.url ?? '');
+    if (!id || !address) return;
+    const host = new URL(address).hostname;
+    setBusy('icon');
+    setMessage(null);
+    let png: Uint8Array;
+    try {
+      png = await iconToPng(await api.getFavicon(host));
+    } catch (error) {
+      setMessage({ kind: 'error', text: errorText(error, 'The website icon could not be downloaded.') });
+      setBusy(null);
+      return;
+    }
+    setBusy(null);
+    const ok = await runVaultChange(/**
+     * Stores the icon on the entry.
+     * @param vault - The vault to change.
+     */ (vault) => storeEntryIcon(vault, requireEntry(vault, id), png, host), /** Shows the entry with its new icon. */ () => {
+      const refreshed = db ? listEntries(db).find(/**
+       * Finds the changed entry.
+       * @param entry - One entry of the vault.
+       */ (entry) => entry.id === id) ?? null : null;
+      setSelectedEntry(refreshed);
+      if (refreshed && edits) setEdits({ ...edits });
+      return `Website icon of ${host} saved in the vault. KeePass apps show it after their next sync.`;
+    });
+    if (!ok) {
+      setSelectedEntry(null);
+      setEdits(null);
+    }
+  }
+
+  /**
    * Shows the entries with a tag across all folders.
    * @param tag - The tag to filter by.
    */
@@ -1158,7 +1266,8 @@ export default function App() {
       const updated = await api.updateSettings({
         autoLockMinutes: Math.round(minutes),
         clipboardClearSeconds: Math.round(clipboardSeconds),
-        showFavicons: data.get('showFavicons') === 'on'
+        showFavicons: data.get('showFavicons') === 'on',
+        checkBreaches: data.get('checkBreaches') === 'on'
       });
       setUser(updated);
       setAutoLockMinutes(updated.autoLockMinutes ?? DEFAULT_AUTO_LOCK_MINUTES);
@@ -1344,6 +1453,7 @@ export default function App() {
               setSecurityView(true);
               setSecurityIssue(null);
               setSelection(new Set());
+              void runBreachCheck();
             }}
             tags={vaultTags}
             selectedTag={tagView}
@@ -1448,6 +1558,17 @@ export default function App() {
                       Shows the favicon of each entry's website. Your browser requests it directly from that site, so
                       the site sees your IP address and may conclude that you have an account there. Icons stored in
                       the vault (e.g. by KeePassXC) are always shown.
+                    </FieldDescription>
+                  </div>
+                </Field>
+                <Field orientation="horizontal">
+                  <Checkbox id="check-breaches" name="checkBreaches" defaultChecked={user.checkBreaches} aria-describedby="check-breaches-help" />
+                  <div className="grid gap-1">
+                    <FieldLabel htmlFor="check-breaches" className="font-normal">Check passwords against Have I Been Pwned</FieldLabel>
+                    <FieldDescription id="check-breaches-help">
+                      The security report then shows passwords that appear in known data breaches. Your browser sends
+                      only the first 5 characters of each password's SHA-1 hash to api.pwnedpasswords.com and compares
+                      the rest locally; the password itself never leaves this browser. The service sees your IP address.
                     </FieldDescription>
                   </div>
                 </Field>
@@ -1720,6 +1841,9 @@ export default function App() {
                 {securityView && (
                   <SecurityReportTiles
                     report={report}
+                    breach={{ ...breach, enabled: user.checkBreaches }}
+                    onCheckBreaches={/** Checks all passwords again. */ () => void runBreachCheck(true)}
+                    onOpenSettings={/** Opens the account settings. */ () => setShowProfile(true)}
                     active={securityIssue}
                     onSelect={/**
                      * Filters the list by a check.
@@ -1734,7 +1858,42 @@ export default function App() {
                   key={`${selectedFile.id}:${securityView ? `security:${securityIssue ?? 'all'}` : tagView ? `tag:${tagView}` : expiredView ? 'expired' : folderId ?? 'all'}`}
                   label={securityView ? 'Entries with security findings' : tagView ? `Entries tagged ${tagView}` : expiredView ? 'Expired entries' : currentFolder ? `Entries in ${currentFolder.name}` : 'Vault entries'}
                   rows={tableEntries}
-                  columns={ENTRY_COLUMNS}
+                  columns={visibleColumns}
+                  searchActions={
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button type="button" variant="outline" size="sm">
+                          <Columns3Icon /> Columns
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-44">
+                        <DropdownMenuLabel>Show columns</DropdownMenuLabel>
+                        <DropdownMenuSeparator />
+                        {OPTIONAL_COLUMNS.map(/**
+                         * Renders the toggle of one column.
+                         * @param column - One optional column.
+                         */ (column) => (
+                          <DropdownMenuCheckboxItem
+                            key={column}
+                            checked={!hiddenColumns.has(column)}
+                            onSelect={/**
+                             * Keeps the menu open so several columns can be changed.
+                             * @param event - The select event.
+                             */ (event) => event.preventDefault()}
+                            onCheckedChange={/**
+                             * Shows or hides the column and remembers the choice in this browser.
+                             * @param checked - Whether the column is shown.
+                             */ (checked) => toggleColumn(column, checked === true)}
+                          >
+                            {ENTRY_COLUMNS.find(/**
+                             * Finds the column label.
+                             * @param item - One column.
+                             */ (item) => item.id === column)?.label}
+                          </DropdownMenuCheckboxItem>
+                        ))}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  }
                   searchLabel="Search all folders"
                   matches={entryMatches}
                   emptyMessage={securityView ? 'No findings. Well done!' : tagView ? 'No entry has this tag.' : expiredView ? 'No entry has expired.' : currentFolder ? 'This folder has no entries.' : 'This vault has no entries yet.'}
@@ -1817,97 +1976,107 @@ export default function App() {
                           </span>
                         )}
                       </TableCell>
-                      <TableCell className="text-muted-foreground">
-                        <span className="flex max-w-36 min-w-0 items-center gap-1 sm:max-w-56">
-                          {entry.username && (
-                            <CopyButton
-                              label={`Copy username of ${entry.title}`}
-                              tooltip="Copy username"
-                              getValue={/** Returns the username. */ () => entry.username}
-                              onCopy={/**
-                               * Copies the username.
-                               * @param value - The username.
-                               */ (value) => copyValue(value, 'Username')}
-                            />
-                          )}
-                          <span className="truncate">{entry.username || '—'}</span>
-                        </span>
-                      </TableCell>
-                      <TableCell className="hidden text-muted-foreground sm:table-cell">
-                        <span className="flex items-center gap-1">
-                          {entry.password && (
-                            <CopyButton
-                              label={`Copy password of ${entry.title}`}
-                              tooltip="Copy password"
-                              getValue={/** Returns the password. */ () => entry.password}
-                              onCopy={/**
-                               * Copies the password.
-                               * @param value - The password.
-                               */ (value) => copyValue(value, 'Password')}
-                            />
-                          )}
-                          <span className="font-mono tracking-wider">{entry.password ? '••••••••' : '—'}</span>
-                          {passwordWarning(entry) && (
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <span tabIndex={0} aria-label={passwordWarning(entry) ?? undefined} className="inline-flex rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                                  <TriangleAlertIcon className="size-4 text-amber-600 dark:text-amber-400" />
-                                </span>
-                              </TooltipTrigger>
-                              <TooltipContent>{passwordWarning(entry)}</TooltipContent>
-                            </Tooltip>
-                          )}
-                        </span>
-                      </TableCell>
-                      <TableCell className="hidden sm:table-cell">
-                        <span className="flex items-center gap-1">
-                          {entry.otp && parseOtpSecret(entry.otp) && (
-                            <CopyButton
-                              label={`Copy TOTP code of ${entry.title}`}
-                              tooltip="Copy TOTP code"
-                              getValue={/** Calculates the current TOTP code at the moment of copying. */ async () => {
-                                const config = parseOtpSecret(entry.otp);
-                                if (!config) throw new Error('The TOTP setting of this entry is not valid.');
-                                return (await totpCode(config)).code;
-                              }}
-                              onCopy={/**
-                               * Copies the TOTP code.
-                               * @param value - The current code.
-                               */ (value) => copyValue(value, 'TOTP code')}
-                            />
-                          )}
-                          {entry.otp ? (
-                            <CircleCheckIcon aria-label="TOTP configured" className="size-4 text-emerald-600 dark:text-emerald-400" />
-                          ) : (
-                            <CircleXIcon aria-label="No TOTP" className="size-4 text-muted-foreground/60" />
-                          )}
-                        </span>
-                      </TableCell>
-                      <TableCell className="hidden whitespace-nowrap text-muted-foreground lg:table-cell">
-                        <span title={entry.modified ? entry.modified.toLocaleString() : undefined}>{formatRelative(entry.modified, renderedAt)}</span>
-                      </TableCell>
-                      <TableCell className="hidden text-muted-foreground md:table-cell">
-                        <span className="flex max-w-56 min-w-0 items-center gap-1">
-                          {openableUrl(entry.url) && (
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Button asChild variant="ghost" size="icon-sm" className="size-7 shrink-0 text-muted-foreground hover:text-foreground">
-                                  <a
-                                    href={openableUrl(entry.url) ?? undefined}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    aria-label={`Open website of ${entry.title}`}
-                                  >
-                                    <ExternalLinkIcon />
-                                  </a>
-                                </Button>
-                              </TooltipTrigger>
-                              <TooltipContent>Open website</TooltipContent>
-                            </Tooltip>
-                          )}
-                          <span className="truncate">{entry.url || '—'}</span>
-                        </span>
-                      </TableCell>
+                      {showColumn('username') && (
+                        <TableCell className="text-muted-foreground">
+                          <span className="flex max-w-36 min-w-0 items-center gap-1 sm:max-w-56">
+                            {entry.username && (
+                              <CopyButton
+                                label={`Copy username of ${entry.title}`}
+                                tooltip="Copy username"
+                                getValue={/** Returns the username. */ () => entry.username}
+                                onCopy={/**
+                                 * Copies the username.
+                                 * @param value - The username.
+                                 */ (value) => copyValue(value, 'Username')}
+                              />
+                            )}
+                            <span className="truncate">{entry.username || '—'}</span>
+                          </span>
+                        </TableCell>
+                      )}
+                      {showColumn('password') && (
+                        <TableCell className="hidden text-muted-foreground sm:table-cell">
+                          <span className="flex items-center gap-1">
+                            {entry.password && (
+                              <CopyButton
+                                label={`Copy password of ${entry.title}`}
+                                tooltip="Copy password"
+                                getValue={/** Returns the password. */ () => entry.password}
+                                onCopy={/**
+                                 * Copies the password.
+                                 * @param value - The password.
+                                 */ (value) => copyValue(value, 'Password')}
+                              />
+                            )}
+                            <span className="font-mono tracking-wider">{entry.password ? '••••••••' : '—'}</span>
+                            {passwordWarning(entry) && (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span tabIndex={0} aria-label={passwordWarning(entry) ?? undefined} className="inline-flex rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                                    <TriangleAlertIcon className="size-4 text-amber-600 dark:text-amber-400" />
+                                  </span>
+                                </TooltipTrigger>
+                                <TooltipContent>{passwordWarning(entry)}</TooltipContent>
+                              </Tooltip>
+                            )}
+                          </span>
+                        </TableCell>
+                      )}
+                      {showColumn('totp') && (
+                        <TableCell className="hidden sm:table-cell">
+                          <span className="flex items-center gap-1">
+                            {entry.otp && parseOtpSecret(entry.otp) && (
+                              <CopyButton
+                                label={`Copy TOTP code of ${entry.title}`}
+                                tooltip="Copy TOTP code"
+                                getValue={/** Calculates the current TOTP code at the moment of copying. */ async () => {
+                                  const config = parseOtpSecret(entry.otp);
+                                  if (!config) throw new Error('The TOTP setting of this entry is not valid.');
+                                  return (await totpCode(config)).code;
+                                }}
+                                onCopy={/**
+                                 * Copies the TOTP code.
+                                 * @param value - The current code.
+                                 */ (value) => copyValue(value, 'TOTP code')}
+                              />
+                            )}
+                            {entry.otp ? (
+                              <CircleCheckIcon aria-label="TOTP configured" className="size-4 text-emerald-600 dark:text-emerald-400" />
+                            ) : (
+                              <CircleXIcon aria-label="No TOTP" className="size-4 text-muted-foreground/60" />
+                            )}
+                          </span>
+                        </TableCell>
+                      )}
+                      {showColumn('modified') && (
+                        <TableCell className="hidden whitespace-nowrap text-muted-foreground lg:table-cell">
+                          <span title={entry.modified ? entry.modified.toLocaleString() : undefined}>{formatRelative(entry.modified, renderedAt)}</span>
+                        </TableCell>
+                      )}
+                      {showColumn('website') && (
+                        <TableCell className="hidden text-muted-foreground md:table-cell">
+                          <span className="flex max-w-56 min-w-0 items-center gap-1">
+                            {openableUrl(entry.url) && (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button asChild variant="ghost" size="icon-sm" className="size-7 shrink-0 text-muted-foreground hover:text-foreground">
+                                    <a
+                                      href={openableUrl(entry.url) ?? undefined}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      aria-label={`Open website of ${entry.title}`}
+                                    >
+                                      <ExternalLinkIcon />
+                                    </a>
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>Open website</TooltipContent>
+                              </Tooltip>
+                            )}
+                            <span className="truncate">{entry.url || '—'}</span>
+                          </span>
+                        </TableCell>
+                      )}
                     </TableRow>
                   )}
                 />
@@ -1928,7 +2097,8 @@ export default function App() {
                 {edits && (
                   <SheetContent className="w-full gap-0 overflow-y-auto sm:max-w-xl">
                     <SheetHeader className="border-b p-6 pe-12">
-                      <SheetTitle className="break-words">
+                      <SheetTitle className="flex items-center gap-2 break-words">
+                        {selectedEntry && <EntryIcon iconUrl={selectedEntry.iconUrl} url={selectedEntry.url} showFavicons={showFavicons} className="size-5" />}
                         {selectedEntry ? selectedEntry.title : draftTemplate ? `New ${draftTemplate.title}` : 'New entry'}
                       </SheetTitle>
                       <SheetDescription>
@@ -2047,6 +2217,25 @@ export default function App() {
                                  * @param event - The website URL input change event.
                                  */ (event) => setEdits({ ...edits, url: event.target.value })}
                               />
+                              {showFavicons && canEditEntry && selectedEntry && faviconUrl(edits.url) && (
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      size="icon"
+                                      aria-label="Save website icon"
+                                      disabled={busy !== null}
+                                      onClick={/** Downloads the website icon and stores it in the vault. */ () => void saveWebsiteIcon()}
+                                    >
+                                      <ImageDownIcon className={busy === 'icon' ? 'animate-pulse' : undefined} />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent className="max-w-64">
+                                    Save website icon: KeePort fetches it from {new URL(faviconUrl(edits.url) ?? 'https://example.com').hostname} once and stores it in the vault. The KeePort server sees the host name for this.
+                                  </TooltipContent>
+                                </Tooltip>
+                              )}
                               {openableUrl(edits.url) && (
                                 <Button asChild variant="outline" size="icon">
                                   <a href={openableUrl(edits.url) ?? undefined} target="_blank" rel="noopener noreferrer" aria-label="Open website" title="Open website">

@@ -3,11 +3,13 @@ using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using KeePort.Api.Data;
+using KeePort.Api.Services;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace KeePort.Api.Tests;
 
@@ -508,6 +510,73 @@ public class KeePortApiTests : IDisposable
         Assert.Equal("legacy@example.test", db.GetUserById(account.Id)?.Email);
     }
 
+    /// <summary>Verifies the icon download endpoint: sign-in required, host validation, result and the off switch.</summary>
+    [Fact]
+    public async Task Favicon_Endpoint_Requires_A_Session_Validates_Hosts_And_Can_Be_Turned_Off()
+    {
+        var fake = new FakeFaviconFetcher();
+        using var factory = _factory.WithWebHostBuilder(/* Replaces the real downloader so no request leaves the test.
+            * <param name="builder">The test host builder.</param>
+            */ builder => builder.ConfigureServices(/* Registers the fake downloader.
+                * <param name="services">The service collection.</param>
+                */ services => services.AddSingleton<IFaviconFetcher>(fake)));
+        using var client = factory.CreateClient();
+        using var admin = factory.CreateClient();
+        var csrf = await SetupAdminAsync(admin);
+        await CreateUserAsync(admin, csrf, "alice", "user");
+
+        using (var anonymous = await client.GetAsync("/api/vault/favicon?host=github.com"))
+        {
+            Assert.Equal(HttpStatusCode.Unauthorized, anonymous.StatusCode);
+        }
+        await LoginAsync(client, "alice", "User passphrase 123");
+        using (var invalid = await client.GetAsync("/api/vault/favicon?host=192.168.0.1"))
+        {
+            Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+        }
+        using (var local = await client.GetAsync("/api/vault/favicon?host=nas"))
+        {
+            Assert.Equal(HttpStatusCode.BadRequest, local.StatusCode);
+        }
+        using (var icon = await client.GetAsync("/api/vault/favicon?host=GitHub.com"))
+        {
+            Assert.Equal(HttpStatusCode.OK, icon.StatusCode);
+            Assert.Equal("image/png", icon.Content.Headers.ContentType?.MediaType);
+            Assert.Equal(FakeFaviconFetcher.Png, await icon.Content.ReadAsByteArrayAsync());
+        }
+        Assert.Equal(new[] { "github.com" }, fake.Hosts);
+        using (var missing = await client.GetAsync("/api/vault/favicon?host=no-icon.example.com"))
+        {
+            Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
+        }
+
+        using var offFactory = factory.WithWebHostBuilder(/* Turns the download off.
+            * <param name="builder">The test host builder.</param>
+            */ builder => builder.UseSetting("KeePort:FaviconDownload", "false"));
+        using var offClient = offFactory.CreateClient();
+        await LoginAsync(offClient, "alice", "User passphrase 123");
+        using var off = await offClient.GetAsync("/api/vault/favicon?host=github.com");
+        Assert.Equal(HttpStatusCode.NotFound, off.StatusCode);
+        Assert.Equal("favicon_disabled", (await off.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("error").GetString());
+    }
+
+    /// <summary>A downloader that returns a fixed icon for every host except no-icon.example.com.</summary>
+    private sealed class FakeFaviconFetcher : IFaviconFetcher
+    {
+        /// <summary>The icon returned for every host.</summary>
+        public static readonly byte[] Png = [0x89, 0x50, 0x4e, 0x47, 9];
+
+        /// <summary>The hosts requested so far.</summary>
+        public List<string> Hosts { get; } = [];
+
+        /// <inheritdoc />
+        public Task<FaviconResult?> FetchAsync(string host, CancellationToken cancellationToken)
+        {
+            Hosts.Add(host);
+            return Task.FromResult(host == "no-icon.example.com" ? null : new FaviconResult(Png, "image/png"));
+        }
+    }
+
     /// <summary>Verifies the website icon and clipboard preferences: off and default at first, partial updates and validation.</summary>
     [Fact]
     public async Task Vault_Preferences_For_Icons_And_Clipboard_Are_Stored_Per_User()
@@ -518,13 +587,14 @@ public class KeePortApiTests : IDisposable
 
         var initial = await GetJsonAsync(_user, "/api/auth/me");
         Assert.False(initial.GetProperty("showFavicons").GetBoolean());
+        Assert.False(initial.GetProperty("checkBreaches").GetBoolean());
         Assert.Equal(JsonValueKind.Null, initial.GetProperty("clipboardClearSeconds").ValueKind);
 
         using (var autoLock = await SendAsync(_user, HttpMethod.Put, "/api/auth/settings", json: new { autoLockMinutes = 20 }, csrf: userCsrf))
         {
             autoLock.EnsureSuccessStatusCode();
         }
-        using (var icons = await SendAsync(_user, HttpMethod.Put, "/api/auth/settings", json: new { showFavicons = true, clipboardClearSeconds = 0 }, csrf: userCsrf))
+        using (var icons = await SendAsync(_user, HttpMethod.Put, "/api/auth/settings", json: new { showFavicons = true, clipboardClearSeconds = 0, checkBreaches = true }, csrf: userCsrf))
         {
             icons.EnsureSuccessStatusCode();
         }
@@ -532,6 +602,7 @@ public class KeePortApiTests : IDisposable
         Assert.True(updated.GetProperty("showFavicons").GetBoolean());
         Assert.Equal(0, updated.GetProperty("clipboardClearSeconds").GetInt32());
         Assert.Equal(20, updated.GetProperty("autoLockMinutes").GetInt32());
+        Assert.True(updated.GetProperty("checkBreaches").GetBoolean());
 
         using var invalid = await SendAsync(_user, HttpMethod.Put, "/api/auth/settings", json: new { clipboardClearSeconds = 601 }, csrf: userCsrf);
         Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
@@ -539,6 +610,7 @@ public class KeePortApiTests : IDisposable
         // The vault pages may load website icons over HTTPS; the APIs stay locked down.
         using var page = await _user.GetAsync("/");
         Assert.Contains("img-src 'self' data: https:", page.Headers.GetValues("Content-Security-Policy").Single());
+        Assert.Contains("connect-src 'self' https://api.pwnedpasswords.com", page.Headers.GetValues("Content-Security-Policy").Single());
     }
 
     /// <summary>Verifies the dashboard totals, the sign-in counters and that only administrators get the data.</summary>

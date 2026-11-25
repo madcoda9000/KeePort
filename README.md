@@ -40,8 +40,8 @@ KeePass files are great: open format, strong encryption, dozens of apps. Keeping
 
 | | |
 |---|---|
-| 🧠 **Zero-knowledge web vault** | Unlock, search, edit and save KDBX files in the browser. Copy usernames, passwords and TOTP codes with one click, generate passwords, delete to the recycle bin and spot expired entries. Master passwords and key files never leave your device. |
-| 🛡️ **Security report** | Finds weak, reused, old and empty passwords and expired entries, computed only in your browser; the generator also creates passphrases from the EFF wordlist. |
+| 🧠 **Zero-knowledge web vault** | Unlock, search, edit and save KDBX files in the browser. Copy usernames, passwords and TOTP codes with one click, choose the columns you see, generate passwords, store website icons in the vault, delete to the recycle bin and spot expired entries. Master passwords and key files never leave your device. |
+| 🛡️ **Security report** | Finds weak, reused, old and empty passwords and expired entries, computed only in your browser, plus an opt-in check against Have I Been Pwned; the generator also creates passphrases from the EFF wordlist. |
 | 🕘 **History & tags** | See every earlier version of an entry, restore one or delete old versions; tag entries and filter by tag — compatible with KeePass2Android, KeePassXC and KeePassium. |
 | 📁 **Folders** | Browse the KDBX folder tree, create, rename and delete folders, and move several entries at once — the structure stays the same in KeePassXC, KeePass2Android and KeePassium. |
 | 🧾 **Templates & custom fields** | Credit cards, IDs and other KeePass2Android templates show their own fields; add, edit and protect custom fields on any entry and set expiry dates. |
@@ -180,7 +180,8 @@ flowchart LR
 - The server stores `.kdbx` files as **opaque encrypted blobs**. It never parses vault contents and never receives a master password or key file.
 - Every vault has a **revision and an ETag**. A write is only accepted if it is based on the current version; otherwise the original stays untouched and the submitted file becomes a **conflict copy** for an administrator.
 - WebDAV clients that do not send `If-Match` (such as KeePass2Android) are checked against the version their app password **last downloaded**, so they get the same protection.
-- Website icons are **off by default**. Icons stored in the vault (for example by KeePassXC) are always shown. Users who switch on "Load website icons" let their browser fetch each site's favicon directly; the site then sees their IP address. The KeePort server never sees the URLs.
+- Website icons are **off by default**. Icons stored in the vault (for example by KeePassXC) are always shown. Users who switch on "Load website icons" let their browser fetch each site's favicon directly; the site then sees their IP address. The KeePort server never sees the URLs — except the host name of an entry for which a user clicks **Save website icon**: the server then downloads that icon once (public HTTPS sites only, never addresses in your network) and the browser stores it in the vault.
+- The **breach check** against Have I Been Pwned is **off by default** and turned on per user. It uses k-anonymity: the browser sends only the first 5 characters of each password's SHA-1 hash and compares the rest locally. Neither the passwords nor the KeePort server are involved.
 
 ## 📱 Compatibility
 
@@ -217,6 +218,7 @@ Copy `.env.example` to `.env` and adjust as needed:
 | `KEEPORT_ADMIN_BIND` | `0.0.0.0` | Host address the admin port is published on; `127.0.0.1` on a VPS. |
 | `KEEPORT_ADMIN_HTTPS` | `true` | HTTPS with a self-signed certificate for the admin console; `false` if a reverse proxy does TLS. |
 | `KEEPORT_ADMIN_TLS_HOSTS` | *(empty)* | Extra names/IPs for the admin certificate, e.g. `192.168.1.20, nas.local`. |
+| `KEEPORT_FAVICON_DOWNLOAD` | `true` | Allow "Save website icon": the server fetches a site's icon once (public HTTPS sites only). |
 | `KEEPORT_ADMIN_HOST_PORT` | `8081` | Host port of the admin console (the container side is always `8081`). |
 | `KEEPORT_COOKIE_SECURE` | `false` | Set to `true` when KeePort is served over HTTPS. |
 | `KEEPORT_TRUSTED_PROXIES` | *(empty)* | `gateway` for a reverse proxy on the same host (NAS proxy, Caddy, nginx), or the proxy's IP/network, so KeePort sees each device's own address ([details](docs/DEPLOYMENT.md#-trust-your-reverse-proxy)). |

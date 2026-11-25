@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.0] - 2026-11-25
+
+### Added
+
+- **Choose columns** in the entry list: "Columns" next to the search hides or shows Username, Password, TOTP, Modified and Website. The choice is remembered in this browser.
+- **Save website icon:**
+  - The button in the entry form (shown when "Load website icons" is on) stores the website's icon in the vault, so KeePass2Android, KeePassXC and KeePassium show it too.
+  - Because browsers cannot read images from other sites, the KeePort server downloads the icon once. It sees the host name for this and nothing else.
+  - The download only reaches public HTTPS sites: addresses in your network, loopback and reserved ranges are refused, also after redirects. It is limited in size, time and rate.
+  - The icon is stored as a 32×32 PNG, and identical icons are reused.
+  - `KEEPORT_FAVICON_DOWNLOAD=false` turns the download off.
+- **Breach check (opt-in):**
+  - With "Check passwords against Have I Been Pwned" in the account settings, the security report gets a "Breached" tile, and affected passwords show "Found in data breaches (n times)".
+  - The browser sends only the first 5 characters of each password's SHA-1 hash, with padding, and compares the rest locally. The check runs when the report opens and can be repeated.
+- `GET /api/vault/favicon?host=…` for signed-in vault users.
+
+### Changed
+
+- The web vault's Content-Security-Policy allows connections to `https://api.pwnedpasswords.com` for the breach check. The admin console is unchanged.
+- `PUT /api/auth/settings` accepts `checkBreaches`.
+
 ## [0.13.0] - 2026-11-25
 
 ### Added
@@ -308,6 +329,7 @@ First beta release.
 - Login and setup share a configurable per-IP rate limit; session checks and sign-out are exempt. WebDAV has a separate configurable limit applied before authentication.
 - Admin accounts can only sign in to the Admin console; Vault and WebDAV require a separate user account. Admin sessions are scoped to the Admin API, so existing admins need to sign in again after updating.
 
+[0.14.0]: https://github.com/madcoda9000/KeePort/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/madcoda9000/KeePort/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/madcoda9000/KeePort/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/madcoda9000/KeePort/compare/v0.10.1...v0.11.0

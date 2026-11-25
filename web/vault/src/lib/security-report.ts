@@ -2,7 +2,7 @@ import { ProtectedValue, type KdbxEntry } from 'kdbxweb';
 import { estimateStrength } from './strength.ts';
 
 /** The checks of the security report. */
-export type SecurityIssue = 'weak' | 'reused' | 'old' | 'empty' | 'expired';
+export type SecurityIssue = 'weak' | 'reused' | 'old' | 'empty' | 'expired' | 'breached';
 
 /** Passwords not changed for longer than this count as old. */
 export const OLD_PASSWORD_DAYS = 365;
@@ -22,6 +22,8 @@ export interface SecurityReport {
   issues: Record<SecurityIssue, ReadonlySet<string>>;
   /** For entries with a reused password: how many entries share it. */
   reuseCounts: ReadonlyMap<string, number>;
+  /** For entries whose password appears in data breaches: how often, according to "Have I Been Pwned". */
+  breachCounts: ReadonlyMap<string, number>;
   /** Entry IDs with at least one finding. */
   affected: ReadonlySet<string>;
 }
@@ -57,9 +59,11 @@ export function passwordChangedAt(entry: KdbxEntry): Date | undefined {
  * computed in the browser; nothing is stored or sent.
  * @param entries - The entries of the vault.
  * @param now - The current time.
+ * @param breaches - Results of the opt-in "Have I Been Pwned" check, by password; omit when it did not run.
  */
-export function buildReport(entries: readonly ReportEntry[], now: Date): SecurityReport {
-  const issues: Record<SecurityIssue, Set<string>> = { weak: new Set(), reused: new Set(), old: new Set(), empty: new Set(), expired: new Set() };
+export function buildReport(entries: readonly ReportEntry[], now: Date, breaches?: ReadonlyMap<string, number>): SecurityReport {
+  const issues: Record<SecurityIssue, Set<string>> = { weak: new Set(), reused: new Set(), old: new Set(), empty: new Set(), expired: new Set(), breached: new Set() };
+  const breachCounts = new Map<string, number>();
   const byPassword = new Map<string, string[]>();
   const oldBefore = now.getTime() - OLD_PASSWORD_DAYS * 86400000;
   for (const entry of entries) {
@@ -70,6 +74,11 @@ export function buildReport(entries: readonly ReportEntry[], now: Date): Securit
       continue;
     }
     if (estimateStrength(entry.password).weak) issues.weak.add(entry.id);
+    const breached = breaches?.get(entry.password) ?? 0;
+    if (breached > 0) {
+      issues.breached.add(entry.id);
+      breachCounts.set(entry.id, breached);
+    }
     if (entry.passwordChanged && entry.passwordChanged.getTime() < oldBefore) issues.old.add(entry.id);
     const ids = byPassword.get(entry.password);
     if (ids) ids.push(entry.id);
@@ -87,5 +96,5 @@ export function buildReport(entries: readonly ReportEntry[], now: Date): Securit
    * Lists the IDs of one check.
    * @param ids - The entries of one check.
    */ (ids) => [...ids]));
-  return { issues, reuseCounts, affected };
+  return { issues, reuseCounts, breachCounts, affected };
 }

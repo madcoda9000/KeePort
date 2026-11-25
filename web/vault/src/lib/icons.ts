@@ -61,3 +61,38 @@ export function openableUrl(url: string): string | null {
     return null;
   }
 }
+
+/**
+ * Stores an icon image in the vault's custom icons and sets it on an entry. An identical image already in the vault
+ * is reused instead of being stored twice. Returns the icon's ID.
+ * @param db - The unlocked database.
+ * @param entry - The entry that gets the icon.
+ * @param png - The icon as PNG bytes.
+ * @param name - A name for the icon, e.g. the website's host.
+ */
+export function storeEntryIcon(db: kdbxweb.Kdbx, entry: kdbxweb.KdbxEntry, png: Uint8Array, name: string): string {
+  const existing = [...db.meta.customIcons].find(/**
+   * Finds an icon with the same bytes.
+   * @param item - One custom icon with its ID.
+   */ ([, icon]) => sameBytes(new Uint8Array(icon.data), png));
+  let id = existing?.[0];
+  if (!id) {
+    const uuid = kdbxweb.KdbxUuid.random();
+    id = uuid.id;
+    db.meta.customIcons.set(id, { data: png.slice().buffer, name, lastModified: new Date() });
+  }
+  entry.customIcon = new kdbxweb.KdbxUuid(id);
+  entry.times.update();
+  return id;
+}
+
+/**
+ * Compares two byte arrays.
+ * @param a - The first bytes.
+ * @param b - The second bytes.
+ */
+function sameBytes(a: Uint8Array, b: Uint8Array): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) if (a[i] !== b[i]) return false;
+  return true;
+}

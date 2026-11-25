@@ -36,6 +36,8 @@ public sealed class UserRecord
     public bool ShowFavicons { get; init; }
     /// <summary>Seconds after which the web vault clears copied values from the clipboard; null for the default, 0 for off.</summary>
     public int? ClipboardClearSeconds { get; init; }
+    /// <summary>Whether the web vault checks passwords against "Have I Been Pwned" (opt-in, k-anonymity).</summary>
+    public bool CheckBreaches { get; init; }
 }
 
 public sealed record SessionRecord
@@ -103,6 +105,7 @@ public sealed class WebDavCredentialRecord
 /// <param name="Email">The account's contact email address.</param>
 /// <param name="ShowFavicons">Whether the web vault loads website icons directly from the sites (opt-in).</param>
 /// <param name="ClipboardClearSeconds">Seconds after which copied values are cleared, null for the default, 0 for off.</param>
+/// <param name="CheckBreaches">Whether the web vault checks passwords against "Have I Been Pwned" (opt-in).</param>
 public sealed record UserDto(
     string Id,
     string Username,
@@ -113,7 +116,8 @@ public sealed record UserDto(
     int? AutoLockMinutes = null,
     string? Email = null,
     bool ShowFavicons = false,
-    int? ClipboardClearSeconds = null);
+    int? ClipboardClearSeconds = null,
+    bool CheckBreaches = false);
 
 /// <summary>Represents vault file metadata without the encrypted file contents.</summary>
 /// <param name="Id">The stable identifier for this resource.</param>
@@ -160,7 +164,8 @@ public sealed record ChangePasswordRequest(string CurrentPassword, string NewPas
 /// <param name="AutoLockMinutes">The delay in minutes before auto-lock, or null to leave it unchanged.</param>
 /// <param name="ShowFavicons">Whether the web vault loads website icons from the sites, or null to leave it unchanged.</param>
 /// <param name="ClipboardClearSeconds">Seconds until copied values are cleared (0 = off), or null to leave it unchanged.</param>
-public sealed record UpdateSettingsRequest(int? AutoLockMinutes, bool? ShowFavicons = null, int? ClipboardClearSeconds = null);
+/// <param name="CheckBreaches">Whether to check passwords against "Have I Been Pwned", or null to leave it unchanged.</param>
+public sealed record UpdateSettingsRequest(int? AutoLockMinutes, bool? ShowFavicons = null, int? ClipboardClearSeconds = null, bool? CheckBreaches = null);
 
 /// <summary>Carries a replacement email address for the signed-in account.</summary>
 /// <param name="Email">The account's contact email address.</param>

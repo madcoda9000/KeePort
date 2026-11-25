@@ -25,5 +25,7 @@ public class ContentSecurityTests
     {
         Assert.Contains("img-src 'self' data:;", ContentSecurity.Admin);
         Assert.Contains("img-src 'self' data: https:;", ContentSecurity.Vault);
+        Assert.Contains("connect-src 'self';", ContentSecurity.Admin);
+        Assert.Contains("connect-src 'self' https://api.pwnedpasswords.com;", ContentSecurity.Vault);
     }
 }

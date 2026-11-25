@@ -157,6 +157,7 @@ public sealed class KeePortDb : IDisposable
         EnsureColumn("users", "email", "TEXT NULL");
         EnsureColumn("users", "show_favicons", "INTEGER NOT NULL DEFAULT 0");
         EnsureColumn("users", "clipboard_clear_seconds", "INTEGER NULL");
+        EnsureColumn("users", "check_breaches", "INTEGER NOT NULL DEFAULT 0");
         Execute(connection, "INSERT INTO app_state (key, value) VALUES ('login_stats_since', @now) ON CONFLICT(key) DO NOTHING;",
             new SqliteParameter("@now", DateTimeOffset.UtcNow.ToString("O")));
         EnsureSetupToken();
@@ -270,7 +271,7 @@ public sealed class KeePortDb : IDisposable
         connection.Open();
         using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT id, username, password_hash, role, disabled, created_at, last_login_at, auto_lock_minutes, email, show_favicons, clipboard_clear_seconds
+            SELECT id, username, password_hash, role, disabled, created_at, last_login_at, auto_lock_minutes, email, show_favicons, clipboard_clear_seconds, check_breaches
             FROM users WHERE username = @username COLLATE NOCASE;
             """;
         command.Parameters.AddWithValue("@username", username);
@@ -286,7 +287,7 @@ public sealed class KeePortDb : IDisposable
         connection.Open();
         using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT id, username, password_hash, role, disabled, created_at, last_login_at, auto_lock_minutes, email, show_favicons, clipboard_clear_seconds
+            SELECT id, username, password_hash, role, disabled, created_at, last_login_at, auto_lock_minutes, email, show_favicons, clipboard_clear_seconds, check_breaches
             FROM users WHERE id = @id;
             """;
         command.Parameters.AddWithValue("@id", id);
@@ -301,7 +302,7 @@ public sealed class KeePortDb : IDisposable
         connection.Open();
         using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT id, username, password_hash, role, disabled, created_at, last_login_at, auto_lock_minutes, email, show_favicons, clipboard_clear_seconds
+            SELECT id, username, password_hash, role, disabled, created_at, last_login_at, auto_lock_minutes, email, show_favicons, clipboard_clear_seconds, check_breaches
             FROM users ORDER BY username COLLATE NOCASE;
             """;
         var users = new List<UserRecord>();
@@ -397,6 +398,18 @@ public sealed class KeePortDb : IDisposable
             new SqliteParameter("@value", showFavicons ? 1 : 0));
     }
 
+    /// <summary>Stores whether the web vault checks passwords against "Have I Been Pwned".</summary>
+    /// <param name="id">The user's identifier.</param>
+    /// <param name="checkBreaches">Whether the breach check is on.</param>
+    public void UpdateUserCheckBreaches(string id, bool checkBreaches)
+    {
+        using var connection = Open();
+        connection.Open();
+        Execute(connection, "UPDATE users SET check_breaches = @value WHERE id = @id;",
+            new SqliteParameter("@id", id),
+            new SqliteParameter("@value", checkBreaches ? 1 : 0));
+    }
+
     /// <summary>Stores after how many seconds the web vault clears copied values from the clipboard.</summary>
     /// <param name="id">The user's identifier.</param>
     /// <param name="seconds">The delay in seconds; 0 turns clearing off.</param>
@@ -465,7 +478,7 @@ public sealed class KeePortDb : IDisposable
         using var command = connection.CreateCommand();
         command.CommandText = """
             SELECT s.id, s.user_id, s.token_hash, s.csrf_token, s.created_at, s.expires_at, s.last_seen_at, s.user_agent, s.ip_address,
-                   u.id, u.username, u.password_hash, u.role, u.disabled, u.created_at, u.last_login_at, u.auto_lock_minutes, u.email, u.show_favicons, u.clipboard_clear_seconds
+                   u.id, u.username, u.password_hash, u.role, u.disabled, u.created_at, u.last_login_at, u.auto_lock_minutes, u.email, u.show_favicons, u.clipboard_clear_seconds, u.check_breaches
             FROM sessions s
             JOIN users u ON u.id = s.user_id
             WHERE s.token_hash = @tokenHash;
@@ -795,7 +808,7 @@ public sealed class KeePortDb : IDisposable
         using var command = connection.CreateCommand();
         command.CommandText = """
             SELECT c.id, c.user_id, c.username, c.label, c.password_hash, c.created_at, c.last_used_at, c.revoked_at,
-                   u.id, u.username, u.password_hash, u.role, u.disabled, u.created_at, u.last_login_at, u.auto_lock_minutes, u.email, u.show_favicons, u.clipboard_clear_seconds
+                   u.id, u.username, u.password_hash, u.role, u.disabled, u.created_at, u.last_login_at, u.auto_lock_minutes, u.email, u.show_favicons, u.clipboard_clear_seconds, u.check_breaches
             FROM webdav_credentials c
             JOIN users u ON u.id = c.user_id
             WHERE c.username = @username COLLATE NOCASE;
@@ -830,7 +843,7 @@ public sealed class KeePortDb : IDisposable
         using var command = connection.CreateCommand();
         command.CommandText = """
             SELECT c.id, c.user_id, c.username, c.label, c.password_hash, c.created_at, c.last_used_at, c.revoked_at,
-                   u.id, u.username, u.password_hash, u.role, u.disabled, u.created_at, u.last_login_at, u.auto_lock_minutes, u.email, u.show_favicons, u.clipboard_clear_seconds
+                   u.id, u.username, u.password_hash, u.role, u.disabled, u.created_at, u.last_login_at, u.auto_lock_minutes, u.email, u.show_favicons, u.clipboard_clear_seconds, u.check_breaches
             FROM webdav_credentials c
             JOIN users u ON u.id = c.user_id
             ORDER BY c.created_at DESC;
@@ -1184,7 +1197,8 @@ public sealed class KeePortDb : IDisposable
             AutoLockMinutes = reader.IsDBNull(offset + 7) ? null : reader.GetInt32(offset + 7),
             Email = reader.IsDBNull(offset + 8) ? null : reader.GetString(offset + 8),
             ShowFavicons = !reader.IsDBNull(offset + 9) && reader.GetInt32(offset + 9) != 0,
-            ClipboardClearSeconds = reader.IsDBNull(offset + 10) ? null : reader.GetInt32(offset + 10)
+            ClipboardClearSeconds = reader.IsDBNull(offset + 10) ? null : reader.GetInt32(offset + 10),
+            CheckBreaches = !reader.IsDBNull(offset + 11) && reader.GetInt32(offset + 11) != 0
         };
     }
 

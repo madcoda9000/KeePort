@@ -5,16 +5,54 @@ using KeePort.Api.Services;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.Configuration;
 
 namespace KeePort.Api.Endpoints;
 
 public static class VaultEndpoints
 {
+    /// <summary>The rate-limit policy for website icon downloads.</summary>
+    public const string FaviconRateLimitPolicy = "favicon";
+
+    /// <summary>Reads whether website icon downloads are allowed (KEEPORT_FAVICON_DOWNLOAD, default true).</summary>
+    /// <param name="configuration">The application configuration.</param>
+    public static bool FaviconDownloadEnabled(IConfiguration configuration)
+        => ConfigFlags.Read(configuration, "KeePort:FaviconDownload", "KEEPORT_FAVICON_DOWNLOAD", defaultValue: true);
+
     /// <summary>Registers vault listing, content download, and content update endpoints.</summary>
     /// <param name="app">The endpoint route builder on which to register the routes.</param>
     public static void MapVaultEndpoints(this IEndpointRouteBuilder app)
     {
         var group = app.MapGroup("/api/vault");
+
+        // Downloads a website's icon for a signed-in user who wants to store it in a vault entry. Only the host name is
+        // sent; the fetcher reaches public HTTPS sites only. Turned off with KEEPORT_FAVICON_DOWNLOAD=false.
+        // <param name="host">The host name of the entry's website, e.g. github.com.</param>
+        // <param name="context">The current HTTP request and response context.</param>
+        // <param name="fetcher">The icon downloader.</param>
+        // <param name="configuration">The configuration with the on/off switch.</param>
+        group.MapGet("/favicon", async (string? host, HttpContext context, IFaviconFetcher fetcher, IConfiguration configuration) =>
+        {
+            if (ApiAuth.RequireAuthenticated(context) is { } unauthorized)
+            {
+                return unauthorized;
+            }
+            if (!FaviconDownloadEnabled(configuration))
+            {
+                return Results.Json(new ErrorResponse("favicon_disabled", "Downloading website icons is turned off on this server."), statusCode: StatusCodes.Status404NotFound);
+            }
+            if (!FaviconFetcher.IsValidHost(host))
+            {
+                return Results.Json(new ErrorResponse("invalid_host", "Website icons can only be downloaded for public host names such as example.com."), statusCode: StatusCodes.Status400BadRequest);
+            }
+            var icon = await fetcher.FetchAsync(host!.Trim().TrimEnd('.').ToLowerInvariant(), context.RequestAborted);
+            if (icon is null)
+            {
+                return Results.Json(new ErrorResponse("favicon_not_found", "The website has no icon KeePort could download, or it cannot be reached from the server."), statusCode: StatusCodes.Status404NotFound);
+            }
+            context.Response.Headers.CacheControl = "no-store";
+            return Results.File(icon.Data, icon.ContentType);
+        }).RequireRateLimiting(FaviconRateLimitPolicy);
 
         // Lists the active vaults the signed-in user can access.
         // <param name="context">The current HTTP request and response context.</param>

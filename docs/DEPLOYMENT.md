@@ -540,6 +540,7 @@ Use an absolute path for `KEEPORT_DATA`. A relative path such as `./keeport-data
 | `KEEPORT_ADMIN_BIND` | `0.0.0.0` | Host address for the admin port — every network of the host by default; `127.0.0.1` or a VPN IP on servers with a public IP. See [who can reach the admin console](#who-can-reach-the-admin-console). |
 | `KEEPORT_ADMIN_HTTPS` | `true` | Serve the admin console over HTTPS with a self-signed certificate. `false` if a reverse proxy does TLS. |
 | `KEEPORT_ADMIN_TLS_HOSTS` | *(empty)* | Extra names/IPs for the admin certificate, comma-separated, e.g. `192.168.1.20, nas.local`. |
+| `KEEPORT_FAVICON_DOWNLOAD` | `true` | Lets users store a website's icon in a vault entry ("Save website icon"). KeePort then fetches the icon once from the public site, only over HTTPS and never from addresses in your network. Set to `false` if the server has no internet access or must not contact other sites. |
 | `KEEPORT_ADMIN_HOST_PORT` | `8081` | Host port for the admin console. The container side is always `8081`. |
 | `KEEPORT_COOKIE_SECURE` | `false` | Set to `true` once KeePort is served over HTTPS (`yes`/`no` also work). |
 | `KEEPORT_TRUSTED_PROXIES` | *(empty: loopback only)* | Reverse proxies whose `X-Forwarded-For` is accepted — `gateway` for a proxy on the same host, or IPs/CIDR networks, comma-separated. See [Trust your reverse proxy](#-trust-your-reverse-proxy). |
