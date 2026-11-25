@@ -1939,12 +1939,13 @@ export default function App() {
                       <TableCell className={canWrite ? 'py-2 ps-1' : 'py-2 ps-3'}>
                         <Button
                           variant="ghost"
-                          className="h-auto max-w-44 items-start gap-2 px-3 py-1.5 text-start sm:max-w-72"
+                          className="group/title h-auto max-w-44 items-start gap-2 px-3 py-1.5 text-start sm:max-w-72"
+                          title={`Open ${entry.title}`}
                           onClick={/** Opens the entry. */ () => openEntry(entry)}
                         >
                           <EntryIcon iconUrl={entry.iconUrl} url={entry.url} showFavicons={showFavicons} className="mt-0.5" />
                           <span className="min-w-0">
-                            <span className="block truncate font-medium">{entry.title}</span>
+                            <span className="block truncate font-medium text-primary underline-offset-4 group-hover/title:underline group-focus-visible/title:underline">{entry.title}</span>
                             <span className="flex min-w-0 items-center gap-1.5 text-xs font-normal text-muted-foreground">
                               {entry.expired && (
                                 <Badge variant="destructive" className="h-4 shrink-0 px-1.5 text-[0.65rem]">Expired</Badge>
