@@ -380,6 +380,42 @@ public class KeePortApiTests : IDisposable
         Assert.Equal(HttpStatusCode.BadRequest, issue.StatusCode);
     }
 
+    /// <summary>
+    /// Checks that an admin password reset signs the user out everywhere, that a rejected password changes nothing, and
+    /// that an admin resetting their own password keeps the current session.
+    /// </summary>
+    [Fact]
+    public async Task Password_Reset_Ends_Sessions_And_Rejected_Reset_Changes_Nothing()
+    {
+        var adminCsrf = await SetupAdminAsync(_admin);
+        var (userId, _) = await CreateUserAsync(_admin, adminCsrf, "alice", "user");
+        await LoginAsync(_user, "alice", "User passphrase 123");
+        Assert.Equal(HttpStatusCode.OK, (await _user.GetAsync("/api/vault/files")).StatusCode);
+
+        // A too short password is rejected before the role change in the same request is applied.
+        using (var rejected = await SendAsync(_admin, HttpMethod.Patch, $"/api/admin/users/{userId}", json: new { role = "admin", password = "short" }, csrf: adminCsrf))
+        {
+            Assert.Equal(HttpStatusCode.BadRequest, rejected.StatusCode);
+        }
+        Assert.Equal(HttpStatusCode.OK, (await _user.GetAsync("/api/vault/files")).StatusCode);
+
+        using (var reset = await SendAsync(_admin, HttpMethod.Patch, $"/api/admin/users/{userId}", json: new { password = "Fresh passphrase 456" }, csrf: adminCsrf))
+        {
+            reset.EnsureSuccessStatusCode();
+            Assert.Equal("user", (await reset.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("role").GetString());
+        }
+        Assert.Equal(HttpStatusCode.Unauthorized, (await _user.GetAsync("/api/vault/files")).StatusCode);
+        await LoginAsync(_user, "alice", "Fresh passphrase 456");
+        Assert.Equal(HttpStatusCode.OK, (await _user.GetAsync("/api/vault/files")).StatusCode);
+
+        var adminId = (await GetJsonAsync(_admin, $"{AdminAuthPath}/me")).GetProperty("id").GetString();
+        using (var own = await SendAsync(_admin, HttpMethod.Patch, $"/api/admin/users/{adminId}", json: new { password = "New admin passphrase 789" }, csrf: adminCsrf))
+        {
+            own.EnsureSuccessStatusCode();
+        }
+        Assert.Equal(HttpStatusCode.OK, (await _admin.GetAsync($"{AdminAuthPath}/me")).StatusCode);
+    }
+
     /// <summary>Checks that first-run setup rejects missing or invalid email without consuming the token.</summary>
     [Fact]
     public async Task Setup_Requires_And_Persists_A_Valid_Email()

@@ -530,6 +530,18 @@ public sealed class KeePortDb : IDisposable
         Execute(connection, "DELETE FROM sessions WHERE token_hash = @tokenHash;", new SqliteParameter("@tokenHash", tokenHash));
     }
 
+    /// <summary>Signs a user out everywhere by removing their sessions, optionally keeping one.</summary>
+    /// <param name="userId">The user account ID.</param>
+    /// <param name="keepSessionId">The ID of a session to keep, e.g. the caller's own, or null to remove all.</param>
+    public void DeleteSessionsForUser(string userId, string? keepSessionId = null)
+    {
+        using var connection = Open();
+        connection.Open();
+        Execute(connection, "DELETE FROM sessions WHERE user_id = @userId AND id IS NOT @keep;",
+            new SqliteParameter("@userId", userId),
+            new SqliteParameter("@keep", (object?)keepSessionId ?? DBNull.Value));
+    }
+
     /// <summary>Looks up a vault by ID, optionally including soft-deleted vaults.</summary>
     /// <param name="id">The vault file ID.</param>
     /// <param name="includeDeleted">Whether to include soft-deleted vaults.</param>

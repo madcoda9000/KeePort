@@ -12,6 +12,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The web vault and the admin console use the canonical Tailwind CSS class names (`wrap-break-word`, `-left-(--sidebar-width)`, `inset-s-1/2`, `w-0.5`) instead of the older spellings. The look does not change.
 - The project plans (`docs/plans`) and the local agent notes (`AGENTS.md`) are no longer part of the repository.
 
+### Fixed
+
+- A change under **Users** that also contained a rejected password (for example one that is too short) used to apply the role and disabled state anyway. Now the whole change is refused and the account stays as it was.
+
+### Security
+
+- When an administrator sets a new password for an account under **Users**, the account is now signed out everywhere: open sessions in the web vault or admin console end at once. Before, they stayed signed in until they expired. An administrator who resets their own password stays signed in in the current browser.
+
 ## [0.14.1] - 2026-11-25
 
 ### Fixed

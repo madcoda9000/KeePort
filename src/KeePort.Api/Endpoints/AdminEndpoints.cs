@@ -208,15 +208,18 @@ public static class AdminEndpoints
                 return Results.Json(new ErrorResponse("last_admin", "The last admin cannot be disabled or demoted."), statusCode: StatusCodes.Status409Conflict);
             }
 
+            // Validate the password before changing anything, so a rejected request leaves the account as it was.
+            if (request.Password is not null && PasswordPolicy.Validate(request.Password, target.Username) is { } passwordError)
+            {
+                return BadRequest("invalid_password", passwordError);
+            }
+
             db.UpdateUserRoleAndDisabled(target.Id, role, disabled);
             if (request.Password is not null)
             {
-                var passwordError = PasswordPolicy.Validate(request.Password, target.Username);
-                if (passwordError is not null)
-                {
-                    return BadRequest("invalid_password", passwordError);
-                }
                 db.UpdateUserPassword(target.Id, hasher.Hash(request.Password));
+                // A reset password signs the account out everywhere; an admin resetting their own keeps this session.
+                db.DeleteSessionsForUser(target.Id, ApiAuth.GetSession(context)?.Id);
             }
 
             var updated = db.GetUserById(target.Id)!;
