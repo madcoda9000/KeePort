@@ -21,7 +21,7 @@
 All paths use the same `docker-compose.yml` and end with the same [first steps in the admin console](#-first-steps-in-the-admin-console).
 
 > [!IMPORTANT]
-> Always install a **release** (for example `v0.7.0`), not the development branch. The latest version is listed on the [Releases page](https://github.com/madcoda9000/KeePort/releases). The examples below use `v0.7.0`.
+> Always install a **release** (for example `v0.7.1`), not the development branch. The latest version is listed on the [Releases page](https://github.com/madcoda9000/KeePort/releases). The examples below use `v0.7.1`.
 
 ## 🧩 How the pieces fit together
 
@@ -98,8 +98,8 @@ ssh your-user@192.168.1.20
 cd /volume1/docker
 
 # Download and unpack the release
-curl -L https://github.com/madcoda9000/KeePort/archive/refs/tags/v0.7.0.tar.gz | tar xz
-mv KeePort-0.7.0 keeport
+curl -L https://github.com/madcoda9000/KeePort/archive/refs/tags/v0.7.1.tar.gz | tar xz
+mv KeePort-0.7.1 keeport
 
 # Data folder outside the app folder, writable by the container user (UID 1000)
 sudo mkdir -p /volume1/docker/keeport-data
@@ -197,8 +197,8 @@ docker start keeport
 ssh admin@192.168.1.30
 cd /share/Container
 
-curl -L https://github.com/madcoda9000/KeePort/archive/refs/tags/v0.7.0.tar.gz | tar xz
-mv KeePort-0.7.0 keeport
+curl -L https://github.com/madcoda9000/KeePort/archive/refs/tags/v0.7.1.tar.gz | tar xz
+mv KeePort-0.7.1 keeport
 
 mkdir -p /share/Container/keeport-data
 chown -R 1000:1000 /share/Container/keeport-data
@@ -254,7 +254,7 @@ Add `Container/keeport-data` to a **Hybrid Backup Sync** job. For a fully consis
 For a home server or VPS with Docker Engine and the Compose v2 plugin.
 
 ```bash
-git clone --branch v0.7.0 https://github.com/madcoda9000/KeePort.git
+git clone --branch v0.7.1 https://github.com/madcoda9000/KeePort.git
 cd KeePort
 cp .env.example .env
 docker compose up -d --build
