@@ -1647,7 +1647,7 @@ export default function App() {
               <div className="text-xs font-medium tracking-widest text-muted-foreground uppercase">
                 {selectedFile ? 'Vault file' : 'Workspace'}
               </div>
-              <h1 className="text-2xl font-semibold tracking-tight break-words sm:text-3xl">
+              <h1 className="text-2xl font-semibold tracking-tight wrap-break-word sm:text-3xl">
                 {selectedFile?.name ?? 'Your vaults'}
               </h1>
               <p className="text-sm text-muted-foreground">
@@ -1765,8 +1765,8 @@ export default function App() {
                 <CardHeader className="gap-4 border-b py-5">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0 space-y-1">
-                      <CardTitle className="break-words">{securityView ? 'Security report' : tagView ? `Tag: ${tagView}` : expiredView ? 'Expired entries' : currentFolder ? currentFolder.name : 'All entries'}</CardTitle>
-                      <CardDescription className="break-words">
+                      <CardTitle className="wrap-break-word">{securityView ? 'Security report' : tagView ? `Tag: ${tagView}` : expiredView ? 'Expired entries' : currentFolder ? currentFolder.name : 'All entries'}</CardTitle>
+                      <CardDescription className="wrap-break-word">
                         {securityView
                           ? 'Checked in this browser only; nothing is sent or stored. Select a check to see its entries.'
                           : tagView
@@ -2097,7 +2097,7 @@ export default function App() {
                 {edits && (
                   <SheetContent className="w-full gap-0 overflow-y-auto sm:max-w-xl">
                     <SheetHeader className="border-b p-6 pe-12">
-                      <SheetTitle className="flex items-center gap-2 break-words">
+                      <SheetTitle className="flex items-center gap-2 wrap-break-word">
                         {selectedEntry && <EntryIcon iconUrl={selectedEntry.iconUrl} url={selectedEntry.url} showFavicons={showFavicons} className="size-5" />}
                         {selectedEntry ? selectedEntry.title : draftTemplate ? `New ${draftTemplate.title}` : 'New entry'}
                       </SheetTitle>

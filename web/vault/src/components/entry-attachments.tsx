@@ -56,7 +56,7 @@ export function EntryAttachments({ draft, canWrite, disabled, onChange, onError 
            */ ([name, attachment]) => (
             <li key={name} className="flex min-w-0 items-center gap-2 py-2">
               <div className="min-w-0 flex-1">
-                <p className="break-words text-sm font-medium">{name}</p>
+                <p className="wrap-break-word text-sm font-medium">{name}</p>
                 <p className="text-xs text-muted-foreground">{attachmentSize(attachment).toLocaleString()} bytes</p>
               </div>
               <Button

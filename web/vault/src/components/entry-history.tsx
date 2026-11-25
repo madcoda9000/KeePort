@@ -73,7 +73,7 @@ function VersionField({
     <div className="grid gap-0.5 sm:grid-cols-[8rem_1fr] sm:gap-3">
       <dt className="text-xs text-muted-foreground sm:pt-1.5">{label}</dt>
       <dd className="flex min-w-0 items-start gap-1">
-        <span className={cn('min-w-0 flex-1 py-1 text-sm break-words whitespace-pre-wrap', protect && 'font-mono')}>
+        <span className={cn('min-w-0 flex-1 py-1 text-sm wrap-break-word whitespace-pre-wrap', protect && 'font-mono')}>
           {protect && !shown ? '••••••••' : value}
         </span>
         {protect && (

@@ -72,7 +72,7 @@ function Fact({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="grid gap-0.5 sm:grid-cols-[10rem_1fr] sm:gap-3">
       <dt className="text-sm text-muted-foreground">{label}</dt>
-      <dd className="min-w-0 text-sm break-words">{children}</dd>
+      <dd className="min-w-0 text-sm wrap-break-word">{children}</dd>
     </div>
   );
 }
