@@ -392,6 +392,8 @@ Several entries are separated by commas and can be combined with `gateway`; netw
 4. **Permissions** on each vault → `Read only` or `Read and write` per user.
 5. **WebDAV credentials** → one app password per device (for example "Pixel 8" or "iPhone").
 
+After signing in, the admin console opens on the **Dashboard**. It shows whether KeePort runs, its version and uptime, the container's addresses and ports, the admin certificate, where the data is stored, the number of vaults, accounts and conflict copies, successful and failed sign-ins of the last 24 hours and 7 days, and WebDAV activity. A **Needs attention** box lists what to look at, such as conflict copies, data outside a host folder or failed admin sign-ins. KeePort only counts sign-ins and keeps the counts for 30 days. It stores no names or IP addresses. Docker's own status is not visible from inside the container. Use an external monitor if you need to know when the whole container is down.
+
 Users now sign in to the web vault with their account and unlock vaults with the vault's master password, which never leaves the browser.
 
 ## 📱 Connect KeePass apps

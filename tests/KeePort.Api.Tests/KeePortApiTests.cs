@@ -508,6 +508,127 @@ public class KeePortApiTests : IDisposable
         Assert.Equal("legacy@example.test", db.GetUserById(account.Id)?.Email);
     }
 
+    /// <summary>Verifies the dashboard totals, the sign-in counters and that only administrators get the data.</summary>
+    [Fact]
+    public async Task Dashboard_Reports_Totals_And_Sign_Ins_To_Admins_Only()
+    {
+        using (var anonymous = await _user.GetAsync("/api/admin/dashboard"))
+        {
+            Assert.Equal(HttpStatusCode.Unauthorized, anonymous.StatusCode);
+        }
+
+        var adminCsrf = await SetupAdminAsync(_admin);
+        var (aliceId, _) = await CreateUserAsync(_admin, adminCsrf, "alice", "user");
+        var (bobId, _) = await CreateUserAsync(_admin, adminCsrf, "bob", "user");
+        using (var disable = await SendAsync(_admin, HttpMethod.Patch, $"/api/admin/users/{bobId}", json: new { disabled = true }, csrf: adminCsrf))
+        {
+            disable.EnsureSuccessStatusCode();
+        }
+        var shared = await UploadVaultAsync(_admin, adminCsrf, "shared.kdbx", "one");
+        var removed = await UploadVaultAsync(_admin, adminCsrf, "removed.kdbx", "one");
+        using (var delete = await SendAsync(_admin, HttpMethod.Delete, $"/api/admin/files/{removed.Id}", csrf: adminCsrf))
+        {
+            delete.EnsureSuccessStatusCode();
+        }
+        await SetPermissionsAsync(_admin, adminCsrf, shared.Id, aliceId, "read-write");
+        await CreateWebDavCredentialAsync(_admin, adminCsrf, aliceId);
+
+        // Sign-ins: one rejected and one successful in the vault, one rejected in the admin console.
+        using (var wrong = await _user.PostAsJsonAsync("/api/auth/login", new { username = "alice", password = "wrong password" }))
+        {
+            Assert.Equal(HttpStatusCode.Unauthorized, wrong.StatusCode);
+        }
+        var (csrf, _) = await LoginAsync(_user, "alice", "User passphrase 123");
+        using (var wrongAdmin = await _admin.PostAsJsonAsync($"{AdminAuthPath}/login", new { username = "admin", password = "wrong password" }))
+        {
+            Assert.Equal(HttpStatusCode.Unauthorized, wrongAdmin.StatusCode);
+        }
+
+        // A stale write creates a conflict copy.
+        using var read = await SendAsync(_user, HttpMethod.Get, $"/api/vault/files/{shared.Id}/content");
+        var etag = read.Headers.GetValues("ETag").Single();
+        using (var write = await SendAsync(_user, HttpMethod.Put, $"/api/vault/files/{shared.Id}/content", bytes: KdbxBytes("two"), csrf: csrf, etag: etag))
+        {
+            write.EnsureSuccessStatusCode();
+        }
+        using (var stale = await SendAsync(_user, HttpMethod.Put, $"/api/vault/files/{shared.Id}/content", bytes: KdbxBytes("three"), csrf: csrf, etag: etag))
+        {
+            Assert.Equal(HttpStatusCode.Conflict, stale.StatusCode);
+        }
+
+        using (var forbidden = await _user.GetAsync("/api/admin/dashboard"))
+        {
+            Assert.NotEqual(HttpStatusCode.OK, forbidden.StatusCode);
+        }
+
+        using (var prompt = await SendAsync(_user, HttpMethod.Get, "/webdav/shared.kdbx"))
+        {
+            Assert.Equal(HttpStatusCode.Unauthorized, prompt.StatusCode);
+        }
+
+        var dashboard = await GetJsonAsync(_admin, "/api/admin/dashboard");
+        Assert.Empty(dashboard.GetProperty("errors").EnumerateArray());
+        var counts = dashboard.GetProperty("counts");
+        Assert.Equal(1, counts.GetProperty("vaults").GetInt64());
+        Assert.Equal(1, counts.GetProperty("deletedVaults").GetInt64());
+        Assert.Equal(1, counts.GetProperty("conflictCopies").GetInt64());
+        Assert.Equal(2, counts.GetProperty("users").GetInt64());
+        Assert.Equal(1, counts.GetProperty("disabledUsers").GetInt64());
+        Assert.Equal(1, counts.GetProperty("admins").GetInt64());
+        Assert.Equal(0, counts.GetProperty("disabledAdmins").GetInt64());
+        Assert.Equal(1, counts.GetProperty("activeWebDavCredentials").GetInt64());
+        // The unauthenticated WebDAV request is a normal 401 sign-in prompt and not counted as an error.
+        Assert.True(counts.GetProperty("webDavRequestsLast24Hours").GetInt64() >= 1);
+        Assert.Equal(0, counts.GetProperty("webDavErrorsLast24Hours").GetInt64());
+
+        var logins = dashboard.GetProperty("logins");
+        Assert.Equal(1, logins.GetProperty("vaultLast24Hours").GetProperty("success").GetInt64());
+        Assert.Equal(1, logins.GetProperty("vaultLast24Hours").GetProperty("failure").GetInt64());
+        Assert.Equal(1, logins.GetProperty("vaultLast7Days").GetProperty("failure").GetInt64());
+        // The setup creates a session without a sign-in, so only the rejected admin sign-in is counted.
+        Assert.Equal(0, logins.GetProperty("adminLast24Hours").GetProperty("success").GetInt64());
+        Assert.Equal(1, logins.GetProperty("adminLast24Hours").GetProperty("failure").GetInt64());
+
+        var server = dashboard.GetProperty("server");
+        Assert.False(string.IsNullOrWhiteSpace(server.GetProperty("version").GetString()));
+        Assert.True(server.GetProperty("uptimeSeconds").GetInt64() >= 0);
+        Assert.DoesNotContain("password", dashboard.GetRawText(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>Verifies the 24-hour and 7-day windows of the sign-in counters, their retention and that they survive a restart.</summary>
+    [Fact]
+    public void Login_Counters_Use_Hourly_Windows_And_Expire_After_30_Days()
+    {
+        var dir = Path.Combine(_dataDir, "login-counters");
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["KeePort:DataDir"] = dir }).Build();
+        var now = new DateTimeOffset(2026, 11, 25, 12, 30, 0, TimeSpan.Zero);
+        using (var db = new KeePortDb(configuration))
+        {
+            db.Initialize();
+            db.RecordLogin(LoginChannel.Vault, success: true, now);
+            db.RecordLogin(LoginChannel.Vault, success: true, now.AddHours(-23)); // oldest hour still in the 24-hour window
+            db.RecordLogin(LoginChannel.Vault, success: false, now.AddHours(-24)); // only in the 7-day window
+            db.RecordLogin(LoginChannel.Admin, success: false, now.AddHours(-167)); // oldest hour of the 7-day window
+            db.RecordLogin(LoginChannel.Admin, success: false, now.AddHours(-168)); // outside both windows
+        }
+
+        using (var restarted = new KeePortDb(configuration))
+        {
+            restarted.Initialize();
+            var stats = restarted.GetLoginStats(now);
+            Assert.Equal(new LoginCounts(2, 0), stats.VaultLast24Hours);
+            Assert.Equal(new LoginCounts(2, 1), stats.VaultLast7Days);
+            Assert.Equal(new LoginCounts(0, 0), stats.AdminLast24Hours);
+            Assert.Equal(new LoginCounts(0, 1), stats.AdminLast7Days);
+
+            // A sign-in 31 days later removes buckets older than the 30-day retention.
+            restarted.RecordLogin(LoginChannel.Vault, success: true, now.AddDays(31));
+            var later = restarted.GetLoginStats(now);
+            Assert.Equal(new LoginCounts(0, 0), later.VaultLast7Days);
+            Assert.Equal(new LoginCounts(0, 0), later.AdminLast7Days);
+        }
+    }
+
     /// <summary>Completes first-run setup and returns the administrator's CSRF token.</summary>
     /// <param name="client">The test client connected to the Admin API.</param>
     private async Task<string> SetupAdminAsync(HttpClient client)

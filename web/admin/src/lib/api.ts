@@ -45,6 +45,54 @@ export interface DataStorage {
   needsAttention: boolean;
 }
 
+export interface LoginCounts {
+  success: number;
+  failure: number;
+}
+
+export interface DashboardData {
+  generatedAt: string;
+  server: {
+    version: string;
+    commit: string | null;
+    runtime: string;
+    operatingSystem: string;
+    inDocker: boolean;
+    startedAt: string;
+    uptimeSeconds: number;
+    addresses: string[];
+    vaultPorts: number[];
+    adminPorts: number[];
+    adminHttps: boolean;
+    adminCertificateFingerprint: string | null;
+    adminCertificateNotAfter: string | null;
+    trustedProxies: string;
+  };
+  storage: DataStorage;
+  counts: {
+    vaults: number;
+    deletedVaults: number;
+    conflictCopies: number;
+    users: number;
+    disabledUsers: number;
+    admins: number;
+    disabledAdmins: number;
+    activeWebDavCredentials: number;
+    webDavRequestsLast24Hours: number;
+    webDavErrorsLast24Hours: number;
+    webDavStaleWritesLast24Hours: number;
+    lastWebDavRequestAt: string | null;
+  } | null;
+  logins: {
+    since: string;
+    adminLast24Hours: LoginCounts;
+    adminLast7Days: LoginCounts;
+    vaultLast24Hours: LoginCounts;
+    vaultLast7Days: LoginCounts;
+  } | null;
+  errors: string[];
+}
+
 export interface WebDavRequestLogEntry {
   id: number;
   occurredAt: string;
@@ -334,6 +382,14 @@ export const api = {
    */
   async revokeWebDavCredential(id: string) {
     await request<void>(`/api/admin/webdav-credentials/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  },
+
+  /**
+   * Loads the admin dashboard: server status, data storage, totals and sign-in counts.
+   * @param signal - An optional signal that aborts the request when the caller no longer needs it.
+   */
+  async getDashboard(signal?: AbortSignal) {
+    return request<DashboardData>('/api/admin/dashboard', { signal });
   },
 
   /**

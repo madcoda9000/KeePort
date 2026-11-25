@@ -7,6 +7,7 @@ import {
   DatabaseIcon,
   DownloadIcon,
   KeyRoundIcon,
+  LayoutDashboardIcon,
   LogOutIcon,
   ScrollTextIcon,
   MoonIcon,
@@ -20,6 +21,7 @@ import {
 } from 'lucide-react';
 import { AdminProfile } from '@/components/admin-profile';
 import { AuthLayout } from '@/components/auth-layout';
+import { DashboardPanel } from '@/components/dashboard';
 import { DataStorageBanner, DataStoragePanel } from '@/components/data-storage';
 import { RateLimitSettingsPanel } from '@/components/rate-limit-settings';
 import { WebDavLogsPanel } from '@/components/webdav-logs';
@@ -76,10 +78,15 @@ import { DataTable, type TableColumn } from '@shared/data-table';
 import { matchesTableSearch, timestampSortValue } from '@shared/table-data';
 
 type Message = { kind: 'notice' | 'error'; text: string } | null;
-type Tab = 'vaults' | 'users' | 'webdav' | 'settings' | 'webdav-logs';
+type Tab = 'dashboard' | 'vaults' | 'users' | 'webdav' | 'settings' | 'webdav-logs';
 type PermissionValue = 'none' | 'read' | 'read-write';
 
 const ADMIN_SECTIONS = {
+  dashboard: {
+    title: 'Dashboard',
+    description: 'Status, version, storage and activity of this KeePort instance at a glance.',
+    icon: LayoutDashboardIcon
+  },
   vaults: {
     title: 'Vault files',
     description: 'Create or upload KDBX files and manage who can access them.',
@@ -104,7 +111,7 @@ const ADMIN_SECTIONS = {
 } as const;
 
 /** Sections listed directly under "Manage" in the navigation. */
-const MANAGE_TABS: readonly Tab[] = ['vaults', 'users', 'webdav', 'settings'];
+const MANAGE_TABS: readonly Tab[] = ['dashboard', 'vaults', 'users', 'webdav', 'settings'];
 /** Sections listed below the "Logs" navigation entry; the first one opens when "Logs" is selected. */
 const LOG_TABS: readonly Tab[] = ['webdav-logs'];
 
@@ -670,7 +677,7 @@ export default function App() {
   const [ready, setReady] = useState(false);
   const [setupRequired, setSetupRequired] = useState(false);
   const [user, setUser] = useState<User | null>(null);
-  const [tab, setTab] = useState<Tab>('vaults');
+  const [tab, setTab] = useState<Tab>('dashboard');
   const [users, setUsers] = useState<User[]>([]);
   const [files, setFiles] = useState<AdminFile[]>([]);
   const [includeDeleted, setIncludeDeleted] = useState(false);
@@ -780,6 +787,7 @@ export default function App() {
    * @param result - The successful setup or login result containing the administrator account.
    */
   async function afterAuth(result: { user: User }) {
+    setTab('dashboard');
     setUser(result.user);
     setSetupRequired(false);
     await refreshAll();
@@ -1138,6 +1146,19 @@ export default function App() {
           )}
 
           {tab === 'webdav-logs' && <WebDavLogsPanel />}
+
+          {tab === 'dashboard' && (
+            <DashboardPanel
+              onNavigate={/**
+               * Opens the admin section a dashboard card links to.
+               * @param target - The section to open.
+               */ (target) => {
+                setTab(target);
+                setPermFile(null);
+                setMessage(null);
+              }}
+            />
+          )}
 
           {tab === 'vaults' && (
             <>

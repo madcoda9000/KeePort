@@ -126,9 +126,11 @@ public static class AuthEndpoints
             var user = db.GetUserByUsername(request.Username ?? string.Empty);
             if (user is null || user.Role != role || user.Disabled || !hasher.Verify(request.Password ?? string.Empty, user.PasswordHash))
             {
+                CountLogin(db, context, role, success: false);
                 return Results.Json(new ErrorResponse("invalid_credentials", "Invalid username or password."), statusCode: StatusCodes.Status401Unauthorized);
             }
 
+            CountLogin(db, context, role, success: true);
             db.UpdateLastLogin(user.Id, DateTimeOffset.UtcNow);
             var (_, token, csrfToken) = sessions.CreateSession(user, context);
             sessions.SetSessionCookie(context, token, role, ConfigFlags.CookieSecure(configuration) || context.Request.IsHttps);
@@ -227,6 +229,25 @@ public static class AuthEndpoints
     internal static UserDto ToDto(UserRecord user)
     {
         return new UserDto(user.Id, user.Username, user.Role.ToString().ToLowerInvariant(), user.Disabled, user.CreatedAt, user.LastLoginAt, user.AutoLockMinutes, user.Email);
+    }
+
+    /// <summary>
+    /// Counts a sign-in for the admin dashboard. A failure to count is logged and never changes the sign-in result.
+    /// </summary>
+    /// <param name="db">The SQLite store for KeePort metadata.</param>
+    /// <param name="context">The current HTTP request, used for logging.</param>
+    /// <param name="role">The role of the sign-in endpoint: Admin for the admin console, User for the web vault.</param>
+    /// <param name="success">Whether the sign-in succeeded.</param>
+    private static void CountLogin(KeePortDb db, HttpContext context, UserRole role, bool success)
+    {
+        try
+        {
+            db.RecordLogin(role == UserRole.Admin ? LoginChannel.Admin : LoginChannel.Vault, success, DateTimeOffset.UtcNow);
+        }
+        catch (Exception ex) when (ex is Microsoft.Data.Sqlite.SqliteException or IOException or InvalidOperationException)
+        {
+            context.RequestServices.GetService<ILoggerFactory>()?.CreateLogger("KeePort.Api").LogWarning(ex, "Could not count a sign-in for the dashboard.");
+        }
     }
 
     /// <summary>Compares two UTF-8 token values using constant-time byte comparison.</summary>

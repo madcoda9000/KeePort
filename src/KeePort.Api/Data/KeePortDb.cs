@@ -137,6 +137,14 @@ public sealed class KeePortDb : IDisposable
                 destination TEXT NULL,
                 overwrite TEXT NULL
             );
+
+            CREATE TABLE IF NOT EXISTS login_counters (
+                bucket TEXT NOT NULL,
+                channel TEXT NOT NULL CHECK (channel IN ('admin', 'vault')),
+                outcome TEXT NOT NULL CHECK (outcome IN ('success', 'failure')),
+                count INTEGER NOT NULL,
+                PRIMARY KEY (bucket, channel, outcome)
+            );
             """);
 
         Execute(connection, """
@@ -147,6 +155,8 @@ public sealed class KeePortDb : IDisposable
 
         EnsureColumn("users", "auto_lock_minutes", "INTEGER NULL");
         EnsureColumn("users", "email", "TEXT NULL");
+        Execute(connection, "INSERT INTO app_state (key, value) VALUES ('login_stats_since', @now) ON CONFLICT(key) DO NOTHING;",
+            new SqliteParameter("@now", DateTimeOffset.UtcNow.ToString("O")));
         EnsureSetupToken();
     }
 
@@ -961,6 +971,129 @@ public sealed class KeePortDb : IDisposable
                 reader.IsDBNull(12) ? null : reader.GetString(12)));
         }
         return entries;
+    }
+
+    /// <summary>How long hourly sign-in counters are kept.</summary>
+    public static readonly TimeSpan LoginCounterRetention = TimeSpan.FromDays(30);
+
+    /// <summary>Returns the hourly UTC bucket key of a point in time, e.g. 2026-11-25T07.</summary>
+    /// <param name="time">The point in time.</param>
+    public static string LoginBucket(DateTimeOffset time)
+        => time.UtcDateTime.ToString("yyyy-MM-dd'T'HH", System.Globalization.CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// Counts one sign-in attempt in the hourly bucket of its channel and outcome and removes buckets older than the
+    /// retention. Only the count is stored: no user name, IP address or other personal data.
+    /// </summary>
+    /// <param name="channel">The admin console or the web vault.</param>
+    /// <param name="success">Whether the sign-in created a session.</param>
+    /// <param name="now">The time of the attempt.</param>
+    public void RecordLogin(LoginChannel channel, bool success, DateTimeOffset now)
+    {
+        using var connection = Open();
+        connection.Open();
+        using var transaction = connection.BeginTransaction();
+        Execute(connection, transaction, """
+            INSERT INTO login_counters (bucket, channel, outcome, count) VALUES (@bucket, @channel, @outcome, 1)
+            ON CONFLICT(bucket, channel, outcome) DO UPDATE SET count = count + 1;
+            """,
+            new SqliteParameter("@bucket", LoginBucket(now)),
+            new SqliteParameter("@channel", channel == LoginChannel.Admin ? "admin" : "vault"),
+            new SqliteParameter("@outcome", success ? "success" : "failure"));
+        Execute(connection, transaction, "DELETE FROM login_counters WHERE bucket < @cutoff;",
+            new SqliteParameter("@cutoff", LoginBucket(now - LoginCounterRetention)));
+        transaction.Commit();
+    }
+
+    /// <summary>
+    /// Sums the sign-in counters for the last 24 hours (the current hour and the 23 before it) and the last 7 days
+    /// (the current hour and the 167 before it).
+    /// </summary>
+    /// <param name="now">The current time.</param>
+    public LoginStatsDto GetLoginStats(DateTimeOffset now)
+    {
+        using var connection = Open();
+        connection.Open();
+        var since = DateTimeOffset.UtcNow;
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText = "SELECT value FROM app_state WHERE key = 'login_stats_since';";
+            if (command.ExecuteScalar() is string value)
+            {
+                since = ParseDate(value);
+            }
+        }
+
+        /* Sums one channel's counters from a first bucket on.
+         * <param name="channel">The channel key, admin or vault.</param>
+         * <param name="from">The first bucket to include.</param>
+         */
+        LoginCounts Sum(string channel, string from)
+        {
+            using var command = connection.CreateCommand();
+            command.CommandText = """
+                SELECT
+                    COALESCE(SUM(CASE WHEN outcome = 'success' THEN count END), 0),
+                    COALESCE(SUM(CASE WHEN outcome = 'failure' THEN count END), 0)
+                FROM login_counters WHERE channel = @channel AND bucket >= @from AND bucket <= @to;
+                """;
+            command.Parameters.AddWithValue("@channel", channel);
+            command.Parameters.AddWithValue("@from", from);
+            command.Parameters.AddWithValue("@to", LoginBucket(now));
+            using var reader = command.ExecuteReader();
+            reader.Read();
+            return new LoginCounts(reader.GetInt64(0), reader.GetInt64(1));
+        }
+
+        var day = LoginBucket(now - TimeSpan.FromHours(23));
+        var week = LoginBucket(now - TimeSpan.FromHours(167));
+        return new LoginStatsDto(since, Sum("admin", day), Sum("admin", week), Sum("vault", day), Sum("vault", week));
+    }
+
+    /// <summary>Reads the vault, account and WebDAV totals for the admin dashboard with aggregate queries.</summary>
+    /// <param name="now">The current time, used for the 24-hour WebDAV window.</param>
+    public DashboardCountsDto GetDashboardCounts(DateTimeOffset now)
+    {
+        using var connection = Open();
+        connection.Open();
+
+        /* Runs one aggregate query that returns a single number.
+         * <param name="sql">The query.</param>
+         */
+        long Count(string sql)
+        {
+            using var command = connection.CreateCommand();
+            command.CommandText = sql;
+            command.Parameters.AddWithValue("@since", (now - TimeSpan.FromHours(24)).ToUniversalTime().ToString("O"));
+            return Convert.ToInt64(command.ExecuteScalar() ?? 0L);
+        }
+
+        // Conflict copies are vault files named "<name>.conflict-<time>-<client>-<id>.kdbx" (VaultService.ConflictCopyName).
+        const string conflict = "name LIKE '%.conflict-%'";
+        DateTimeOffset? lastRequest = null;
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText = "SELECT occurred_at FROM webdav_request_log ORDER BY id DESC LIMIT 1;";
+            if (command.ExecuteScalar() is string value)
+            {
+                lastRequest = ParseDate(value);
+            }
+        }
+
+        return new DashboardCountsDto(
+            Vaults: Count($"SELECT COUNT(*) FROM vault_files WHERE deleted_at IS NULL AND NOT {conflict};"),
+            DeletedVaults: Count("SELECT COUNT(*) FROM vault_files WHERE deleted_at IS NOT NULL;"),
+            ConflictCopies: Count($"SELECT COUNT(*) FROM vault_files WHERE deleted_at IS NULL AND {conflict};"),
+            Users: Count("SELECT COUNT(*) FROM users WHERE role = 'User';"),
+            DisabledUsers: Count("SELECT COUNT(*) FROM users WHERE role = 'User' AND disabled <> 0;"),
+            Admins: Count("SELECT COUNT(*) FROM users WHERE role = 'Admin';"),
+            DisabledAdmins: Count("SELECT COUNT(*) FROM users WHERE role = 'Admin' AND disabled <> 0;"),
+            ActiveWebDavCredentials: Count("SELECT COUNT(*) FROM webdav_credentials WHERE revoked_at IS NULL;"),
+            WebDavRequestsLast24Hours: Count("SELECT COUNT(*) FROM webdav_request_log WHERE occurred_at >= @since;"),
+            // 401 is the normal sign-in prompt of Basic authentication that every KeePass app receives first, not an error.
+            WebDavErrorsLast24Hours: Count("SELECT COUNT(*) FROM webdav_request_log WHERE occurred_at >= @since AND status >= 400 AND status <> 401;"),
+            WebDavStaleWritesLast24Hours: Count("SELECT COUNT(*) FROM webdav_request_log WHERE occurred_at >= @since AND status = 412;"),
+            LastWebDavRequestAt: lastRequest);
     }
 
     /// <summary>Checks whether a WebDAV username is already in use.</summary>

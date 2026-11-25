@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.0] - 2026-11-25
+
+### Added
+
+- **Admin dashboard.** The admin console now opens on a dashboard that shows at a glance:
+  - Whether KeePort runs, plus its uptime, version, .NET and operating system.
+  - The container's IP addresses and ports, admin HTTPS with the certificate's fingerprint and expiry, and the trusted proxies.
+  - Where the data is stored.
+  - The number of vaults, deleted vaults and conflict copies, and of user and admin accounts (with disabled ones) and active WebDAV app passwords.
+  - Successful and failed sign-ins to the admin console and the web vault in the last 24 hours and 7 days.
+  - WebDAV requests, errors and rejected outdated saves in the last 24 hours.
+  - A "Needs attention" box points to conflict copies, data outside a host folder, an expiring admin certificate and failed admin sign-ins.
+  - Values that could not be read show "Not available", never zero.
+- KeePort counts sign-ins per hour. It stores no names, IP addresses or passwords and keeps the counts for 30 days. Rate-limited requests are not counted.
+- `GET /api/admin/dashboard` provides the data to administrators.
+
 ## [0.9.0] - 2026-11-25
 
 ### Added
@@ -218,6 +234,7 @@ First beta release.
 - Login and setup share a configurable per-IP rate limit; session checks and sign-out are exempt. WebDAV has a separate configurable limit applied before authentication.
 - Admin accounts can only sign in to the Admin console; Vault and WebDAV require a separate user account. Admin sessions are scoped to the Admin API, so existing admins need to sign in again after updating.
 
+[0.10.0]: https://github.com/madcoda9000/KeePort/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/madcoda9000/KeePort/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/madcoda9000/KeePort/compare/v0.7.2...v0.8.0
 [0.7.2]: https://github.com/madcoda9000/KeePort/compare/v0.7.1...v0.7.2

@@ -46,6 +46,55 @@ public static class AdminEndpoints
                 storage.NeedsAttention));
         });
 
+        // Collects the admin dashboard: process information, data storage, totals and sign-in counts. Parts that cannot be
+        // read are returned as null and named in "errors", so the console never shows them as zero.
+        // <param name="context">The current HTTP request and response context.</param>
+        // <param name="db">The SQLite store for KeePort metadata.</param>
+        // <param name="server">The process information collected at startup.</param>
+        // <param name="storage">The data storage detected at startup.</param>
+        // <param name="logger">The logger for read failures.</param>
+        group.MapGet("/dashboard", (HttpContext context, KeePortDb db, ServerInfo server, DataStorageInfo storage, ILogger<ServerInfo> logger) =>
+        {
+            if (ApiAuth.RequireAdmin(context) is { } forbidden)
+            {
+                return forbidden;
+            }
+            var now = DateTimeOffset.UtcNow;
+            var errors = new List<string>();
+            DashboardCountsDto? counts = null;
+            LoginStatsDto? logins = null;
+            try
+            {
+                counts = db.GetDashboardCounts(now);
+            }
+            catch (Exception ex) when (ex is Microsoft.Data.Sqlite.SqliteException or IOException or InvalidOperationException)
+            {
+                logger.LogWarning(ex, "Could not read the dashboard totals.");
+                errors.Add("Vault, account and WebDAV totals could not be read from the database.");
+            }
+            try
+            {
+                logins = db.GetLoginStats(now);
+            }
+            catch (Exception ex) when (ex is Microsoft.Data.Sqlite.SqliteException or IOException or InvalidOperationException)
+            {
+                logger.LogWarning(ex, "Could not read the sign-in counters.");
+                errors.Add("Sign-in counts could not be read from the database.");
+            }
+            return Results.Ok(new DashboardDto(
+                now,
+                server.ToDto(now),
+                new DataStorageDto(
+                    JsonNamingPolicy.CamelCase.ConvertName(storage.Kind.ToString()),
+                    storage.DataDir,
+                    storage.Source,
+                    storage.VolumeName,
+                    storage.NeedsAttention),
+                counts,
+                logins,
+                errors));
+        });
+
         // Validates the limits, persists both values, and activates the changed policies.
         // <param name="request">The configured login/setup and WebDAV request limits.</param>
         // <param name="context">The current HTTP request and response context.</param>

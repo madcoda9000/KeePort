@@ -123,6 +123,16 @@ catch (TrustedProxyConfigurationException ex)
     throw;
 }
 
+builder.Services.AddSingleton(new ServerInfo(
+    DateTimeOffset.UtcNow,
+    inDocker: File.Exists("/.dockerenv"),
+    listenerUrls,
+    adminPorts,
+    adminHttps: adminCertificate is not null,
+    adminCertificate is null ? null : AdminTls.Fingerprint(adminCertificate),
+    adminCertificate is null ? null : new DateTimeOffset(adminCertificate.NotAfter.ToUniversalTime(), TimeSpan.Zero),
+    trustedProxies.Describe()));
+
 try
 {
     _ = ConfigFlags.CookieSecure(builder.Configuration);

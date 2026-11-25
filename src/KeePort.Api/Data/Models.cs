@@ -243,3 +243,103 @@ public sealed record DataStorageDto(string Kind, string DataDir, string? Source,
 /// <param name="Message">Optional human-readable detail about the error.</param>
 /// <param name="CurrentETag">The current file entity tag, if known.</param>
 public sealed record ErrorResponse(string Error, string? Message = null, string? CurrentETag = null);
+
+/// <summary>The channel a sign-in was made through, for the sign-in counters.</summary>
+public enum LoginChannel
+{
+    /// <summary>The admin console.</summary>
+    Admin,
+    /// <summary>The web vault.</summary>
+    Vault
+}
+
+/// <summary>Successful and rejected sign-ins of one channel in one time window.</summary>
+/// <param name="Success">Sign-ins that created a session.</param>
+/// <param name="Failure">Sign-ins rejected by the handler (wrong credentials, disabled account or wrong role); rate-limited requests are not included.</param>
+public sealed record LoginCounts(long Success, long Failure);
+
+/// <summary>Sign-in counts per channel for the last 24 hours and the last 7 days.</summary>
+/// <param name="Since">When KeePort started counting sign-ins; earlier sign-ins are not included.</param>
+/// <param name="AdminLast24Hours">Admin console sign-ins in the last 24 hours.</param>
+/// <param name="AdminLast7Days">Admin console sign-ins in the last 7 days.</param>
+/// <param name="VaultLast24Hours">Web vault sign-ins in the last 24 hours.</param>
+/// <param name="VaultLast7Days">Web vault sign-ins in the last 7 days.</param>
+public sealed record LoginStatsDto(
+    DateTimeOffset Since,
+    LoginCounts AdminLast24Hours,
+    LoginCounts AdminLast7Days,
+    LoginCounts VaultLast24Hours,
+    LoginCounts VaultLast7Days);
+
+/// <summary>Vault, account and WebDAV totals read with aggregate queries.</summary>
+/// <param name="Vaults">Vault files that are not deleted, without conflict copies.</param>
+/// <param name="DeletedVaults">Soft-deleted vault files that can still be restored.</param>
+/// <param name="ConflictCopies">Conflict copies that are not deleted and wait for an administrator.</param>
+/// <param name="Users">All vault user accounts.</param>
+/// <param name="DisabledUsers">Disabled vault user accounts.</param>
+/// <param name="Admins">All administrator accounts.</param>
+/// <param name="DisabledAdmins">Disabled administrator accounts.</param>
+/// <param name="ActiveWebDavCredentials">WebDAV app passwords that are not revoked.</param>
+/// <param name="WebDavRequestsLast24Hours">WebDAV requests in the last 24 hours, from the retained request log.</param>
+/// <param name="WebDavErrorsLast24Hours">WebDAV requests answered with a status of 400 or higher in the last 24 hours, without 401 sign-in prompts.</param>
+/// <param name="WebDavStaleWritesLast24Hours">WebDAV writes rejected as outdated (412) in the last 24 hours.</param>
+/// <param name="LastWebDavRequestAt">When the last WebDAV request arrived, if any is logged.</param>
+public sealed record DashboardCountsDto(
+    long Vaults,
+    long DeletedVaults,
+    long ConflictCopies,
+    long Users,
+    long DisabledUsers,
+    long Admins,
+    long DisabledAdmins,
+    long ActiveWebDavCredentials,
+    long WebDavRequestsLast24Hours,
+    long WebDavErrorsLast24Hours,
+    long WebDavStaleWritesLast24Hours,
+    DateTimeOffset? LastWebDavRequestAt);
+
+/// <summary>Information about the running KeePort process for the admin dashboard.</summary>
+/// <param name="Version">The KeePort version from the build metadata.</param>
+/// <param name="Commit">The build commit, if it was recorded at build time.</param>
+/// <param name="Runtime">The .NET runtime description.</param>
+/// <param name="OperatingSystem">The operating system and process architecture.</param>
+/// <param name="InDocker">Whether KeePort runs in a Docker container.</param>
+/// <param name="StartedAt">When the process started.</param>
+/// <param name="UptimeSeconds">How long the process has been running.</param>
+/// <param name="Addresses">The IP addresses of the instance; inside Docker these are container addresses.</param>
+/// <param name="VaultPorts">The ports the web vault and WebDAV listen on (inside the container when in Docker).</param>
+/// <param name="AdminPorts">The ports the admin console listens on (inside the container when in Docker).</param>
+/// <param name="AdminHttps">Whether the admin console uses HTTPS.</param>
+/// <param name="AdminCertificateFingerprint">The SHA-256 fingerprint of the self-signed admin certificate, if used.</param>
+/// <param name="AdminCertificateNotAfter">When the admin certificate expires, if used.</param>
+/// <param name="TrustedProxies">The trusted reverse proxies, as in the startup log.</param>
+public sealed record ServerInfoDto(
+    string Version,
+    string? Commit,
+    string Runtime,
+    string OperatingSystem,
+    bool InDocker,
+    DateTimeOffset StartedAt,
+    long UptimeSeconds,
+    IReadOnlyList<string> Addresses,
+    IReadOnlyList<int> VaultPorts,
+    IReadOnlyList<int> AdminPorts,
+    bool AdminHttps,
+    string? AdminCertificateFingerprint,
+    DateTimeOffset? AdminCertificateNotAfter,
+    string TrustedProxies);
+
+/// <summary>Everything the admin dashboard shows. Parts that could not be read are null and listed in Errors.</summary>
+/// <param name="GeneratedAt">When the data was collected.</param>
+/// <param name="Server">Information about the running process.</param>
+/// <param name="Storage">Where KeePort keeps its data.</param>
+/// <param name="Counts">Vault, account and WebDAV totals, or null if the database could not be read.</param>
+/// <param name="Logins">Sign-in counts, or null if they could not be read.</param>
+/// <param name="Errors">Short descriptions of the parts that could not be read.</param>
+public sealed record DashboardDto(
+    DateTimeOffset GeneratedAt,
+    ServerInfoDto Server,
+    DataStorageDto Storage,
+    DashboardCountsDto? Counts,
+    LoginStatsDto? Logins,
+    IReadOnlyList<string> Errors);
