@@ -1,6 +1,6 @@
 # Plan: Geöffneten Tresor im Web-Vault neu laden
 
-- **Status:** umgesetzt (2026-11-25), Abnahme auf der NAS ausstehend
+- **Status:** abgeschlossen (2026-11-25), ausgeliefert in 0.8.0
 - **Erstellt:** 2026-11-25
 - **Zielversion:** 0.8.0 (neue Funktion, Changelog `## [0.8.0] - <Datum>`)
 
@@ -42,3 +42,7 @@ Ein Knopf **„Reload“** neben „Lock vault“ holt die aktuelle Datei vom Se
 - Geprüft:
   - Node-Test: Neuöffnen mit vorhandenen Zugangsdaten klappt, fremde Zugangsdaten werden abgelehnt.
   - Browser: Eine zweite Sitzung ändert den Tresor, „Reload“ zeigt die Änderung ohne Passwort, der Ordner bleibt gewählt, und das anschließende Speichern läuft ohne Konflikt.
+
+## Abnahme (2026-11-25, Sascha, NAS mit 0.8.0)
+
+- Reload-Test erfolgreich: Eine in KeePass2Android synchronisierte Änderung erscheint nach „Reload“ ohne Passworteingabe.
