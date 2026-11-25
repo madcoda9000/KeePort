@@ -320,7 +320,8 @@ function FolderNameForm({
 }) {
   const [name, setName] = useState(request.mode === 'rename' ? request.folder.name : '');
   const [touched, setTouched] = useState(false);
-  const error = validate(request, name);
+  // While saving, the vault already contains the new name, so validating it again would report a duplicate.
+  const error = busy ? null : validate(request, name);
   const unchanged = request.mode === 'rename' && name.trim() === request.folder.name;
 
   /**

@@ -502,23 +502,29 @@ export default function App() {
    * @param name - The validated folder name.
    */
   async function submitFolderName(request: FolderNameRequest, name: string) {
-    const ok = request.mode === 'create'
-      ? await runVaultChange(/**
+    // The dialog closes in the same update as the saved result, so it never validates against the already changed vault.
+    if (request.mode === 'create') {
+      await runVaultChange(/**
          * Creates the folder and returns its ID so it can be selected.
          * @param vault - The vault to change.
          */ (vault) => createFolder(vault, request.parent.id, name).uuid.id, /**
          * Describes the created folder.
          * @param id - The ID of the new folder.
          */ (id) => {
+          setFolderRequest(null);
           setFolderId(id);
           setSelection(new Set());
           return `Folder “${name}” created.`;
-        })
-      : await runVaultChange(/**
+        });
+    } else {
+      await runVaultChange(/**
          * Renames the folder.
          * @param vault - The vault to change.
-         */ (vault) => renameFolder(vault, request.folder.id, name), /** Describes the rename. */ () => `Folder renamed to “${name}”.`);
-    if (ok) setFolderRequest(null);
+         */ (vault) => renameFolder(vault, request.folder.id, name), /** Closes the dialog and describes the rename. */ () => {
+          setFolderRequest(null);
+          return `Folder renamed to “${name}”.`;
+        });
+    }
   }
 
   /**
@@ -545,11 +551,14 @@ export default function App() {
      * Moves the selected entries.
      * @param vault - The vault to change.
      */ (vault) => moveEntries(vault, ids, targetId), /**
-     * Describes the move.
+     * Closes the dialog, clears the selection and describes the move.
      * @param moved - The number of entries that changed folders.
-     */ (moved) => `Moved ${moved} ${moved === 1 ? 'entry' : 'entries'} to “${target?.name ?? 'folder'}”.`);
-    setMoving(false);
-    if (ok) setSelection(new Set());
+     */ (moved) => {
+      setMoving(false);
+      setSelection(new Set());
+      return `Moved ${moved} ${moved === 1 ? 'entry' : 'entries'} to “${target?.name ?? 'folder'}”.`;
+    });
+    if (!ok) setMoving(false);
   }
 
   /**

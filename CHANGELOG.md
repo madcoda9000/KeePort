@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.2] - 2026-11-25
+
+### Fixed
+
+- Creating or renaming a folder in the web vault briefly showed "A folder named … already exists here" while saving, although the folder was created correctly. The dialog now closes as soon as the change is saved, and the name is no longer checked against the vault that already contains it. The move dialog closes the same way.
+
 ## [0.7.1] - 2026-11-25
 
 ### Changed
@@ -192,6 +198,7 @@ First beta release.
 - Login and setup share a configurable per-IP rate limit; session checks and sign-out are exempt. WebDAV has a separate configurable limit applied before authentication.
 - Admin accounts can only sign in to the Admin console; Vault and WebDAV require a separate user account. Admin sessions are scoped to the Admin API, so existing admins need to sign in again after updating.
 
+[0.7.2]: https://github.com/madcoda9000/KeePort/compare/v0.7.1...v0.7.2
 [0.7.1]: https://github.com/madcoda9000/KeePort/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/madcoda9000/KeePort/compare/v0.6.1...v0.7.0
 [0.6.1]: https://github.com/madcoda9000/KeePort/compare/v0.6.0...v0.6.1
