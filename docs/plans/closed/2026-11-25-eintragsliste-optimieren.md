@@ -1,6 +1,6 @@
 # Plan: Eintragsliste im Web-Vault optimieren
 
-- **Status:** umgesetzt (2026-11-25), Abnahme auf der NAS ausstehend
+- **Status:** abgeschlossen (2026-11-25), ausgeliefert in 0.11.0; die Vorschläge 9–15 stehen in `docs/plans/open/2026-11-25-eintragsliste-spaeter.md`
 - **Erstellt:** 2026-11-25
 - **Zielversion:** 0.11.0 (neue Funktionen, Changelog `## [0.11.0] - <Datum>`)
 
@@ -156,6 +156,10 @@ Davon sind 4 bis 9 Lücken oder offene Punkte, 10 bis 15 Komfort.
     - Löschen in den Papierkorb, endgültig, Papierkorb leeren
     - Bestand nach Reload
   - Alle früheren Browser-Tests laufen weiter.
+
+## Abnahme (2026-11-25, Sascha, NAS mit 0.11.0)
+
+- Update eingespielt, Test erfolgreich.
 
 ## Ursprünglich offene Fragen
 
