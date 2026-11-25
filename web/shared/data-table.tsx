@@ -14,6 +14,14 @@ export interface TableColumn<T> {
   className?: string;
 }
 
+/** The rows a table currently shows, handed to the optional leading header and toolbar. */
+export interface DataTableView<T> {
+  /** The rows on the current page. */
+  pageRows: readonly T[];
+  /** All rows matching the search or browse filter, across all pages. */
+  results: readonly T[];
+}
+
 interface DataTableProps<T> {
   label: string;
   rows: readonly T[];
@@ -22,13 +30,30 @@ interface DataTableProps<T> {
   matches: (row: T, query: string) => boolean;
   emptyMessage: string;
   renderRow: (row: T) => ReactNode;
+  /** Restricts the rows while the search box is empty, e.g. to one folder; a search always covers all rows. */
+  browseFilter?: (row: T) => boolean;
+  /** Renders an extra first header cell, e.g. a select-all checkbox; rows must then render a matching first cell. */
+  leadingHeader?: (view: DataTableView<T>) => ReactNode;
+  /** Renders content between the search box and the table, e.g. an action bar for selected rows. */
+  toolbar?: (view: DataTableView<T>) => ReactNode;
 }
 
 /**
  * Adds live search, accessible column sorting and paging to a shadcn table.
  * @param props - The complete rows, column definitions, search predicate, row renderer, and labels for the table and empty state.
  */
-export function DataTable<T>({ label, rows, columns, searchLabel, matches, emptyMessage, renderRow }: DataTableProps<T>) {
+export function DataTable<T>({
+  label,
+  rows,
+  columns,
+  searchLabel,
+  matches,
+  emptyMessage,
+  renderRow,
+  browseFilter,
+  leadingHeader,
+  toolbar
+}: DataTableProps<T>) {
   const pageSizeId = useId();
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState<{ columnId: string; direction: SortDirection } | null>(null);
@@ -40,12 +65,14 @@ export function DataTable<T>({ label, rows, columns, searchLabel, matches, empty
      * Finds the column providing the active sort key.
      * @param column - The column metadata, including its label and optional sort-key function.
      */ (column) => column.id === sort?.columnId)?.sortValue;
-    return prepareTableRows(rows, query, matches, value && sort ? { value, direction: sort.direction } : undefined);
-  }, [rows, columns, matches, query, sort]);
+    const scoped = browseFilter && !query.trim() ? rows.filter(browseFilter) : rows;
+    return prepareTableRows(scoped, query, matches, value && sort ? { value, direction: sort.direction } : undefined);
+  }, [rows, columns, matches, query, sort, browseFilter]);
   const page = selectTablePage(results, pageIndex, pageSize);
   if (pageIndex > page.pageIndex) {
     setPageIndex(page.pageIndex);
   }
+  const view: DataTableView<T> = { pageRows: page.rows, results };
 
   /**
    * Toggles the direction of a column, starting on the first page.
@@ -84,9 +111,11 @@ export function DataTable<T>({ label, rows, columns, searchLabel, matches, empty
           />
         </div>
       </div>
+      {toolbar?.(view)}
       <Table aria-label={label}>
         <TableHeader className="bg-muted/45">
           <TableRow>
+            {leadingHeader && <TableHead scope="col" className="w-10 ps-6 pe-0">{leadingHeader(view)}</TableHead>}
             {columns.map(/**
              * Renders a sortable header or a plain label depending on the column.
              * @param column - The column metadata, including its label and optional sort-key function.
@@ -99,7 +128,7 @@ export function DataTable<T>({ label, rows, columns, searchLabel, matches, empty
                   key={column.id}
                   scope="col"
                   aria-sort={direction}
-                  className={index === 0 ? `ps-6 ${column.className ?? ''}` : column.className}
+                  className={index === 0 && !leadingHeader ? `ps-6 ${column.className ?? ''}` : column.className}
                 >
                   {column.sortValue ? (
                     <Button type="button" variant="ghost" size="sm" className="-ms-2 px-2" onClick={/** Changes the sort order for this column. */ () => sortBy(column.id)}>
@@ -114,7 +143,7 @@ export function DataTable<T>({ label, rows, columns, searchLabel, matches, empty
         <TableBody>
           {page.rows.length ? page.rows.map(renderRow) : (
             <TableRow>
-              <TableCell colSpan={columns.length} className="h-24 text-center text-muted-foreground">
+              <TableCell colSpan={columns.length + (leadingHeader ? 1 : 0)} className="h-24 text-center text-muted-foreground">
                 {query.trim() ? 'No results match your search.' : emptyMessage}
               </TableCell>
             </TableRow>

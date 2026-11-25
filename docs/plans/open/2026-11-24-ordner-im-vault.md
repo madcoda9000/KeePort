@@ -1,6 +1,6 @@
 # Plan: Ordner (KDBX-Gruppen) im Web-Vault verwalten
 
-- **Status:** open
+- **Status:** umgesetzt (2026-11-25), Abnahme auf der NAS ausstehend
 - **Erstellt:** 2026-11-24
 - **Zielversion:** 0.7.0 (neue Funktion, Changelog `## [0.7.0] - <Datum>`)
 
@@ -94,6 +94,27 @@ Komponenten ausschließlich aus shadcn/ui: Sidebar-Bausteine (`SidebarGroup`, `S
 3. **Papierkorb als geschützter Ordner** am Ende des Baums. Einträge lassen sich herausverschieben (wiederherstellen).
 4. **Kein Drag & Drop** in 0.7.0.
 5. Der Cache-Fix für `index.html` (veraltete Oberfläche nach Updates) wird vorgezogen und separat als 0.6.1 umgesetzt.
+
+## Umsetzung (2026-11-25)
+
+- Logik in `web/vault/src/lib/groups.ts`:
+  - Funktionen `listFolders`, `createFolder`, `renameFolder`, `deleteFolder`, `moveEntries` und `folderNameError`.
+  - `applyVaultChange` speichert und lädt bei einem Fehler aus den zuletzt gespeicherten Bytes neu.
+  - Tests stehen in `groups.test.mjs`.
+- Oberfläche:
+  - `components/folder-tree.tsx` enthält den Baum sowie die Dialoge für Name und Löschen.
+  - `components/move-entries-dialog.tsx` enthält den Verschieben-Dialog.
+  - Die gemeinsame `DataTable` hat optional `browseFilter`, `leadingHeader` und `toolbar` bekommen.
+- Abweichungen und Präzisierungen gegenüber dem Plan:
+  - **Hervorhebung des geöffneten Tresors in Grün** mit offenem Schloss. Die Primärfarbe des neutralen Themes ist fast schwarz und hätte im hellen Modus nur grau gewirkt.
+  - **„Delete“ bei nicht leeren Ordnern:** Der Grund steht direkt im ausgegrauten Menüeintrag statt in einem Tooltip, weil deaktivierte Menüeinträge keine Tooltips auslösen.
+  - **Der Papierkorb ist kein Ziel** für „Move to…“ und für neue Ordner, weil das einem Löschen entspräche. Herausverschieben geht.
+  - **In der Wurzel lassen sich Ordner anlegen.** Wurzel und Papierkorb lassen sich nicht umbenennen oder löschen.
+  - **Doppelte Namen unter demselben Elternordner werden abgelehnt**, ohne Rücksicht auf Groß- und Kleinschreibung.
+- Geprüft:
+  - Ablauf in einer Testinstanz mit Playwright: anlegen, umbenennen, verschieben, wiederherstellen, löschen, neuer Eintrag im Ordner, Sperren und Neuöffnen, Nur-Lese-Ansicht, Handyansicht.
+  - Die gespeicherte KDBX mit kdbxweb gelesen: Struktur stimmt, `DeletedObjects` und `LocationChanged` sind gesetzt.
+  - `keepassxc-cli` ist hier nicht installiert, die Prüfung mit KeePassXC und KeePass2Android steht noch aus.
 
 ## Ursprünglich offene Fragen
 

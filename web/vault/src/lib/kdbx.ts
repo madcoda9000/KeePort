@@ -1,6 +1,7 @@
 import * as kdbxweb from 'kdbxweb';
 import argon2 from 'argon2-browser/dist/argon2-bundled.min.js';
 import { encodeAttachments, type AttachmentDraft } from './attachments.ts';
+import { requireGroup, rootGroup } from './groups.ts';
 import { storedOtpValue } from './totp.ts';
 
 let argon2Ready: Promise<void> | null = null;
@@ -55,6 +56,8 @@ export interface EntryView {
   otp: string;
   tags: string[];
   groupPath: string;
+  /** The base64 UUID of the folder that directly contains the entry. */
+  groupId: string;
   entry: kdbxweb.KdbxEntry;
 }
 
@@ -88,6 +91,7 @@ function walkGroup(group: kdbxweb.KdbxGroup, path: string, out: EntryView[]) {
       otp: fieldText(entry.fields.get('otp')),
       tags: [...entry.tags],
       groupPath,
+      groupId: group.uuid.id,
       entry
     });
   }
@@ -174,17 +178,13 @@ function setOtpField(entry: kdbxweb.KdbxEntry, edits: EntryEdits) {
 }
 
 /**
- * Creates an entry in the first vault group with the supplied field values.
- * @param db - The unlocked database in which the first group receives the new entry.
+ * Creates an entry with the supplied field values in a folder, or in the root folder when none is given.
+ * @param db - The unlocked database that receives the new entry.
  * @param edits - The draft field values to apply to the encrypted entry.
+ * @param groupId - The base64 UUID of the folder for the new entry; omit to use the root folder.
  */
-export function createEntry(db: kdbxweb.Kdbx, edits: EntryEdits): kdbxweb.KdbxEntry {
-  let group = db.groups[0];
-  if (!group) {
-    db.createDefaultGroup();
-    group = db.groups[0];
-  }
-  if (!group) throw new Error('Vault has no group that can hold the new entry.');
+export function createEntry(db: kdbxweb.Kdbx, edits: EntryEdits, groupId?: string): kdbxweb.KdbxEntry {
+  const group = groupId ? requireGroup(db, groupId) : rootGroup(db);
   const entry = db.createEntry(group);
   entry.fields.set('Title', edits.title);
   entry.fields.set('UserName', edits.username);
@@ -208,17 +208,19 @@ export async function saveVault(db: kdbxweb.Kdbx): Promise<Uint8Array> {
 /**
  * Applies an entry draft and hands only the encrypted vault to the persistence callback.
  * @param db - The unlocked database containing the entry.
- * @param entry - The existing entry, or null to add an entry to the default group.
+ * @param entry - The existing entry, or null to add a new entry.
  * @param edits - The entry fields to save.
  * @param attachments - The final set of draft attachments to save with those fields.
  * @param persist - The callback that writes the encrypted KDBX with the current ETag.
+ * @param groupId - The folder for a new entry; omit to use the root folder. Ignored for existing entries.
  */
 export async function saveEntryUpdate<T>(
   db: kdbxweb.Kdbx,
   entry: kdbxweb.KdbxEntry | null,
   edits: EntryEdits,
   attachments: AttachmentDraft,
-  persist: (bytes: Uint8Array) => Promise<T>
+  persist: (bytes: Uint8Array) => Promise<T>,
+  groupId?: string
 ): Promise<{ entryId: string; updated: T }> {
   const original = entry && {
     fields: new Map(entry.fields),
@@ -231,7 +233,7 @@ export async function saveEntryUpdate<T>(
   let created: kdbxweb.KdbxEntry | undefined;
   try {
     const binaries = await encodeAttachments(db, attachments);
-    const edited = entry ?? (created = createEntry(db, edits));
+    const edited = entry ?? (created = createEntry(db, edits, groupId));
     if (entry) applyEntryEdits(entry, edits);
     edited.binaries = binaries;
     return { entryId: edited.uuid.id, updated: await persist(await saveVault(db)) };

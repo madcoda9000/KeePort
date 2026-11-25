@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-11-25
+
+### Added
+
+- **Folders in the web vault.** While a vault is unlocked, its folder tree (KDBX groups) appears in the sidebar below "Shared vaults", with the number of entries per folder. Selecting a folder shows its own entries; "All entries" shows every entry, and the search always covers all folders.
+- Users with read-write access create folders and subfolders, rename them and delete empty ones. Deleted folders are recorded as deleted objects, so KeePass apps remove them when they sync instead of bringing them back.
+- Select several entries with the new checkboxes (also "select all" per page or all results) and move them to another folder with **Move to…**. KeePass apps take over the new location when they merge.
+- The recycle bin is shown as a protected folder at the end of the tree; entries can be moved out of it to restore them. The templates folder (e.g. KeePass2Android's) gets its own icon.
+- **Add entry** creates the entry in the selected folder instead of always in the root folder.
+
+### Changed
+
+- The vault that is currently unlocked is highlighted in green with an open lock in the "Shared vaults" list.
+- If saving a folder change or a move fails (e.g. because another app saved the vault in the meantime), the vault is reloaded from the last saved version, so the browser never shows changes that are not on the server.
+
 ## [0.6.1] - 2026-11-24
 
 ### Fixed
@@ -171,6 +186,7 @@ First beta release.
 - Login and setup share a configurable per-IP rate limit; session checks and sign-out are exempt. WebDAV has a separate configurable limit applied before authentication.
 - Admin accounts can only sign in to the Admin console; Vault and WebDAV require a separate user account. Admin sessions are scoped to the Admin API, so existing admins need to sign in again after updating.
 
+[0.7.0]: https://github.com/madcoda9000/KeePort/compare/v0.6.1...v0.7.0
 [0.6.1]: https://github.com/madcoda9000/KeePort/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/madcoda9000/KeePort/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/madcoda9000/KeePort/compare/v0.4.1...v0.5.0

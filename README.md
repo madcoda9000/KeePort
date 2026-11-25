@@ -41,6 +41,7 @@ KeePass files are great: open format, strong encryption, dozens of apps. Keeping
 | | |
 |---|---|
 | 🧠 **Zero-knowledge web vault** | Unlock, search, edit and save KDBX files in the browser. Master passwords and key files never leave your device. |
+| 📁 **Folders** | Browse the KDBX folder tree, create, rename and delete folders, and move several entries at once — the structure stays the same in KeePassXC, KeePass2Android and KeePassium. |
 | 🔑 **Full KDBX support** | KDBX 3.1 and 4.x, Argon2id/AES-KDF, optional key files, attachments up to 10 MiB, and TOTP codes with live countdown. |
 | 📱 **WebDAV for mobile apps** | Works with KeePass2Android and KeePassium, including transactional saves, conflict-safe sync and merging. |
 | 👥 **Users & per-vault ACLs** | `read` or `read-write` per vault, enforced the same way in the API, web vault and WebDAV. |
@@ -165,7 +166,7 @@ flowchart LR
 
 | Client | Platform | Connection | Status |
 |---|---|---|---|
-| KeePort web vault | Any modern browser | Built in | ✅ Open, edit, save, attachments, TOTP |
+| KeePort web vault | Any modern browser | Built in | ✅ Open, edit, save, folders, attachments, TOTP |
 | [KeePass2Android](https://github.com/PhilippC/keepass2android) | Android | WebDAV | ✅ Save, sync and merge verified on a device |
 | [KeePassium](https://keepassium.com/) | iOS / iPadOS | WebDAV | ✅ Edit and sync verified on a device |
 | [KeePassXC](https://keepassxc.org/) | Desktop | File (download/upload) | ✅ KDBX files, TOTP and attachments verified with 2.7.6 |

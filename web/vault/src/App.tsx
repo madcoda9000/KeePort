@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import type { Kdbx } from 'kdbxweb';
 import { api, ApiError } from './lib/api';
 import type { User, VaultFile } from './lib/api';
@@ -10,12 +10,25 @@ import {
   saveEntryUpdate
 } from './lib/kdbx';
 import type { EntryEdits, EntryView } from './lib/kdbx';
+import {
+  VaultChangeError,
+  applyVaultChange,
+  createFolder,
+  deleteFolder,
+  findFolder,
+  folderNameError,
+  listFolders,
+  moveEntries,
+  renameFolder
+} from './lib/groups';
+import type { FolderNode } from './lib/groups';
 import type { AttachmentDraft } from './lib/attachments';
 import { parseOtpSecret, totpCode, totpUri } from './lib/totp';
 import { getTheme, toggleTheme } from './theme';
 import {
   CopyIcon,
   DatabaseIcon,
+  FolderInputIcon,
   KeyRoundIcon,
   LockKeyholeIcon,
   LockKeyholeOpenIcon,
@@ -24,15 +37,25 @@ import {
   PlusIcon,
   ShieldCheckIcon,
   SunIcon,
-  UserRoundIcon
+  UserRoundIcon,
+  XIcon
 } from 'lucide-react';
 import { AuthLayout } from '@/components/auth-layout';
 import { EntryAttachments } from '@/components/entry-attachments';
+import {
+  DeleteFolderDialog,
+  FolderNameDialog,
+  FolderTree,
+  type FolderActions,
+  type FolderNameRequest
+} from '@/components/folder-tree';
+import { MoveEntriesDialog } from '@/components/move-entries-dialog';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Dialog,
   DialogContent,
@@ -57,13 +80,14 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarProvider,
+  SidebarSeparator,
   SidebarTrigger,
   useSidebar
 } from '@/components/ui/sidebar';
 import { TableCell, TableRow } from '@/components/ui/table';
 import { VersionBadge } from '@shared/app-version';
 import { InsecureContextAlert, hasBrowserCrypto } from '@shared/secure-context';
-import { DataTable, type TableColumn } from '@shared/data-table';
+import { DataTable, type DataTableView, type TableColumn } from '@shared/data-table';
 import { Textarea } from '@/components/ui/textarea';
 
 type Message = { kind: 'notice' | 'error'; text: string } | null;
@@ -153,6 +177,14 @@ export default function App() {
   const [selectedEntry, setSelectedEntry] = useState<EntryView | null>(null);
   const [edits, setEdits] = useState<EntryDraft | null>(null);
   const vaultGeneration = useRef(0);
+  /** The encrypted bytes of the last loaded or saved revision; a failed folder change reloads the vault from them. */
+  const savedBytes = useRef<Uint8Array | null>(null);
+  const [folders, setFolders] = useState<FolderNode[]>([]);
+  const [folderId, setFolderId] = useState<string | null>(null);
+  const [selection, setSelection] = useState<ReadonlySet<string>>(new Set());
+  const [folderRequest, setFolderRequest] = useState<FolderNameRequest | null>(null);
+  const [folderToDelete, setFolderToDelete] = useState<FolderNode | null>(null);
+  const [moving, setMoving] = useState(false);
   const [totp, setTotp] = useState<{ code: string; secondsLeft: number } | null>(null);
 
   /** Starts periodic TOTP updates while the current draft has a usable secret. */
@@ -194,6 +226,19 @@ export default function App() {
    */ (file) => file.id === selectedId) ?? null, [files, selectedId]);
   const canWrite = permission === 'read-write';
   const unlocked = Boolean(db && selectedFile);
+  const currentFolder = folderId ? findFolder(folders, folderId) : null;
+  /**
+   * Shows only the entries directly in the selected folder; a search still covers all folders.
+   * @param entry - One entry of the vault.
+   */
+  const browseFilter = useMemo(() => (currentFolder ? (entry: EntryView) => entry.groupId === currentFolder.id : undefined), [currentFolder]);
+  const selectedFolderIds = useMemo(/** Collects the folders that contain the selected entries. */ () => new Set(entries.filter(/**
+   * Keeps the selected entries.
+   * @param entry - One entry of the vault.
+   */ (entry) => selection.has(entry.id)).map(/**
+   * Selects the folder of an entry.
+   * @param entry - One selected entry.
+   */ (entry) => entry.groupId)), [entries, selection]);
   const otpUri = useMemo(/** Prepares a provisioning URI without displaying the secret. */ () =>
     totpUri(edits?.otp ?? '', edits?.title ?? ''), [edits?.otp, edits?.title]);
 
@@ -204,12 +249,39 @@ export default function App() {
   }
 
   /**
+   * Re-reads entries and folders after the vault changed and drops a folder selection that no longer exists.
+   * @param vault - The unlocked database to read.
+   */
+  function refreshView(vault: Kdbx) {
+    const nextFolders = listFolders(vault);
+    setEntries(listEntries(vault));
+    setFolders(nextFolders);
+    /**
+     * Keeps the selected folder only while it still exists.
+     * @param current - The currently selected folder ID.
+     */
+    setFolderId((current) => (current && findFolder(nextFolders, current) ? current : null));
+  }
+
+  /** Clears the folder view state when a vault is locked or closed. */
+  const resetFolderState = useCallback(() => {
+    savedBytes.current = null;
+    setFolders([]);
+    setFolderId(null);
+    setSelection(new Set());
+    setFolderRequest(null);
+    setFolderToDelete(null);
+    setMoving(false);
+  }, []);
+
+  /**
    * Locks the open database and clears its credentials and entry state.
    * @param notify - Whether to display the vault locked notice.
    */
   function lockVault(notify = false) {
     vaultGeneration.current += 1;
     clearVaultCredentials(db);
+    resetFolderState();
     setDb(null);
     setEntries([]);
     setSelectedEntry(null);
@@ -248,10 +320,13 @@ export default function App() {
     try {
       const content = await api.getFileBytes(selectedFile.id);
       const keyFileBytes = keyFile ? await keyFile.arrayBuffer() : null;
+      const loaded = new Uint8Array(content.bytes.slice(0));
       const vault = await loadVault(content.bytes, password, keyFileBytes);
-      const nextEntries = listEntries(vault);
+      savedBytes.current = loaded;
       setDb(vault);
-      setEntries(nextEntries);
+      setFolderId(null);
+      setSelection(new Set());
+      refreshView(vault);
       setEtag(content.etag || selectedFile.etag);
       setPermission(selectedFile.permission);
       setSelectedEntry(null);
@@ -291,10 +366,12 @@ export default function App() {
       const { entryId, updated } = await saveEntryUpdate(db, selectedEntry?.entry ?? null, edits, edits.attachments, /**
        * Writes the encrypted revision only while this vault is still unlocked.
        * @param bytes - The serialized, encrypted KDBX database.
-       */ (bytes) => {
+       */ async (bytes) => {
         if (generation !== vaultGeneration.current) throw new Error('The vault locked before saving.');
-        return api.putFileBytes(selectedFile.id, bytes, etag);
-      });
+        const result = await api.putFileBytes(selectedFile.id, bytes, etag);
+        savedBytes.current = bytes;
+        return result;
+      }, currentFolder && !currentFolder.inRecycleBin ? currentFolder.id : undefined);
       if (generation !== vaultGeneration.current) return;
       const nextEntries = listEntries(db);
       const refreshed = nextEntries.find(/**
@@ -310,7 +387,7 @@ export default function App() {
        * @param file - One listed vault whose metadata may need to be refreshed.
        */ (file) => (file.id === updated.id ? { ...file, ...updated } : file)));
       setEtag(updated.etag);
-      setEntries(nextEntries);
+      refreshView(db);
       setSelectedEntry(refreshed);
       setEdits(refreshed ? entryDraft(refreshed) : null);
       setMessage({ kind: 'notice', text: 'Vault saved.' });
@@ -329,6 +406,251 @@ export default function App() {
     } finally {
       setBusy(null);
     }
+  }
+
+  /**
+   * Applies a folder change or a move to the open vault and saves it at once. If saving fails, the vault is reloaded
+   * from the last saved revision so the view matches the server again.
+   * @param change - The in-memory change; its result is passed to the success message.
+   * @param success - Builds the notice shown after saving.
+   */
+  async function runVaultChange<R>(change: (vault: Kdbx) => R, success: (result: R) => string): Promise<boolean> {
+    const saved = savedBytes.current;
+    if (!db || !selectedFile || !saved || busy) return false;
+    if (!canWrite) {
+      setMessage({ kind: 'error', text: 'This vault is read-only for your account.' });
+      return false;
+    }
+    const generation = vaultGeneration.current;
+    setBusy('save');
+    setMessage(null);
+    try {
+      const { result, updated, bytes } = await applyVaultChange(db, saved, change, /**
+       * Writes the encrypted revision only while this vault is still unlocked.
+       * @param encrypted - The serialized, encrypted KDBX database.
+       */ (encrypted) => {
+        if (generation !== vaultGeneration.current) throw new Error('The vault locked before saving.');
+        return api.putFileBytes(selectedFile.id, encrypted, etag);
+      });
+      if (generation !== vaultGeneration.current) return false;
+      savedBytes.current = bytes;
+      /**
+       * Updates the file list with the metadata returned by the save.
+       * @param current - The vault metadata list currently shown to the user.
+       */
+      setFiles((current) => current.map(/**
+       * Merges the new metadata into only the saved vault's row.
+       * @param file - One listed vault whose metadata may need to be refreshed.
+       */ (file) => (file.id === updated.id ? { ...file, ...updated } : file)));
+      setEtag(updated.etag);
+      refreshView(db);
+      setMessage({ kind: 'notice', text: success(result) });
+      return true;
+    } catch (error) {
+      if (generation !== vaultGeneration.current) return false;
+      const cause = error instanceof VaultChangeError ? error.cause : error;
+      if (error instanceof VaultChangeError) {
+        if (error.restored) {
+          setDb(error.restored);
+          refreshView(error.restored);
+        } else {
+          lockVault(false);
+        }
+      }
+      if (cause instanceof ApiError && cause.status === 409) {
+        setMessage({ kind: 'error', text: `${cause.message} Your change was not saved. Close and reopen the vault to load the latest version.` });
+        try {
+          await refreshFiles();
+        } catch {
+          /* keep the original conflict message visible */
+        }
+      } else {
+        setMessage({ kind: 'error', text: `${errorText(cause, 'Unable to save vault.')} Your change was not saved.` });
+      }
+      return false;
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  /**
+   * Validates a folder name against the open vault.
+   * @param request - The folder being created or renamed.
+   * @param name - The name typed by the user.
+   */
+  function validateFolderName(request: FolderNameRequest, name: string): string | null {
+    if (!db) return 'The vault is locked.';
+    return request.mode === 'create'
+      ? folderNameError(db, request.parent.id, name)
+      : folderNameError(db, request.folder.parentId ?? '', name, request.folder.id);
+  }
+
+  /**
+   * Creates or renames a folder and saves the vault.
+   * @param request - The folder being created or renamed.
+   * @param name - The validated folder name.
+   */
+  async function submitFolderName(request: FolderNameRequest, name: string) {
+    const ok = request.mode === 'create'
+      ? await runVaultChange(/**
+         * Creates the folder and returns its ID so it can be selected.
+         * @param vault - The vault to change.
+         */ (vault) => createFolder(vault, request.parent.id, name).uuid.id, /**
+         * Describes the created folder.
+         * @param id - The ID of the new folder.
+         */ (id) => {
+          setFolderId(id);
+          setSelection(new Set());
+          return `Folder “${name}” created.`;
+        })
+      : await runVaultChange(/**
+         * Renames the folder.
+         * @param vault - The vault to change.
+         */ (vault) => renameFolder(vault, request.folder.id, name), /** Describes the rename. */ () => `Folder renamed to “${name}”.`);
+    if (ok) setFolderRequest(null);
+  }
+
+  /**
+   * Deletes an empty folder and saves the vault.
+   * @param folder - The folder to delete.
+   */
+  async function confirmDeleteFolder(folder: FolderNode) {
+    const ok = await runVaultChange(/**
+     * Deletes the folder permanently.
+     * @param vault - The vault to change.
+     */ (vault) => deleteFolder(vault, folder.id), /** Describes the deletion. */ () => `Folder “${folder.name}” deleted.`);
+    setFolderToDelete(null);
+    if (ok && folderId === folder.id) setFolderId(folder.parentId);
+  }
+
+  /**
+   * Moves the selected entries into a folder and saves the vault.
+   * @param targetId - The destination folder.
+   */
+  async function moveSelection(targetId: string) {
+    const target = findFolder(folders, targetId);
+    const ids = [...selection];
+    const ok = await runVaultChange(/**
+     * Moves the selected entries.
+     * @param vault - The vault to change.
+     */ (vault) => moveEntries(vault, ids, targetId), /**
+     * Describes the move.
+     * @param moved - The number of entries that changed folders.
+     */ (moved) => `Moved ${moved} ${moved === 1 ? 'entry' : 'entries'} to “${target?.name ?? 'folder'}”.`);
+    setMoving(false);
+    if (ok) setSelection(new Set());
+  }
+
+  /**
+   * Adds or removes entries from the selection.
+   * @param ids - The entries to change.
+   * @param selected - Whether they should be selected.
+   */
+  function setSelected(ids: Iterable<string>, selected: boolean) {
+    /**
+     * Builds the new selection.
+     * @param current - The currently selected entry IDs.
+     */
+    setSelection((current) => {
+      const next = new Set(current);
+      for (const id of ids) {
+        if (selected) next.add(id);
+        else next.delete(id);
+      }
+      return next;
+    });
+  }
+
+  const folderActions: FolderActions = {
+    /**
+     * Shows a folder and clears the selection, which only applies to the previous view.
+     * @param id - The folder to show, or null for all entries.
+     */
+    onSelect: (id) => {
+      setFolderId(id);
+      setSelection(new Set());
+    },
+    /**
+     * Opens the dialog to create a folder.
+     * @param parent - The folder that receives the new folder.
+     */
+    onCreate: (parent) => setFolderRequest({ mode: 'create', parent }),
+    /**
+     * Opens the dialog to rename a folder.
+     * @param folder - The folder to rename.
+     */
+    onRename: (folder) => setFolderRequest({ mode: 'rename', folder }),
+    /**
+     * Asks to confirm the deletion of an empty folder.
+     * @param folder - The folder to delete.
+     */
+    onDelete: (folder) => setFolderToDelete(folder)
+  };
+
+  /**
+   * Renders the select-all checkbox for the current page.
+   * @param view - The rows on the current page and all matching rows.
+   */
+  function renderSelectAll({ pageRows }: DataTableView<EntryView>) {
+    const ids = pageRows.map(/**
+     * Selects the entry ID.
+     * @param entry - One entry on the page.
+     */ (entry) => entry.id);
+    const chosen = ids.filter(/**
+     * Keeps the selected IDs.
+     * @param id - One entry ID on the page.
+     */ (id) => selection.has(id)).length;
+    return (
+      <Checkbox
+        aria-label="Select all entries on this page"
+        checked={ids.length > 0 && chosen === ids.length ? true : chosen > 0 ? 'indeterminate' : false}
+        disabled={!ids.length || busy !== null}
+        onCheckedChange={/**
+         * Selects or clears all entries on the page.
+         * @param checked - The new checkbox state.
+         */ (checked) => setSelected(ids, checked === true)}
+      />
+    );
+  }
+
+  /**
+   * Renders the action bar for the selected entries.
+   * @param view - The rows on the current page and all matching rows.
+   */
+  function renderSelectionBar({ pageRows, results }: DataTableView<EntryView>) {
+    if (!selection.size) return null;
+    const pageSelected = pageRows.length > 0 && pageRows.every(/**
+     * Checks whether an entry on the page is selected.
+     * @param entry - One entry on the page.
+     */ (entry) => selection.has(entry.id));
+    const allSelected = results.every(/**
+     * Checks whether a matching entry is selected.
+     * @param entry - One matching entry.
+     */ (entry) => selection.has(entry.id));
+    return (
+      <div role="region" aria-label="Selected entries" className="flex flex-wrap items-center gap-x-3 gap-y-2 border-y bg-muted/40 px-4 py-2 text-sm sm:px-6">
+        <span className="font-medium tabular-nums" aria-live="polite">{selection.size} selected</span>
+        <Button size="sm" disabled={busy !== null} onClick={/** Opens the destination folder picker. */ () => setMoving(true)}>
+          <FolderInputIcon /> Move to…
+        </Button>
+        {pageSelected && !allSelected && (
+          <Button
+            size="sm"
+            variant="link"
+            className="px-0"
+            onClick={/** Selects every entry that matches the current folder or search. */ () => setSelected(results.map(/**
+             * Selects the entry ID.
+             * @param entry - One matching entry.
+             */ (entry) => entry.id), true)}
+          >
+            Select all {results.length} results
+          </Button>
+        )}
+        <Button size="sm" variant="ghost" className="ms-auto" onClick={/** Clears the selection. */ () => setSelection(new Set())}>
+          <XIcon /> Clear selection
+        </Button>
+      </div>
+    );
   }
 
   /**
@@ -475,6 +797,7 @@ export default function App() {
     const lock = () => {
       vaultGeneration.current += 1;
       clearVaultCredentials(db);
+      resetFolderState();
       setDb(null);
       setEntries([]);
       setSelectedEntry(null);
@@ -497,7 +820,7 @@ export default function App() {
       document.removeEventListener('visibilitychange', onVisibility);
       if (lockTimer !== undefined) window.clearTimeout(lockTimer);
     };
-  }, [db, autoLockMinutes]);
+  }, [db, autoLockMinutes, resetFolderState]);
 
   /**
    * Copies a single entry value without showing it in feedback.
@@ -574,8 +897,20 @@ export default function App() {
       <VaultNavigation
         files={files}
         selectedId={selectedId}
+        openId={unlocked ? selectedId : null}
         disabled={busy === 'unlock' || busy === 'save'}
         onSelect={selectFile}
+        folderTree={unlocked && selectedFile ? (
+          <FolderTree
+            vaultName={selectedFile.name}
+            folders={folders}
+            totalEntries={entries.length}
+            selectedId={folderId}
+            canWrite={canWrite}
+            disabled={busy !== null}
+            {...folderActions}
+          />
+        ) : null}
         user={user}
         profile={
           <Dialog
@@ -837,10 +1172,12 @@ export default function App() {
               <Card className="gap-0 overflow-hidden py-0">
                 <CardHeader className="gap-4 border-b py-5">
                   <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div className="space-y-1">
-                      <CardTitle>Vault entries</CardTitle>
-                      <CardDescription>
-                        {entries.length} {entries.length === 1 ? 'entry' : 'entries'}
+                    <div className="min-w-0 space-y-1">
+                      <CardTitle className="break-words">{currentFolder ? currentFolder.name : 'All entries'}</CardTitle>
+                      <CardDescription className="break-words">
+                        {currentFolder
+                          ? `${currentFolder.path} · ${currentFolder.entryCount} ${currentFolder.entryCount === 1 ? 'entry' : 'entries'}`
+                          : `${entries.length} ${entries.length === 1 ? 'entry' : 'entries'} in all folders`}
                       </CardDescription>
                     </div>
                     <div className="flex flex-wrap gap-2">
@@ -856,19 +1193,35 @@ export default function App() {
                   </div>
                 </CardHeader>
                 <DataTable
-                  key={selectedFile.id}
-                  label="Vault entries"
+                  key={`${selectedFile.id}:${folderId ?? 'all'}`}
+                  label={currentFolder ? `Entries in ${currentFolder.name}` : 'Vault entries'}
                   rows={entries}
                   columns={ENTRY_COLUMNS}
-                  searchLabel="Search vault entries"
+                  searchLabel="Search all folders"
                   matches={entryMatches}
-                  emptyMessage="This vault has no entries yet."
+                  emptyMessage={currentFolder ? 'This folder has no entries.' : 'This vault has no entries yet.'}
+                  browseFilter={browseFilter}
+                  leadingHeader={canWrite ? renderSelectAll : undefined}
+                  toolbar={canWrite ? renderSelectionBar : undefined}
                   renderRow={/**
                    * Renders entry metadata with an action to open its details.
                    * @param entry - The unlocked entry to display in the table and open from the row.
                    */ (entry) => (
-                    <TableRow key={entry.id}>
-                      <TableCell className="py-2 ps-3">
+                    <TableRow key={entry.id} data-state={selection.has(entry.id) ? 'selected' : undefined}>
+                      {canWrite && (
+                        <TableCell className="w-10 ps-6 pe-0">
+                          <Checkbox
+                            aria-label={`Select ${entry.title}`}
+                            checked={selection.has(entry.id)}
+                            disabled={busy !== null}
+                            onCheckedChange={/**
+                             * Adds the entry to or removes it from the selection.
+                             * @param checked - The new checkbox state.
+                             */ (checked) => setSelected([entry.id], checked === true)}
+                          />
+                        </TableCell>
+                      )}
+                      <TableCell className={canWrite ? 'py-2 ps-1' : 'py-2 ps-3'}>
                         <Button
                           variant="ghost"
                           className="h-auto max-w-44 items-start gap-2 px-3 py-1.5 text-start sm:max-w-72"
@@ -1083,6 +1436,38 @@ export default function App() {
                   </SheetContent>
                 )}
               </Sheet>
+              <FolderNameDialog
+                request={folderRequest}
+                busy={busy === 'save'}
+                validate={validateFolderName}
+                onSubmit={/**
+                 * Saves the new or renamed folder.
+                 * @param request - The folder being created or renamed.
+                 * @param name - The validated name.
+                 */ (request, name) => void submitFolderName(request, name)}
+                onClose={/** Closes the folder name dialog. */ () => setFolderRequest(null)}
+              />
+              <DeleteFolderDialog
+                folder={folderToDelete}
+                busy={busy === 'save'}
+                onConfirm={/**
+                 * Deletes the confirmed folder.
+                 * @param folder - The empty folder to delete.
+                 */ (folder) => void confirmDeleteFolder(folder)}
+                onClose={/** Closes the delete confirmation. */ () => setFolderToDelete(null)}
+              />
+              <MoveEntriesDialog
+                open={moving}
+                folders={folders}
+                count={selection.size}
+                sourceFolderIds={selectedFolderIds}
+                busy={busy === 'save'}
+                onMove={/**
+                 * Moves the selection to the chosen folder.
+                 * @param targetId - The destination folder.
+                 */ (targetId) => void moveSelection(targetId)}
+                onClose={/** Closes the move dialog. */ () => setMoving(false)}
+              />
             </>
           )}
         </div>
@@ -1092,20 +1477,25 @@ export default function App() {
 }
 
 /**
- * Renders vault navigation and the signed-in account's profile action.
- * @param props - The available files, active file ID, disabled state, selection callback, signed-in account, and profile control.
+ * Renders vault navigation, the open vault's folder tree and the signed-in account's profile action.
+ * @param props - The available files, active and unlocked file IDs, disabled state, selection callback, folder tree, signed-in account, and profile control.
  */
 function VaultNavigation({
   files,
   selectedId,
+  openId,
   disabled,
   onSelect,
+  folderTree,
   user,
   profile
 }: {
   files: VaultFile[];
   selectedId: string | null;
+  /** The vault that is currently unlocked; it is highlighted in green with an open lock. */
+  openId: string | null;
   disabled: boolean;
+  folderTree: ReactNode;
   onSelect: (file: VaultFile) => void;
   user: Pick<User, 'username' | 'email'>;
   profile: ReactNode;
@@ -1141,19 +1531,31 @@ function VaultNavigation({
                   isActive={file.id === selectedId}
                   aria-current={file.id === selectedId ? 'true' : undefined}
                   disabled={disabled}
-                  title={file.name}
+                  title={file.id === openId ? `${file.name} (unlocked)` : file.name}
+                  className={file.id === openId
+                    ? 'bg-emerald-500/10 font-medium text-emerald-700 ring-1 ring-emerald-500/40 hover:bg-emerald-500/15 hover:text-emerald-800 data-active:bg-emerald-500/10 data-active:text-emerald-700 dark:text-emerald-300 dark:hover:text-emerald-200 dark:data-active:text-emerald-300'
+                    : undefined}
                   onClick={/** Selects the vault only when it is not already active. */ () => {
                     if (file.id !== selectedId) onSelect(file);
                     setOpenMobile(false);
                   }}
                 >
-                  <DatabaseIcon />
-                  <span>{file.name}</span>
+                  {file.id === openId ? <LockKeyholeOpenIcon /> : <DatabaseIcon />}
+                  <span>
+                    {file.name}
+                    {file.id === openId && <span className="sr-only"> (unlocked)</span>}
+                  </span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             ))}
           </SidebarMenu>
         </SidebarGroup>
+        {folderTree && (
+          <>
+            <SidebarSeparator className="mx-2" />
+            {folderTree}
+          </>
+        )}
       </SidebarContent>
       <SidebarFooter className="gap-3 border-t px-4 py-4">
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
