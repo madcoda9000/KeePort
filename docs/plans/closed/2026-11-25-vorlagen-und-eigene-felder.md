@@ -1,6 +1,6 @@
 # Plan: Eigene Felder und KeePass2Android-Vorlagen im Web-Vault
 
-- **Status:** umgesetzt (2026-11-25), Abnahme auf der NAS ausstehend
+- **Status:** abgeschlossen (2026-11-25), ausgeliefert in 0.9.0
 - **Erstellt:** 2026-11-25
 - **Zielversion:** 0.9.0 (neue Funktion, Changelog `## [0.9.0] - <Datum>`)
 
@@ -121,6 +121,10 @@ Quellen sind `src/Kp2aBusinessLogic/database/edit/AddTemplateEntries.cs` und `sr
     - Vorlagen nur lesend, Nur-Lese-Nutzer
   - Alle Browser-Tests der Ordner, des Reload-Knopfs und der Duplikat-Prüfung laufen weiter.
   - Die gespeicherte Datei mit kdbxweb gelesen: `_etm_template_uuid` ist als Hex gesetzt wie bei KeePass2Android, CVV und PIN sind geschützt, Symbol und Ablaufdatum gesetzt.
+
+## Abnahme (2026-11-25, Sascha, NAS mit 0.9.0)
+
+- Update eingespielt, Test erfolgreich.
 
 ## Ursprünglich offene Fragen
 
