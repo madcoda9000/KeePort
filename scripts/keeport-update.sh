@@ -2,7 +2,7 @@
 # Updates a KeePort installation to a release from GitHub (Synology DSM, QNAP, or any Docker host).
 #
 # Usage:   sudo bash keeport-update.sh            -> latest release
-#          sudo bash keeport-update.sh v0.10.0     -> a specific release
+#          sudo bash keeport-update.sh v0.11.0     -> a specific release
 # Options (environment variables):
 #   BASE_DIR=/volume1/docker   folder that contains the KeePort folder (QNAP: /share/Container)
 #   APP_NAME=keeport           name of the KeePort folder (= Compose project name)
@@ -59,7 +59,7 @@ if [ -z "$TARGET" ]; then
   # /releases/latest ignores pre-releases, so take the newest entry of the list.
   TARGET="$(curl -fsSL "https://api.github.com/repos/$REPO/releases?per_page=1" \
     | sed -nE 's/.*"tag_name":[[:space:]]*"([^"]+)".*/\1/p' | head -1)" || true
-  [ -n "$TARGET" ] || die "Could not determine the latest release. Pass a version, e.g.: sudo bash $0 v0.10.0"
+  [ -n "$TARGET" ] || die "Could not determine the latest release. Pass a version, e.g.: sudo bash $0 v0.11.0"
 fi
 case "$TARGET" in v*) ;; *) TARGET="v$TARGET" ;; esac
 
