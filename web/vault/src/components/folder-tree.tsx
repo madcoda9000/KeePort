@@ -9,6 +9,8 @@ import {
   LayoutTemplateIcon,
   LibraryIcon,
   PencilIcon,
+  ShieldAlertIcon,
+  ShieldCheckIcon,
   TagIcon,
   Trash2Icon
 } from 'lucide-react';
@@ -81,6 +83,10 @@ interface FolderTreeProps extends FolderActions {
   expiredCount: number;
   expiredSelected: boolean;
   onSelectExpired: () => void;
+  /** The number of entries with security findings. */
+  securityCount: number;
+  securitySelected: boolean;
+  onSelectSecurity: () => void;
   /** The tags of the vault with their counts; the "Tags" group is listed only when there are some. */
   tags: readonly { tag: string; count: number }[];
   selectedTag: string | null;
@@ -123,6 +129,9 @@ export function FolderTree({
   expiredCount,
   expiredSelected,
   onSelectExpired,
+  securityCount,
+  securitySelected,
+  onSelectSecurity,
   tags,
   selectedTag,
   onSelectTag,
@@ -303,6 +312,23 @@ export function FolderTree({
               <SidebarMenuBadge className="text-destructive" aria-label={`${expiredCount} expired entries`}>{expiredCount}</SidebarMenuBadge>
             </SidebarMenuItem>
           )}
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              type="button"
+              className="pe-8"
+              isActive={securitySelected}
+              aria-current={securitySelected ? 'true' : undefined}
+              disabled={disabled}
+              onClick={/** Shows the security report and closes the sidebar sheet on small screens. */ () => {
+                onSelectSecurity();
+                setOpenMobile(false);
+              }}
+            >
+              {securityCount > 0 ? <ShieldAlertIcon className="text-amber-600 dark:text-amber-400" /> : <ShieldCheckIcon className="text-emerald-600 dark:text-emerald-400" />}
+              <span>Security</span>
+            </SidebarMenuButton>
+            <SidebarMenuBadge aria-label={`${securityCount} entries with findings`}>{securityCount}</SidebarMenuBadge>
+          </SidebarMenuItem>
           {folders.map(renderFolder)}
         </SidebarMenu>
       </SidebarGroupContent>

@@ -17,6 +17,7 @@ import {
 import { isExpired } from './entry-actions.ts';
 import { requireGroup, rootGroup } from './groups.ts';
 import { backupEntry } from './history.ts';
+import { passwordChangedAt } from './security-report.ts';
 import { customIconUrl } from './icons.ts';
 import { storedOtpValue } from './totp.ts';
 
@@ -96,6 +97,12 @@ export interface EntryView {
   iconUrl: string | null;
   /** Whether the entry's expiry date has passed. */
   expired: boolean;
+  /** When the entry was created. */
+  created: Date | undefined;
+  /** When the entry was last changed. */
+  modified: Date | undefined;
+  /** When the current password was set, from the history. */
+  passwordChanged: Date | undefined;
   entry: kdbxweb.KdbxEntry;
 }
 
@@ -163,6 +170,9 @@ function walkGroup(
       template,
       iconUrl: customIconUrl(db, entry),
       expired: isExpired(entry, now),
+      created: entry.times.creationTime,
+      modified: entry.times.lastModTime,
+      passwordChanged: passwordChangedAt(entry),
       entry
     });
   }

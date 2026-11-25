@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.0] - 2026-11-25
+
+### Added
+
+- **Security report** in the web vault:
+  - A new "Security" view in the sidebar shows tiles for weak, reused, old (not changed for over a year) and empty passwords and for expired entries. Clicking a tile lists the affected entries.
+  - Everything is computed in the browser; nothing is sent or stored.
+  - Weak passwords are found by length, character variety and patterns such as keyboard rows, sequences and years, and by comparing with the 1000 most common passwords.
+  - The age of a password comes from the entry history, so changing only the notes does not reset it.
+  - The entry list shows a warning sign next to weak or reused passwords, with a tooltip.
+- **Passphrases** in the password generator: 4–10 words from the EFF Large Wordlist, with a choice of separator, capitalized words and an extra digit. The word list (62 KB) is only loaded when passphrases are used.
+- **Modified column** in the entry list, e.g. "3 days ago" with the exact time as tooltip, sortable. The entry form shows when the entry was created and last modified.
+- **Double-click** a row in the entry list to open the entry; a single click marks the row. Buttons, links and checkboxes in the row keep working as before.
+- `THIRD-PARTY-NOTICES.md` lists the sources and licenses of the word lists.
+
+### Changed
+
+- The generator's strength indicator rates random secrets more realistically: weak below 50 bits, fair below 64, strong below 100, very strong from 100 bits. A six-word passphrase (77 bits) now shows as strong.
+
 ## [0.12.0] - 2026-11-25
 
 ### Added
@@ -289,6 +308,7 @@ First beta release.
 - Login and setup share a configurable per-IP rate limit; session checks and sign-out are exempt. WebDAV has a separate configurable limit applied before authentication.
 - Admin accounts can only sign in to the Admin console; Vault and WebDAV require a separate user account. Admin sessions are scoped to the Admin API, so existing admins need to sign in again after updating.
 
+[0.13.0]: https://github.com/madcoda9000/KeePort/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/madcoda9000/KeePort/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/madcoda9000/KeePort/compare/v0.10.1...v0.11.0
 [0.10.1]: https://github.com/madcoda9000/KeePort/compare/v0.10.0...v0.10.1

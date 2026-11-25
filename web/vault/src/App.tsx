@@ -27,6 +27,7 @@ import { listTemplates, templateStartFields, type TemplateInfo } from './lib/fie
 import type { AttachmentDraft } from './lib/attachments';
 import { parseOtpSecret, totpCode, totpUri } from './lib/totp';
 import { getTheme, toggleTheme } from './theme';
+import { cn } from '@/lib/utils';
 import {
   ChevronDownIcon,
   CircleCheckIcon,
@@ -46,6 +47,7 @@ import {
   RefreshCwIcon,
   ShieldCheckIcon,
   SunIcon,
+  TriangleAlertIcon,
   TagIcon,
   Trash2Icon,
   UserRoundIcon,
@@ -62,6 +64,8 @@ import { TagsDialog } from '@/components/tags-dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { deleteVersion, requireEntry, restoreVersion } from './lib/history';
 import { hasTag, listTags, setEntryTags } from './lib/tags';
+import { buildReport, type SecurityIssue } from './lib/security-report';
+import { SecurityReportTiles } from '@/components/security-report';
 import { PasswordGenerator } from '@/components/password-generator';
 import { openableUrl } from './lib/icons';
 import { deleteEntries, emptyRecycleBin } from './lib/entry-actions';
@@ -170,6 +174,11 @@ const ENTRY_COLUMNS: readonly TableColumn<EntryView>[] = [
    */
   { id: 'totp', label: 'TOTP', sortValue: (entry) => Number(Boolean(entry.otp)), className: 'hidden sm:table-cell' },
   /**
+   * Sorts by the time of the last change, not by the displayed text.
+   * @param entry - The unlocked entry supplying this column's sort value.
+   */
+  { id: 'modified', label: 'Modified', sortValue: (entry) => entry.modified?.getTime() ?? null, className: 'hidden lg:table-cell' },
+  /**
    * Sorts by website URL, treating a blank URL as missing.
    * @param entry - The unlocked entry supplying this column's sort value.
    */
@@ -193,6 +202,31 @@ function formatBytes(size: number) {
 function formatDate(value: string) {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+}
+
+const relativeTime = new Intl.RelativeTimeFormat('en', { numeric: 'auto' });
+
+/**
+ * Checks whether a click hit a control inside a table row, which handles the click itself.
+ * @param target - The element that was clicked.
+ */
+function isInteractive(target: EventTarget | null) {
+  return target instanceof Element && Boolean(target.closest('button, a, input, textarea, select, [role="checkbox"], [role="menuitem"]'));
+}
+
+/**
+ * Describes how long ago a time was, e.g. "3 days ago" or "last year".
+ * @param date - The time to describe.
+ * @param now - The reference time.
+ */
+function formatRelative(date: Date | undefined, now: number) {
+  if (!date || Number.isNaN(date.getTime())) return '—';
+  const seconds = (date.getTime() - now) / 1000;
+  const units: [Intl.RelativeTimeFormatUnit, number][] = [['year', 31536000], ['month', 2592000], ['week', 604800], ['day', 86400], ['hour', 3600], ['minute', 60]];
+  for (const [unit, size] of units) {
+    if (Math.abs(seconds) >= size) return relativeTime.format(Math.round(seconds / size), unit);
+  }
+  return 'just now';
 }
 
 /**
@@ -254,6 +288,11 @@ export default function App() {
   const [showPassword, setShowPassword] = useState(false);
   const [expiredView, setExpiredView] = useState(false);
   const [tagView, setTagView] = useState<string | null>(null);
+  const [securityView, setSecurityView] = useState(false);
+  const [securityIssue, setSecurityIssue] = useState<SecurityIssue | null>(null);
+  const [focusedId, setFocusedId] = useState<string | null>(null);
+  /** When the entry list was last built; the security report and relative dates refer to it. */
+  const [listedAt, setListedAt] = useState(0);
   const [tagging, setTagging] = useState(false);
   const [sheetTab, setSheetTab] = useState<'details' | 'history'>('details');
   const [deleteRequest, setDeleteRequest] = useState<{ ids: string[]; permanent: boolean; fromSheet: boolean } | null>(null);
@@ -320,15 +359,31 @@ export default function App() {
      * Checks whether the template lists the field.
      * @param field - One template field.
      */ (field) => field.kind === 'standard' && field.name === name);
+  const report = useMemo(/** Checks the passwords of the open vault, only in this browser. */ () => buildReport(entries, new Date(listedAt)), [entries, listedAt]);
+  // Relative dates such as "3 days ago" refer to the time the list was built.
+  const renderedAt = listedAt;
   /**
-   * Shows only the entries directly in the selected folder; a search still covers all folders.
+   * Returns the warning for an entry's password, or null: weak, or used in several entries.
    * @param entry - One entry of the vault.
    */
-  const browseFilter = useMemo(() => (tagView
+  const passwordWarning = (entry: EntryView) => {
+    const parts = [
+      report.issues.weak.has(entry.id) ? 'Weak password' : '',
+      report.reuseCounts.has(entry.id) ? `Used in ${report.reuseCounts.get(entry.id)} entries` : ''
+    ].filter(Boolean);
+    return parts.length ? parts.join(' · ') : null;
+  };
+  /**
+   * Shows only the entries of the current view; a search still covers all folders.
+   * @param entry - One entry of the vault.
+   */
+  const browseFilter = useMemo(() => (securityView
+    ? (entry: EntryView) => (securityIssue ? report.issues[securityIssue].has(entry.id) : report.affected.has(entry.id))
+    : tagView
     ? (entry: EntryView) => hasTag(entry.tags, tagView)
     : expiredView
       ? (entry: EntryView) => entry.expired
-      : currentFolder ? (entry: EntryView) => entry.groupId === currentFolder.id : undefined), [currentFolder, expiredView, tagView]);
+      : currentFolder ? (entry: EntryView) => entry.groupId === currentFolder.id : undefined), [currentFolder, expiredView, tagView, securityView, securityIssue, report]);
   /**
    * The entries the table works on: templates and recycled entries only while their own folder is selected.
    */
@@ -371,6 +426,7 @@ export default function App() {
   function refreshView(vault: Kdbx) {
     const nextFolders = listFolders(vault);
     setEntries(listEntries(vault));
+    setListedAt(Date.now());
     setFolders(nextFolders);
     /**
      * Keeps the selected folder only while it still exists.
@@ -390,6 +446,9 @@ export default function App() {
     setMoving(false);
     setExpiredView(false);
     setTagView(null);
+    setSecurityView(false);
+    setSecurityIssue(null);
+    setFocusedId(null);
     setTagging(false);
     setDeleteRequest(null);
     setConfirmEmptyBin(false);
@@ -513,6 +572,20 @@ export default function App() {
     } finally {
       setBusy(null);
     }
+  }
+
+  /**
+   * Opens an existing entry in the form and marks its row.
+   * @param entry - The entry to open.
+   */
+  function openEntry(entry: EntryView) {
+    setMessage(null);
+    setShowAllFields(false);
+    setShowPassword(false);
+    setSheetTab('details');
+    setFocusedId(entry.id);
+    setSelectedEntry(entry);
+    setEdits(entryDraft(entry));
   }
 
   /**
@@ -776,6 +849,7 @@ export default function App() {
     setTagView(tag);
     setFolderId(null);
     setExpiredView(false);
+    setSecurityView(false);
     setSelection(new Set());
   }
 
@@ -882,6 +956,7 @@ export default function App() {
       setFolderId(id);
       setExpiredView(false);
       setTagView(null);
+      setSecurityView(false);
       setSelection(new Set());
     },
     /**
@@ -1249,14 +1324,25 @@ export default function App() {
             vaultName={selectedFile.name}
             folders={folders}
             totalEntries={visibleCount}
-            selectedId={expiredView || tagView ? null : folderId}
-            allSelected={!expiredView && !tagView && folderId === null}
+            selectedId={expiredView || tagView || securityView ? null : folderId}
+            allSelected={!expiredView && !tagView && !securityView && folderId === null}
             expiredCount={expiredCount}
             expiredSelected={expiredView}
             onSelectExpired={/** Shows the expired entries of all folders. */ () => {
               setFolderId(null);
               setExpiredView(true);
               setTagView(null);
+              setSecurityView(false);
+              setSelection(new Set());
+            }}
+            securityCount={report.affected.size}
+            securitySelected={securityView}
+            onSelectSecurity={/** Shows the security report. */ () => {
+              setFolderId(null);
+              setExpiredView(false);
+              setTagView(null);
+              setSecurityView(true);
+              setSecurityIssue(null);
               setSelection(new Set());
             }}
             tags={vaultTags}
@@ -1558,9 +1644,11 @@ export default function App() {
                 <CardHeader className="gap-4 border-b py-5">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0 space-y-1">
-                      <CardTitle className="break-words">{tagView ? `Tag: ${tagView}` : expiredView ? 'Expired entries' : currentFolder ? currentFolder.name : 'All entries'}</CardTitle>
+                      <CardTitle className="break-words">{securityView ? 'Security report' : tagView ? `Tag: ${tagView}` : expiredView ? 'Expired entries' : currentFolder ? currentFolder.name : 'All entries'}</CardTitle>
                       <CardDescription className="break-words">
-                        {tagView
+                        {securityView
+                          ? 'Checked in this browser only; nothing is sent or stored. Select a check to see its entries.'
+                          : tagView
                           ? 'Entries with this tag in all folders'
                           : expiredView
                           ? `${expiredCount} ${expiredCount === 1 ? 'entry has' : 'entries have'} passed their expiry date`
@@ -1629,14 +1717,27 @@ export default function App() {
                     </div>
                   </div>
                 </CardHeader>
+                {securityView && (
+                  <SecurityReportTiles
+                    report={report}
+                    active={securityIssue}
+                    onSelect={/**
+                     * Filters the list by a check.
+                     * @param issue - The check, or null for all findings.
+                     */ (issue) => {
+                      setSecurityIssue(issue);
+                      setSelection(new Set());
+                    }}
+                  />
+                )}
                 <DataTable
-                  key={`${selectedFile.id}:${tagView ? `tag:${tagView}` : expiredView ? 'expired' : folderId ?? 'all'}`}
-                  label={tagView ? `Entries tagged ${tagView}` : expiredView ? 'Expired entries' : currentFolder ? `Entries in ${currentFolder.name}` : 'Vault entries'}
+                  key={`${selectedFile.id}:${securityView ? `security:${securityIssue ?? 'all'}` : tagView ? `tag:${tagView}` : expiredView ? 'expired' : folderId ?? 'all'}`}
+                  label={securityView ? 'Entries with security findings' : tagView ? `Entries tagged ${tagView}` : expiredView ? 'Expired entries' : currentFolder ? `Entries in ${currentFolder.name}` : 'Vault entries'}
                   rows={tableEntries}
                   columns={ENTRY_COLUMNS}
                   searchLabel="Search all folders"
                   matches={entryMatches}
-                  emptyMessage={tagView ? 'No entry has this tag.' : expiredView ? 'No entry has expired.' : currentFolder ? 'This folder has no entries.' : 'This vault has no entries yet.'}
+                  emptyMessage={securityView ? 'No findings. Well done!' : tagView ? 'No entry has this tag.' : expiredView ? 'No entry has expired.' : currentFolder ? 'This folder has no entries.' : 'This vault has no entries yet.'}
                   browseFilter={browseFilter}
                   leadingHeader={canWrite ? renderSelectAll : undefined}
                   toolbar={canWrite ? renderSelectionBar : undefined}
@@ -1644,7 +1745,25 @@ export default function App() {
                    * Renders entry metadata with an action to open its details.
                    * @param entry - The unlocked entry to display in the table and open from the row.
                    */ (entry) => (
-                    <TableRow key={entry.id} data-state={selection.has(entry.id) ? 'selected' : undefined}>
+                    <TableRow
+                      key={entry.id}
+                      data-state={selection.has(entry.id) ? 'selected' : undefined}
+                      aria-current={focusedId === entry.id ? 'true' : undefined}
+                      title="Double-click to open"
+                      className={cn('cursor-default', focusedId === entry.id && 'bg-accent/60 hover:bg-accent/60')}
+                      onClick={/**
+                       * Marks the row, unless a button, link or checkbox in it was clicked.
+                       * @param event - The click event.
+                       */ (event) => {
+                        if (!isInteractive(event.target)) setFocusedId(entry.id);
+                      }}
+                      onDoubleClick={/**
+                       * Opens the entry, unless a button, link or checkbox in the row was double-clicked.
+                       * @param event - The double-click event.
+                       */ (event) => {
+                        if (!isInteractive(event.target)) openEntry(entry);
+                      }}
+                    >
                       {canWrite && (
                         <TableCell className="w-10 ps-6 pe-0">
                           <Checkbox
@@ -1662,15 +1781,7 @@ export default function App() {
                         <Button
                           variant="ghost"
                           className="h-auto max-w-44 items-start gap-2 px-3 py-1.5 text-start sm:max-w-72"
-                          onClick={/** Clears the workspace message and opens a draft for the selected entry. */ () => {
-                            setMessage(null);
-                            setShowAllFields(false);
-                            setShowPassword(false);
-                            setSheetTab('details');
-    setShowPassword(false);
-                            setSelectedEntry(entry);
-                            setEdits(entryDraft(entry));
-                          }}
+                          onClick={/** Opens the entry. */ () => openEntry(entry)}
                         >
                           <EntryIcon iconUrl={entry.iconUrl} url={entry.url} showFavicons={showFavicons} className="mt-0.5" />
                           <span className="min-w-0">
@@ -1736,6 +1847,16 @@ export default function App() {
                             />
                           )}
                           <span className="font-mono tracking-wider">{entry.password ? '••••••••' : '—'}</span>
+                          {passwordWarning(entry) && (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span tabIndex={0} aria-label={passwordWarning(entry) ?? undefined} className="inline-flex rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                                  <TriangleAlertIcon className="size-4 text-amber-600 dark:text-amber-400" />
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent>{passwordWarning(entry)}</TooltipContent>
+                            </Tooltip>
+                          )}
                         </span>
                       </TableCell>
                       <TableCell className="hidden sm:table-cell">
@@ -1761,6 +1882,9 @@ export default function App() {
                             <CircleXIcon aria-label="No TOTP" className="size-4 text-muted-foreground/60" />
                           )}
                         </span>
+                      </TableCell>
+                      <TableCell className="hidden whitespace-nowrap text-muted-foreground lg:table-cell">
+                        <span title={entry.modified ? entry.modified.toLocaleString() : undefined}>{formatRelative(entry.modified, renderedAt)}</span>
                       </TableCell>
                       <TableCell className="hidden text-muted-foreground md:table-cell">
                         <span className="flex max-w-56 min-w-0 items-center gap-1">
@@ -1814,6 +1938,12 @@ export default function App() {
                             ? 'Changes are encrypted in your browser before saving.'
                             : 'You can view and copy this entry, but you cannot edit it.'}
                       </SheetDescription>
+                      {selectedEntry && (
+                        <p className="text-xs text-muted-foreground">
+                          Created {selectedEntry.created ? selectedEntry.created.toLocaleString() : 'unknown'} · Modified{' '}
+                          {selectedEntry.modified ? selectedEntry.modified.toLocaleString() : 'unknown'}
+                        </p>
+                      )}
                     </SheetHeader>
                     <Tabs
                       value={selectedEntry ? sheetTab : 'details'}

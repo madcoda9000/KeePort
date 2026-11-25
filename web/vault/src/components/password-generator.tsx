@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { RefreshCwIcon, WandSparklesIcon } from 'lucide-react';
 import {
   CHARACTER_SETS,
@@ -22,7 +22,19 @@ import {
   DialogTrigger
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
+import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
 import { Slider } from '@/components/ui/slider';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import {
+  MAX_PASSPHRASE_WORDS,
+  MIN_PASSPHRASE_WORDS,
+  PASSPHRASE_SEPARATORS,
+  generatePassphrase,
+  loadWordlist,
+  passphraseEntropyBits,
+  type PassphraseOptions,
+  type PassphraseSeparator
+} from '@/lib/passphrase';
 
 const SET_LABELS: Record<CharacterSet, string> = {
   lower: 'Lowercase (a–z)',
@@ -32,6 +44,15 @@ const SET_LABELS: Record<CharacterSet, string> = {
 };
 
 const DEFAULT_OPTIONS: PasswordOptions = { length: 20, sets: ['lower', 'upper', 'digits', 'symbols'], avoidLookAlikes: false };
+const DEFAULT_PASSPHRASE: PassphraseOptions = { words: 6, separator: 'hyphen', capitalize: false, addNumber: false };
+
+const SEPARATOR_LABELS: Record<PassphraseSeparator, string> = {
+  hyphen: 'Hyphen (-)',
+  space: 'Space',
+  dot: 'Dot (.)',
+  underscore: 'Underscore (_)',
+  none: 'None'
+};
 
 /**
  * A dialog that generates a random password in the browser with the Web Crypto API and hands it to the entry form.
@@ -66,10 +87,57 @@ export function PasswordGenerator({ onUse, disabled }: { onUse: (password: strin
  * @param props - The callback that receives the chosen password.
  */
 function GeneratorForm({ onUse }: { onUse: (password: string) => void }) {
+  const [mode, setMode] = useState<'password' | 'passphrase'>('password');
   const [options, setOptions] = useState<PasswordOptions>(DEFAULT_OPTIONS);
   const [password, setPassword] = useState(/** Generates the first password. */ () => generatePassword(DEFAULT_OPTIONS));
-  const bits = passwordEntropyBits(options);
+  const [phraseOptions, setPhraseOptions] = useState<PassphraseOptions>(DEFAULT_PASSPHRASE);
+  // The latest options, so a passphrase generated when the word list finishes loading uses what the user chose meanwhile.
+  const latestPhraseOptions = useRef(DEFAULT_PASSPHRASE);
+  const [words, setWords] = useState<readonly string[] | null>(null);
+  const [phrase, setPhrase] = useState('');
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const bits = mode === 'password' ? passwordEntropyBits(options) : words ? passphraseEntropyBits(phraseOptions, words.length) : 0;
   const strength = strengthLabel(bits);
+  const value = mode === 'password' ? password : phrase;
+
+  /**
+   * Switches between passwords and passphrases and loads the word list the first time it is needed.
+   * @param next - The chosen mode.
+   */
+  function switchMode(next: string) {
+    const target = next === 'passphrase' ? 'passphrase' : 'password';
+    setMode(target);
+    if (target === 'passphrase' && !words) {
+      void loadWordlist().then(
+        /**
+         * Keeps the loaded list and generates the first passphrase.
+         * @param list - The EFF Large Wordlist.
+         */
+        (list) => {
+          setWords(list);
+          setPhrase(generatePassphrase(latestPhraseOptions.current, list));
+        },
+        /** Reports that the word list could not be loaded. */
+        () => setLoadError('The word list could not be loaded. Reload the page and try again.')
+      );
+    }
+  }
+
+  /**
+   * Applies new passphrase options and generates a new passphrase with them.
+   * @param next - The changed options.
+   */
+  function updatePhrase(next: PassphraseOptions) {
+    latestPhraseOptions.current = next;
+    setPhraseOptions(next);
+    if (words) setPhrase(generatePassphrase(next, words));
+  }
+
+  /** Generates a new password or passphrase with the current options. */
+  function regenerate() {
+    if (mode === 'password') setPassword(generatePassword(options));
+    else if (words) setPhrase(generatePassphrase(phraseOptions, words));
+  }
 
   /**
    * Applies new options and generates a new password with them.
@@ -100,9 +168,17 @@ function GeneratorForm({ onUse }: { onUse: (password: string) => void }) {
         <DialogDescription>Generated in your browser with a cryptographically secure random source.</DialogDescription>
       </DialogHeader>
       <div className="grid gap-5">
+        <Tabs value={mode} onValueChange={switchMode}>
+          <TabsList className="w-full">
+            <TabsTrigger value="password">Password</TabsTrigger>
+            <TabsTrigger value="passphrase">Passphrase</TabsTrigger>
+          </TabsList>
+        </Tabs>
         <div className="flex items-center gap-2 rounded-lg border bg-muted/40 p-3">
-          <output aria-label="Generated password" className="min-w-0 flex-1 font-mono text-sm break-all">{password}</output>
-          <Button type="button" variant="ghost" size="icon-sm" aria-label="Generate another password" title="Generate another" onClick={/** Generates a new password with the same options. */ () => setPassword(generatePassword(options))}>
+          <output aria-label="Generated password" className="min-w-0 flex-1 font-mono text-sm break-all">
+            {value || (loadError ?? 'Loading word list…')}
+          </output>
+          <Button type="button" variant="ghost" size="icon-sm" aria-label="Generate another password" title="Generate another" disabled={!value} onClick={regenerate}>
             <RefreshCwIcon />
           </Button>
         </div>
@@ -110,6 +186,8 @@ function GeneratorForm({ onUse }: { onUse: (password: string) => void }) {
           <span className="text-muted-foreground">Strength</span>
           <Badge variant={strength === 'Weak' ? 'destructive' : 'secondary'}>{strength} · {bits} bits</Badge>
         </div>
+        {mode === 'password' ? (
+        <>
         <div className="grid gap-3">
           <div className="flex items-center justify-between">
             <Label htmlFor="generator-length">Length</Label>
@@ -159,9 +237,75 @@ function GeneratorForm({ onUse }: { onUse: (password: string) => void }) {
             <Label htmlFor="generator-look-alikes" className="font-normal">Avoid look-alikes (I, l, 1, O, 0)</Label>
           </div>
         </fieldset>
+        </>
+        ) : (
+          <div className="grid gap-4">
+            <div className="grid gap-3">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="generator-words">Words</Label>
+                <span className="text-sm tabular-nums">{phraseOptions.words}</span>
+              </div>
+              <Slider
+                id="generator-words"
+                aria-label="Number of words"
+                min={MIN_PASSPHRASE_WORDS}
+                max={MAX_PASSPHRASE_WORDS}
+                step={1}
+                value={[phraseOptions.words]}
+                onValueChange={/**
+                 * Applies the chosen number of words.
+                 * @param next - The slider values; the first one is the number of words.
+                 */ (next) => updatePhrase({ ...phraseOptions, words: next[0] })}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="generator-separator">Separator</Label>
+              <NativeSelect
+                id="generator-separator"
+                value={phraseOptions.separator}
+                onChange={/**
+                 * Applies the chosen separator.
+                 * @param event - The select change event.
+                 */ (event) => updatePhrase({ ...phraseOptions, separator: event.target.value as PassphraseSeparator })}
+              >
+                {(Object.keys(PASSPHRASE_SEPARATORS) as PassphraseSeparator[]).map(/**
+                 * Renders one separator option.
+                 * @param separator - One separator.
+                 */ (separator) => <NativeSelectOption key={separator} value={separator}>{SEPARATOR_LABELS[separator]}</NativeSelectOption>)}
+              </NativeSelect>
+            </div>
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="generator-capitalize"
+                checked={phraseOptions.capitalize}
+                onCheckedChange={/**
+                 * Sets whether words start with a capital letter.
+                 * @param checked - The new checkbox state.
+                 */ (checked) => updatePhrase({ ...phraseOptions, capitalize: checked === true })}
+              />
+              <Label htmlFor="generator-capitalize" className="font-normal">Capitalize words</Label>
+            </div>
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="generator-number"
+                checked={phraseOptions.addNumber}
+                onCheckedChange={/**
+                 * Sets whether a digit is added.
+                 * @param checked - The new checkbox state.
+                 */ (checked) => updatePhrase({ ...phraseOptions, addNumber: checked === true })}
+              />
+              <Label htmlFor="generator-number" className="font-normal">Add a number</Label>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Words from the EFF Large Wordlist (7,776 words, CC BY 3.0 Electronic Frontier Foundation).
+            </p>
+          </div>
+        )}
       </div>
       <DialogFooter>
-        <Button type="button" onClick={/** Uses the generated password. */ () => onUse(password)}>Use password</Button>
+        <Button type="button" disabled={!value} onClick={/** Uses the generated password or passphrase. */ () => onUse(value)}>
+          {mode === 'password' ? 'Use password' : 'Use passphrase'}
+        </Button>
       </DialogFooter>
     </DialogContent>
   );

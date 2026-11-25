@@ -26,7 +26,7 @@ export const MAX_PASSWORD_LENGTH = 128;
  * value is more likely than another.
  * @param limit - The exclusive upper bound, at most 2^32.
  */
-function randomBelow(limit: number): number {
+export function randomBelow(limit: number): number {
   const buffer = new Uint32Array(1);
   const ceiling = Math.floor(0x100000000 / limit) * limit;
   for (;;) {
@@ -89,12 +89,13 @@ export function passwordEntropyBits(options: PasswordOptions): number {
 }
 
 /**
- * Describes an entropy value in words for the strength indicator.
+ * Describes the entropy of a randomly generated password or passphrase in words. Random secrets are much stronger
+ * than chosen ones of the same length, so six EFF words (77 bits) count as strong.
  * @param bits - The entropy in bits.
  */
 export function strengthLabel(bits: number): 'Weak' | 'Fair' | 'Strong' | 'Very strong' {
-  if (bits < 60) return 'Weak';
-  if (bits < 80) return 'Fair';
-  if (bits < 112) return 'Strong';
+  if (bits < 50) return 'Weak';
+  if (bits < 64) return 'Fair';
+  if (bits < 100) return 'Strong';
   return 'Very strong';
 }

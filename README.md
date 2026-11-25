@@ -41,6 +41,7 @@ KeePass files are great: open format, strong encryption, dozens of apps. Keeping
 | | |
 |---|---|
 | 🧠 **Zero-knowledge web vault** | Unlock, search, edit and save KDBX files in the browser. Copy usernames, passwords and TOTP codes with one click, generate passwords, delete to the recycle bin and spot expired entries. Master passwords and key files never leave your device. |
+| 🛡️ **Security report** | Finds weak, reused, old and empty passwords and expired entries, computed only in your browser; the generator also creates passphrases from the EFF wordlist. |
 | 🕘 **History & tags** | See every earlier version of an entry, restore one or delete old versions; tag entries and filter by tag — compatible with KeePass2Android, KeePassXC and KeePassium. |
 | 📁 **Folders** | Browse the KDBX folder tree, create, rename and delete folders, and move several entries at once — the structure stays the same in KeePassXC, KeePass2Android and KeePassium. |
 | 🧾 **Templates & custom fields** | Credit cards, IDs and other KeePass2Android templates show their own fields; add, edit and protect custom fields on any entry and set expiry dates. |
@@ -260,4 +261,4 @@ Ideas and bug reports are welcome in the [issue tracker](https://github.com/madc
 
 ## 📄 License
 
-KeePort is released under the [MIT License](LICENSE).
+KeePort is released under the [MIT License](LICENSE). It includes the EFF Large Wordlist (CC BY 3.0, Electronic Frontier Foundation) and a list of common passwords from SecLists (MIT); see [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
