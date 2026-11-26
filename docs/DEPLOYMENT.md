@@ -361,6 +361,24 @@ Accepting X-Forwarded-For/-Proto from: loopback, 172.22.0.1 (gateway)
 
 and after a sync, **Admin → Logs → WebDAV logs** shows each device's own address instead of `172.x.0.1`.
 
+### Devices at home show your own public IP
+
+If a phone in your Wi-Fi shows your **own public IP address** in the WebDAV log (the one your provider gives your router), the proxy setting is working. The address comes from the way the request travels:
+
+1. The device uses the public name, e.g. `vault.example.com`, even at home. DNS returns your public IP.
+2. The request goes to your router, which forwards it back to the NAS (*NAT reflection* or *hairpin NAT*). On the way, the router replaces the device's address with its own public one.
+3. The reverse proxy only sees that address and passes it on to KeePort.
+
+On mobile data the log shows the device's real address. As long as the router rewrites the address, all devices at home also share one [rate-limit](#-troubleshooting) quota.
+
+**Fix: local DNS (split DNS).** Let your home network resolve the public name to the NAS's LAN address, e.g. `192.168.1.20`. Devices at home then connect to the NAS directly, and the log shows their LAN addresses:
+
+- **OPNsense / pfSense:** **Services → Unbound DNS → Overrides** (OPNsense) or **Services → DNS Resolver → Host Overrides** (pfSense), add the name with the NAS's LAN IP.
+- **Pi-hole / AdGuard Home:** add a local DNS record (*Local DNS → DNS Records* or *Filters → DNS rewrites*).
+- **Routers without this option** (e.g. FRITZ!Box): use Pi-hole or AdGuard Home as the DNS server of your network.
+
+The HTTPS certificate stays valid because the name does not change, so nothing has to be changed in the apps. Android's **Private DNS** (*Settings → Network → Private DNS*) bypasses your local DNS server; set it to *Automatic* or *Off* on devices that should use the override.
+
 ### Proxy on another machine or in another container
 
 List the address the proxy connects from:
@@ -572,6 +590,7 @@ Limits apply per client address. Behind a reverse proxy, [trust the proxy](#-tru
 | `428 Precondition Required` | Reopen the vault from the server in the app, then save again. |
 | `429 Too Many Requests` | Wait for `Retry-After`. If all devices show the same address in the WebDAV log, [trust your reverse proxy](#-trust-your-reverse-proxy); otherwise raise the limits in **Admin → Settings**. |
 | All devices show the same Client IP in the WebDAV log | That is your reverse proxy. Set `KEEPORT_TRUSTED_PROXIES=gateway` if it runs on the same host, otherwise add its address ([how](#-trust-your-reverse-proxy)). |
+| Devices in your Wi-Fi show your own public IP in the WebDAV log | Your router sends the requests back in (NAT reflection) and replaces the address. Set up local DNS for the public name ([how](#devices-at-home-show-your-own-public-ip)). |
 | `KeePort cannot start: invalid KEEPORT_TRUSTED_PROXIES` | Fix the named entry: use `gateway` (only inside Docker), single IPs or CIDR networks such as `10.10.0.0/16`; catch-all entries like `0.0.0.0/0` are refused. |
 
 ## 🔍 What the server can and cannot see

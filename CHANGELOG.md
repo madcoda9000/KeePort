@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.15.1] - 2026-11-26
 
+### Added
+
+- DEPLOYMENT.md explains why devices in the home Wi-Fi show your own public IP in the WebDAV log (NAT reflection) and how local DNS fixes it, with a new troubleshooting entry.
+
 ### Changed
 
 - The screenshots in the README show the new violet look of 0.15.0.
