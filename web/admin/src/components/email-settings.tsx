@@ -33,6 +33,7 @@ type Draft = {
   warnCertificate: boolean;
   warnStorage: boolean;
   warnDiskSpace: boolean;
+  logDays: string;
 };
 
 type WarningKey = 'warnFailedSignIns' | 'warnCertificate' | 'warnStorage' | 'warnDiskSpace';
@@ -60,7 +61,8 @@ function toDraft(settings: EmailSettings): Draft {
     warnFailedSignIns: settings.warnFailedSignIns,
     warnCertificate: settings.warnCertificate,
     warnStorage: settings.warnStorage,
-    warnDiskSpace: settings.warnDiskSpace
+    warnDiskSpace: settings.warnDiskSpace,
+    logDays: String(settings.logRetentionDays ?? 30)
   };
 }
 
@@ -143,6 +145,11 @@ export function EmailSettingsPanel() {
       setMessage({ text: t('invalidPort'), error: true });
       return;
     }
+    const logRetentionDays = Number(draft.logDays);
+    if (!Number.isInteger(logRetentionDays) || logRetentionDays < 1 || logRetentionDays > 365) {
+      setMessage({ text: t('invalidLogDays'), error: true });
+      return;
+    }
     const settings: EmailSettings = {
       host: orNull(draft.host),
       port,
@@ -156,7 +163,8 @@ export function EmailSettingsPanel() {
       warnFailedSignIns: draft.warnFailedSignIns,
       warnCertificate: draft.warnCertificate,
       warnStorage: draft.warnStorage,
-      warnDiskSpace: draft.warnDiskSpace
+      warnDiskSpace: draft.warnDiskSpace,
+      logRetentionDays
     };
     setBusy('save');
     setMessage(null);
@@ -401,6 +409,25 @@ export function EmailSettingsPanel() {
                 </Field>
               ))}
             </div>
+            <Field>
+              <FieldLabel htmlFor="email-log-days">{t('logDays')}</FieldLabel>
+              <Input
+                id="email-log-days"
+                type="number"
+                min={1}
+                max={365}
+                step={1}
+                required
+                aria-describedby="email-log-days-help"
+                disabled={busy !== null}
+                value={draft.logDays}
+                onChange={/**
+                 * Updates how long the e-mail log keeps entries.
+                 * @param event - The input change event.
+                 */ (event) => update({ logDays: event.target.value })}
+              />
+              <FieldDescription id="email-log-days-help">{t('logDaysHelp')}</FieldDescription>
+            </Field>
             <div className="flex flex-wrap items-center gap-2">
               <Button type="submit" disabled={busy !== null}>{busy === 'save' ? t('saving') : t('save')}</Button>
               <Button

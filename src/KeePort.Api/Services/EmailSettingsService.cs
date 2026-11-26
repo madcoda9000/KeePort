@@ -18,6 +18,7 @@ namespace KeePort.Api.Services;
 /// <param name="WarnCertificate">Warn admins about the admin certificate expiring.</param>
 /// <param name="WarnStorage">Warn admins when the data is not in a host folder.</param>
 /// <param name="WarnDiskSpace">Warn admins about low disk space.</param>
+/// <param name="LogRetentionDays">How many days sent and given-up e-mails stay in the log; null for settings saved before 0.23.</param>
 public sealed record StoredEmailSettings(
     string? Host,
     int Port,
@@ -30,13 +31,23 @@ public sealed record StoredEmailSettings(
     bool WarnFailedSignIns,
     bool WarnCertificate,
     bool WarnStorage,
-    bool WarnDiskSpace)
+    bool WarnDiskSpace,
+    int? LogRetentionDays = null)
 {
+    /// <summary>The log retention used when none was chosen.</summary>
+    public const int DefaultLogDays = 30;
+
+    /// <summary>The longest log retention an administrator can choose.</summary>
+    public const int MaxLogDays = 365;
+
     /// <summary>The settings before anything was entered.</summary>
     public static StoredEmailSettings Empty { get; } = new(null, 587, "starttls", null, null, null, "KeePort", null, true, true, true, true);
 
     /// <summary>Whether host, sender and web vault address are set, so e-mails with links can be sent.</summary>
     public bool Configured => !string.IsNullOrWhiteSpace(Host) && !string.IsNullOrWhiteSpace(FromAddress) && !string.IsNullOrWhiteSpace(PublicUrl);
+
+    /// <summary>How many days finished e-mails stay in the log; 30 when nothing valid was stored.</summary>
+    public int LogDays => LogRetentionDays is { } days and >= 1 and <= MaxLogDays ? days : DefaultLogDays;
 }
 
 /// <summary>
@@ -82,9 +93,12 @@ public sealed class EmailSettingsService
     public static EmailSettingsDto ToDto(StoredEmailSettings settings) => new(
         settings.Host, settings.Port, settings.Security, settings.Username, null, settings.ProtectedPassword is not null,
         settings.FromAddress, settings.FromName, settings.PublicUrl,
-        settings.WarnFailedSignIns, settings.WarnCertificate, settings.WarnStorage, settings.WarnDiskSpace);
+        settings.WarnFailedSignIns, settings.WarnCertificate, settings.WarnStorage, settings.WarnDiskSpace, settings.LogDays);
 
-    /// <summary>Validates and stores new settings; a null password keeps the stored one, an empty one removes it.</summary>
+    /// <summary>
+    /// Validates and stores new settings; a null password keeps the stored one, an empty one removes it, and a missing log
+    /// retention keeps the stored one.
+    /// </summary>
     /// <param name="request">The settings from the admin console.</param>
     /// <returns>An error message for invalid input, otherwise null.</returns>
     public string? Save(EmailSettingsDto request)
@@ -112,6 +126,10 @@ public sealed class EmailSettingsService
         {
             return "Enter the web vault address, e.g. https://vault.example.com.";
         }
+        if (request.LogRetentionDays is < 1 or > StoredEmailSettings.MaxLogDays)
+        {
+            return $"Keep the e-mail log for 1 to {StoredEmailSettings.MaxLogDays} days.";
+        }
 
         var current = Get();
         var protectedPassword = request.Password switch
@@ -122,7 +140,8 @@ public sealed class EmailSettingsService
         };
         var settings = new StoredEmailSettings(host, request.Port, request.Security, Clean(request.Username), protectedPassword,
             from is null ? null : KeePort.Api.Security.EmailAddress.Normalize(from), Clean(request.FromName) ?? "KeePort", publicUrl,
-            request.WarnFailedSignIns, request.WarnCertificate, request.WarnStorage, request.WarnDiskSpace);
+            request.WarnFailedSignIns, request.WarnCertificate, request.WarnStorage, request.WarnDiskSpace,
+            request.LogRetentionDays ?? current.LogDays);
         _db.SetState(StateKey, JsonSerializer.Serialize(settings, Json));
         return null;
     }

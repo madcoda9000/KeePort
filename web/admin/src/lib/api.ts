@@ -46,6 +46,27 @@ export interface EmailSettings {
   warnCertificate: boolean;
   warnStorage: boolean;
   warnDiskSpace: boolean;
+  /** How many days sent and given-up e-mails stay in the e-mail log (1–365); on save undefined keeps the stored value. */
+  logRetentionDays?: number;
+}
+
+/** The send state of one e-mail: queued, waiting for another try, sent, or given up after the last try. */
+export type EmailLogStatus = 'waiting' | 'retrying' | 'sent' | 'failed';
+
+/** One e-mail in the e-mail log; its content is never kept after sending. */
+export interface EmailLogEntry {
+  id: number;
+  createdAt: string;
+  /** The template name, e.g. invite or mfaCode. */
+  kind: string;
+  recipient: string;
+  subject: string;
+  status: EmailLogStatus;
+  attempts: number;
+  sentAt: string | null;
+  failedAt: string | null;
+  nextAttemptAt: string | null;
+  lastError: string | null;
 }
 
 /** The e-mail settings together with whether they are complete and the state of the outgoing queue. */
@@ -638,6 +659,14 @@ export const api = {
    */
   async listWebDavLogs(signal?: AbortSignal) {
     return request<WebDavRequestLogEntry[]>('/api/admin/logs/webdav', { signal });
+  },
+
+  /**
+   * Lists the e-mail log, newest first.
+   * @param signal - An optional signal that aborts the request when the caller no longer needs it.
+   */
+  async listEmailLogs(signal?: AbortSignal) {
+    return request<EmailLogEntry[]>('/api/admin/logs/email', { signal });
   },
 
   async listAudit(filter: AuditFilter, page: number, pageSize: number, signal?: AbortSignal) {

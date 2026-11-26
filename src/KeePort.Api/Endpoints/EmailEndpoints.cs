@@ -16,6 +16,9 @@ public static class EmailEndpoints
     /// <summary>The fewest seconds between two verification codes for one account.</summary>
     private const int CodeIntervalSeconds = 60;
 
+    /// <summary>The most entries the e-mail log returns.</summary>
+    private const int EmailLogLimit = 1000;
+
     /// <summary>Registers all e-mail routes.</summary>
     /// <param name="app">The endpoint route builder on which to register the routes.</param>
     public static void MapEmailEndpoints(this IEndpointRouteBuilder app)
@@ -70,9 +73,10 @@ public static class EmailEndpoints
         // Sends a test e-mail to the signed-in administrator right away and reports the server's answer.
         // <param name="context">The current HTTP request and response context.</param>
         // <param name="settings">The SMTP settings.</param>
+        // <param name="db">The SQLite store, whose e-mail log records the test.</param>
         // <param name="audit">The audit log that records the attempt.</param>
         // <param name="cancellationToken">A token that cancels the operation.</param>
-        group.MapPost("/settings/email/test", async (HttpContext context, EmailSettingsService settings, AuditLog audit, CancellationToken cancellationToken) =>
+        group.MapPost("/settings/email/test", async (HttpContext context, EmailSettingsService settings, KeePortDb db, AuditLog audit, CancellationToken cancellationToken) =>
         {
             if (ApiAuth.RequireAdmin(context) is { } forbidden)
             {
@@ -92,14 +96,28 @@ public static class EmailEndpoints
             try
             {
                 await SmtpMailer.SendAsync(current, settings.RevealPassword(current), user.Email, email.Subject, email.Text, email.Html, cancellationToken);
+                db.LogDirectEmail(EmailTemplates.Kinds.Test, user.Email, email.Subject, null);
                 audit.Record(context, AuditActions.TestEmailSent, targetType: "settings", targetName: "E-mail", details: user.Email);
                 return Results.Ok(new { sentTo = user.Email });
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
+                db.LogDirectEmail(EmailTemplates.Kinds.Test, user.Email, email.Subject, SmtpMailer.Describe(ex));
                 audit.Record(context, AuditActions.TestEmailSent, success: false, targetType: "settings", targetName: "E-mail", details: SmtpMailer.Describe(ex));
                 return Results.Json(new ErrorResponse("email_failed", SmtpMailer.Describe(ex)), statusCode: StatusCodes.Status502BadGateway);
             }
+        });
+
+        // Lists the e-mail log, newest first: what was sent to whom and when, and why sending failed. No content is kept.
+        // <param name="context">The current HTTP request and response context.</param>
+        // <param name="db">The SQLite store for KeePort metadata.</param>
+        group.MapGet("/logs/email", (HttpContext context, KeePortDb db) =>
+        {
+            if (ApiAuth.RequireAdmin(context) is { } forbidden)
+            {
+                return forbidden;
+            }
+            return Results.Ok(db.ListEmailLog(EmailLogLimit));
         });
 
         // Sends (again) an invitation link to a user account, e.g. when the first one expired.

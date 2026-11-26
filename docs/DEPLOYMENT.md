@@ -433,7 +433,7 @@ Set it up in **Admin → Settings → E-mail**:
 | Sender address / name | `keeport@example.com`, `KeePort` |
 | Web vault address | `https://vault.example.com` — links in e-mails point here. It must be reachable from where users open their mail; never enter the admin console. |
 
-Click **Send test e-mail** to check the settings; the server's answer is shown if it fails. E-mails go through a queue and are retried after 1, 5, 15 and 60 minutes. E-mails never contain passwords or vault content — links carry one-time tokens only (invitation 48 hours, password reset 30 minutes), and those are part of the address after `#`, so they do not reach the reverse proxy's logs.
+Click **Send test e-mail** to check the settings; the server's answer is shown if it fails. E-mails go through a queue and are retried after 1, 5, 15 and 60 minutes. **Admin → Logs → E-mail log** lists every e-mail with recipient, status and the mail server's error; **Keep e-mail log (days)** sets how long sent and given-up e-mails stay there (default 30). The container log also shows each failed attempt (`Could not send the … e-mail`). E-mails never contain passwords or vault content — links carry one-time tokens only (invitation 48 hours, password reset 30 minutes), and those are part of the address after `#`, so they do not reach the reverse proxy's logs.
 
 Users confirm their address in the web vault under **Profile**; administrators in the admin console under **Profile**. Only confirmed addresses get notifications, warnings and reset links.
 
@@ -652,6 +652,7 @@ Limits apply per client address. Behind a reverse proxy, [trust the proxy](#-tru
 | All devices show the same Client IP in the WebDAV log | That is your reverse proxy. Set `KEEPORT_TRUSTED_PROXIES=gateway` if it runs on the same host, otherwise add its address ([how](#-trust-your-reverse-proxy)). |
 | Devices in your Wi-Fi show your own public IP in the WebDAV log | Your router sends the requests back in (NAT reflection) and replaces the address. Set up local DNS for the public name ([how](#devices-at-home-show-your-own-public-ip)). |
 | No "Sign in with a passkey" button, or "Passkeys need the address with a domain name" | Open KeePort with its domain name over HTTPS, not with an IP address ([details](#passkeys)). |
+| An e-mail does not arrive | Open **Logs → E-mail log**: *Sent* means the mail server accepted it (check spam and the right mailbox); *Retrying* or *Given up* shows the server's error. No entry at all: the e-mail was not due — security notifications go only to confirmed addresses, sign-in notices only for a new browser. |
 | Lost phone, no recovery codes left | An administrator clicks **Reset 2FA** in **Users**. If you are the only administrator, run `keeport-admin reset-mfa <username>` in the container ([how](#locked-out-as-the-only-administrator)). |
 | `KeePort cannot start: invalid KEEPORT_TRUSTED_PROXIES` | Fix the named entry: use `gateway` (only inside Docker), single IPs or CIDR networks such as `10.10.0.0/16`; catch-all entries like `0.0.0.0/0` are refused. |
 

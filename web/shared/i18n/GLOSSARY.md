@@ -41,6 +41,7 @@ Use these terms everywhere. German addresses the user with **du** (informal, low
 | security report | Sicherheitsbericht | rapport de sécurité |
 | expired | abgelaufen | expiré |
 | audit log | Audit-Log | journal d’audit |
+| e-mail log | E-Mail-Log | journal des e-mails |
 | rate limit | Anfragelimit | limite de requêtes |
 | dashboard | Dashboard | tableau de bord |
 | dark mode / light mode | Dunkler Modus / Heller Modus | Mode sombre / Mode clair |

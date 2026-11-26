@@ -1060,6 +1060,51 @@ public class KeePortApiTests : IDisposable
     }
 
     /// <summary>
+    /// Checks the e-mail log: the retention is 30 days by default, can be changed within 1–365 days and is kept when
+    /// not sent; the log lists the test e-mail and queued e-mails without their content, and only for admins.
+    /// </summary>
+    [Fact]
+    public async Task Email_Log_Lists_Sent_And_Failed_Mails_Without_Content()
+    {
+        var adminCsrf = await SetupAdminAsync(_admin);
+        await ConfigureEmailAsync(adminCsrf);
+        Assert.Equal(30, (await GetJsonAsync(_admin, "/api/admin/settings/email")).GetProperty("settings").GetProperty("logRetentionDays").GetInt32());
+
+        var settings = new { host = "127.0.0.1", port = 1, security = "none", fromAddress = "keeport@example.test", publicUrl = "https://vault.example.test", logRetentionDays = 400 };
+        using (var tooLong = await SendAsync(_admin, HttpMethod.Put, "/api/admin/settings/email", json: settings, csrf: adminCsrf))
+        {
+            Assert.Equal(HttpStatusCode.BadRequest, tooLong.StatusCode);
+        }
+        using (var ninety = await SendAsync(_admin, HttpMethod.Put, "/api/admin/settings/email", json: settings with { logRetentionDays = 90 }, csrf: adminCsrf))
+        {
+            ninety.EnsureSuccessStatusCode();
+        }
+        await ConfigureEmailAsync(adminCsrf);
+        Assert.Equal(90, (await GetJsonAsync(_admin, "/api/admin/settings/email")).GetProperty("settings").GetProperty("logRetentionDays").GetInt32());
+
+        using (var test = await SendAsync(_admin, HttpMethod.Post, "/api/admin/settings/email/test", csrf: adminCsrf))
+        {
+            Assert.Equal(HttpStatusCode.BadGateway, test.StatusCode);
+        }
+        _factory.Services.GetRequiredService<KeePortDb>().EnqueueEmail("invite", "bob@example.test", "Welcome", "secret-link-4711", "<p>secret-link-4711</p>");
+
+        var log = await GetJsonAsync(_admin, "/api/admin/logs/email");
+        Assert.DoesNotContain("secret-link-4711", log.GetRawText());
+        var invite = log.EnumerateArray().First();
+        Assert.Equal("invite", invite.GetProperty("kind").GetString());
+        Assert.Equal("bob@example.test", invite.GetProperty("recipient").GetString());
+        Assert.Contains(invite.GetProperty("status").GetString(), new[] { "waiting", "retrying", "failed" });
+        var testMail = log.EnumerateArray().Single(/* Picks the test e-mail.
+         * <param name="e">One log entry.</param>
+         */ e => e.GetProperty("kind").GetString() == "test");
+        Assert.Equal("failed", testMail.GetProperty("status").GetString());
+        Assert.Equal(AdminEmail, testMail.GetProperty("recipient").GetString());
+        Assert.False(string.IsNullOrEmpty(testMail.GetProperty("lastError").GetString()));
+
+        Assert.Equal(HttpStatusCode.Unauthorized, (await _user.GetAsync("/api/admin/logs/email")).StatusCode);
+    }
+
+    /// <summary>
     /// Checks confirming an address with a code (wrong code, throttling, success) and that changing the address
     /// unconfirms it and tells the previous address.
     /// </summary>

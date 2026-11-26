@@ -13,6 +13,7 @@ import {
   LayoutDashboardIcon,
   LogOutIcon,
   MailCheckIcon,
+  MailIcon,
   MailWarningIcon,
   ScrollTextIcon,
   SendIcon,
@@ -38,6 +39,7 @@ import { RateLimitSettingsPanel } from '@/components/rate-limit-settings';
 import { EmailSettingsPanel } from '@/components/email-settings';
 import { MfaSettingsPanel } from '@/components/mfa-settings';
 import { WebDavLogsPanel } from '@/components/webdav-logs';
+import { EmailLogsPanel } from '@/components/email-logs';
 import { AuditLogPanel } from '@/components/audit-log';
 import { AuditSettingsPanel } from '@/components/audit-settings';
 import { VaultVersionsButton } from '@/components/vault-versions';
@@ -108,7 +110,7 @@ import { DataTable, type TableColumn } from '@shared/data-table';
 import { matchesTableSearch, timestampSortValue } from '@shared/table-data';
 
 type Message = { kind: 'notice' | 'error'; text: string } | null;
-type Tab = 'dashboard' | 'vaults' | 'users' | 'webdav' | 'settings' | 'audit-log' | 'webdav-logs';
+type Tab = 'dashboard' | 'vaults' | 'users' | 'webdav' | 'settings' | 'audit-log' | 'webdav-logs' | 'email-logs';
 type PermissionValue = 'none' | 'read' | 'read-write';
 
 /** Each section's icon and the catalog keys (app-sidebar) of its title and description, translated at render time. */
@@ -119,13 +121,14 @@ const ADMIN_SECTIONS = {
   webdav: { title: 'webdav', description: 'webdavDescription', icon: NetworkIcon },
   settings: { title: 'settings', description: 'settingsDescription', icon: SettingsIcon },
   'audit-log': { title: 'auditLog', description: 'auditLogDescription', icon: ShieldCheckIcon },
-  'webdav-logs': { title: 'webdavLogs', description: 'webdavLogsDescription', icon: NetworkIcon }
+  'webdav-logs': { title: 'webdavLogs', description: 'webdavLogsDescription', icon: NetworkIcon },
+  'email-logs': { title: 'emailLogs', description: 'emailLogsDescription', icon: MailIcon }
 } as const;
 
 /** Sections listed directly under "Manage" in the navigation. */
 const MANAGE_TABS: readonly Tab[] = ['dashboard', 'vaults', 'users', 'webdav', 'settings'];
 /** Sections listed below the "Logs" navigation entry; the first one opens when "Logs" is selected. */
-const LOG_TABS: readonly Tab[] = ['audit-log', 'webdav-logs'];
+const LOG_TABS: readonly Tab[] = ['audit-log', 'webdav-logs', 'email-logs'];
 
 /**
  * Returns the visible deletion status of a vault in the current language.
@@ -1409,6 +1412,7 @@ export default function App() {
 
           {tab === 'audit-log' && <AuditLogPanel />}
           {tab === 'webdav-logs' && <WebDavLogsPanel />}
+          {tab === 'email-logs' && <EmailLogsPanel />}
 
           {tab === 'dashboard' && (
             <DashboardPanel

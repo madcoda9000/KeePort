@@ -50,6 +50,9 @@ export default defineMessages({
     loadFailed: 'Could not load the e-mail settings.',
     saveFailed: 'Could not save the e-mail settings.',
     invalidPort: 'Enter a port from 1 to 65535.',
+    logDays: 'Keep e-mail log (days)',
+    logDaysHelp: 'Sent and given-up e-mails stay this long in the e-mail log (1–365 days). Their content is never stored.',
+    invalidLogDays: 'Enter a number of days from 1 to 365 for the e-mail log.',
     retry: 'Try again'
   },
   de: {
@@ -100,6 +103,9 @@ export default defineMessages({
     loadFailed: 'Die E-Mail-Einstellungen konnten nicht geladen werden.',
     saveFailed: 'Die E-Mail-Einstellungen konnten nicht gespeichert werden.',
     invalidPort: 'Gib einen Port von 1 bis 65535 ein.',
+    logDays: 'E-Mail-Log aufbewahren (Tage)',
+    logDaysHelp: 'So lange bleiben gesendete und aufgegebene E-Mails im E-Mail-Log (1–365 Tage). Ihr Inhalt wird nie gespeichert.',
+    invalidLogDays: 'Gib für das E-Mail-Log 1 bis 365 Tage ein.',
     retry: 'Erneut versuchen'
   },
   fr: {
@@ -150,6 +156,9 @@ export default defineMessages({
     loadFailed: 'Impossible de charger les paramètres e-mail.',
     saveFailed: 'Impossible d’enregistrer les paramètres e-mail.',
     invalidPort: 'Saisissez un port de 1 à 65535.',
+    logDays: 'Conserver le journal des e-mails (jours)',
+    logDaysHelp: 'Les e-mails envoyés ou abandonnés restent aussi longtemps dans le journal des e-mails (1 à 365 jours). Leur contenu n’est jamais conservé.',
+    invalidLogDays: 'Saisissez entre 1 et 365 jours pour le journal des e-mails.',
     retry: 'Réessayer'
   }
 });

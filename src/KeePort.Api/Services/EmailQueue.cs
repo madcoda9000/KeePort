@@ -89,7 +89,7 @@ public static class SmtpMailer
 
 /// <summary>
 /// Sends queued e-mails in the background. Failed e-mails are retried after 1, 5, 15 and 60 minutes and then given up;
-/// sent and given-up entries lose their bodies right away and disappear after 7 days.
+/// sent and given-up entries lose their bodies right away and stay in the log for the chosen number of days (30 by default).
 /// </summary>
 /// <param name="queue">The queue that signals new e-mails.</param>
 /// <param name="db">The SQLite store for KeePort metadata.</param>
@@ -112,7 +112,7 @@ public sealed class EmailWorker(EmailQueue queue, KeePortDb db, EmailSettingsSer
                 await SendDueAsync(stoppingToken);
                 if (DateTimeOffset.UtcNow - lastPurge > TimeSpan.FromHours(1))
                 {
-                    db.PurgeEmailOutbox(7);
+                    db.PurgeEmailOutbox(settings.Get().LogDays);
                     lastPurge = DateTimeOffset.UtcNow;
                 }
             }

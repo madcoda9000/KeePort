@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.23.0] - 2026-11-26
+
+### Added
+
+- **E-mail log** in the admin console under **Logs → E-mail log**: every e-mail KeePort sent or tried to send, newest first, with time, type (e.g. invitation, sign-in code, security notification), recipient, subject, status (*Waiting*, *Retrying*, *Sent*, *Given up*), attempts and the mail server's error. A status filter, search and sorting help to find an e-mail (`GET /api/admin/logs/email`, at most 1000 entries).
+- The **test e-mail** now appears in the e-mail log too, as sent or given up.
+- **Admin → Settings → E-mail → Keep e-mail log (days)**: how long sent and given-up e-mails stay in the log, 1–365 days, by default 30 (`logRetentionDays` in the e-mail settings).
+
+### Changed
+
+- Sent and given-up e-mails are kept for 30 days by default instead of 7. The queue summary on the settings page still counts the last 7 days.
+
+### Security
+
+- As before, the content of an e-mail (codes, links) is deleted from the database as soon as it was sent or given up; the log keeps only type, recipient, subject, status and error.
+
 ## [0.22.0] - 2026-11-26
 
 ### Added
@@ -517,6 +533,7 @@ First beta release.
 - Login and setup share a configurable per-IP rate limit; session checks and sign-out are exempt. WebDAV has a separate configurable limit applied before authentication.
 - Admin accounts can only sign in to the Admin console; Vault and WebDAV require a separate user account. Admin sessions are scoped to the Admin API, so existing admins need to sign in again after updating.
 
+[0.23.0]: https://github.com/madcoda9000/KeePort/compare/v0.22.0...v0.23.0
 [0.22.0]: https://github.com/madcoda9000/KeePort/compare/v0.21.2...v0.22.0
 [0.21.2]: https://github.com/madcoda9000/KeePort/compare/v0.21.1...v0.21.2
 [0.21.1]: https://github.com/madcoda9000/KeePort/compare/v0.21.0...v0.21.1

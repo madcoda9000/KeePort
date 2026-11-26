@@ -158,8 +158,57 @@ public sealed partial class KeePortDb
         }
     }
 
+    /// <summary>
+    /// Writes an e-mail that was sent directly, without the queue (the test e-mail), into the log as sent or failed.
+    /// </summary>
+    /// <param name="kind">The template name.</param>
+    /// <param name="recipient">The recipient address.</param>
+    /// <param name="subject">The subject line.</param>
+    /// <param name="error">The error, or null when it was sent.</param>
+    public void LogDirectEmail(string kind, string recipient, string subject, string? error)
+    {
+        using var connection = Open();
+        connection.Open();
+        var now = DateTimeOffset.UtcNow.ToString("O");
+        Execute(connection, """
+            INSERT INTO email_outbox (created_at, kind, recipient, subject, attempts, next_attempt_at, sent_at, failed_at, last_error)
+            VALUES (@now, @kind, @recipient, @subject, @attempts, @now, @sent, @failed, @error);
+            """,
+            new SqliteParameter("@now", now), new SqliteParameter("@kind", kind), new SqliteParameter("@recipient", recipient),
+            new SqliteParameter("@subject", subject), new SqliteParameter("@attempts", error is null ? 0 : 1),
+            new SqliteParameter("@sent", DbValue(error is null ? now : null)), new SqliteParameter("@failed", DbValue(error is null ? null : now)),
+            new SqliteParameter("@error", DbValue(error)));
+    }
+
+    /// <summary>Lists the e-mail log for the admin console, newest first, without any content.</summary>
+    /// <param name="limit">The most entries to return.</param>
+    public IReadOnlyList<EmailLogEntryDto> ListEmailLog(int limit)
+    {
+        using var connection = Open();
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT id, created_at, kind, recipient, subject, attempts, sent_at, failed_at, next_attempt_at, last_error
+            FROM email_outbox ORDER BY id DESC LIMIT @limit;
+            """;
+        command.Parameters.AddWithValue("@limit", limit);
+        using var reader = command.ExecuteReader();
+        var entries = new List<EmailLogEntryDto>();
+        while (reader.Read())
+        {
+            var attempts = reader.GetInt32(5);
+            DateTimeOffset? sentAt = reader.IsDBNull(6) ? null : ParseDate(reader.GetString(6));
+            DateTimeOffset? failedAt = reader.IsDBNull(7) ? null : ParseDate(reader.GetString(7));
+            var status = sentAt is not null ? "sent" : failedAt is not null ? "failed" : attempts > 0 ? "retrying" : "waiting";
+            entries.Add(new EmailLogEntryDto(reader.GetInt64(0), ParseDate(reader.GetString(1)), reader.GetString(2), reader.GetString(3),
+                reader.GetString(4), status, attempts, sentAt, failedAt,
+                status is "waiting" or "retrying" ? ParseDate(reader.GetString(8)) : null, reader.IsDBNull(9) ? null : reader.GetString(9)));
+        }
+        return entries;
+    }
+
     /// <summary>Removes queue entries that were sent or given up more than a number of days ago.</summary>
-    /// <param name="days">How many days finished entries are kept for the status display.</param>
+    /// <param name="days">How many days finished entries are kept for the log.</param>
     public void PurgeEmailOutbox(int days)
     {
         using var connection = Open();

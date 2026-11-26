@@ -544,6 +544,21 @@ public sealed record OutboxEmail(long Id, string Kind, string Recipient, string 
 /// <param name="LastError">The most recent sending error, if any.</param>
 public sealed record EmailQueueStatusDto(long Waiting, long SentLast7Days, long FailedLast7Days, DateTimeOffset? LastSentAt, string? LastError);
 
+/// <summary>One e-mail in the send log of the admin console; the content itself is never kept after sending.</summary>
+/// <param name="Id">The queue entry's ID.</param>
+/// <param name="CreatedAt">When the e-mail was queued.</param>
+/// <param name="Kind">The template name, e.g. "invite" or "mfaCode".</param>
+/// <param name="Recipient">The recipient address.</param>
+/// <param name="Subject">The subject line.</param>
+/// <param name="Status">waiting, retrying, sent or failed (given up).</param>
+/// <param name="Attempts">Failed attempts so far.</param>
+/// <param name="SentAt">When it was sent.</param>
+/// <param name="FailedAt">When it was given up.</param>
+/// <param name="NextAttemptAt">When the next try is due, while it is waiting.</param>
+/// <param name="LastError">The mail server's last error.</param>
+public sealed record EmailLogEntryDto(long Id, DateTimeOffset CreatedAt, string Kind, string Recipient, string Subject, string Status,
+    int Attempts, DateTimeOffset? SentAt, DateTimeOffset? FailedAt, DateTimeOffset? NextAttemptAt, string? LastError);
+
 /// <summary>A one-time token or code for an account, stored as a hash.</summary>
 /// <param name="TokenHash">The SHA-256 of the token.</param>
 /// <param name="UserId">The account's ID.</param>
@@ -567,6 +582,7 @@ public sealed record AccountTokenRecord(string TokenHash, string UserId, string 
 /// <param name="WarnCertificate">Warn admins when the admin certificate expires soon.</param>
 /// <param name="WarnStorage">Warn admins when the data is not in a host folder.</param>
 /// <param name="WarnDiskSpace">Warn admins when free disk space is low.</param>
+/// <param name="LogRetentionDays">How many days sent and given-up e-mails stay in the log (1–365); null keeps the stored value.</param>
 public sealed record EmailSettingsDto(
     string? Host,
     int Port,
@@ -580,7 +596,8 @@ public sealed record EmailSettingsDto(
     bool WarnFailedSignIns = true,
     bool WarnCertificate = true,
     bool WarnStorage = true,
-    bool WarnDiskSpace = true);
+    bool WarnDiskSpace = true,
+    int? LogRetentionDays = null);
 
 /// <summary>The e-mail settings with the queue state, for the admin console.</summary>
 /// <param name="Settings">The settings without the password.</param>
