@@ -3,6 +3,13 @@ import { defineMessages } from '../../../shared/i18n/core.ts';
 /** Texts of the users page: creating accounts and editing roles, status and passwords. */
 export default defineMessages({
   en: {
+    actionsFor: 'Actions for {name}',
+    edit: 'Edit…',
+    editTitle: 'Edit {name}',
+    editDescription: 'Change the role, disable the account or set a new password.',
+    disableAccount: 'Disable account',
+    disableHelp: 'A disabled account cannot sign in, and its WebDAV app passwords stop working.',
+    newPasswordHelp: 'Leave empty to keep the password. A new password signs the account out everywhere.',
     twoFactor: '2FA',
     twoFactorOn: 'On',
     twoFactorOff: 'Off',
@@ -50,6 +57,13 @@ export default defineMessages({
     emailNotConfirmed: 'Not confirmed'
   },
   de: {
+    actionsFor: 'Aktionen für {name}',
+    edit: 'Bearbeiten…',
+    editTitle: '{name} bearbeiten',
+    editDescription: 'Ändere die Rolle, deaktiviere das Konto oder setze ein neues Passwort.',
+    disableAccount: 'Konto deaktivieren',
+    disableHelp: 'Ein deaktiviertes Konto kann sich nicht anmelden, und seine WebDAV-App-Passwörter funktionieren nicht mehr.',
+    newPasswordHelp: 'Leer lassen, um das Passwort zu behalten. Ein neues Passwort meldet das Konto überall ab.',
     twoFactor: '2FA',
     twoFactorOn: 'An',
     twoFactorOff: 'Aus',
@@ -97,6 +111,13 @@ export default defineMessages({
     emailNotConfirmed: 'Nicht bestätigt'
   },
   fr: {
+    actionsFor: 'Actions pour {name}',
+    edit: 'Modifier…',
+    editTitle: 'Modifier {name}',
+    editDescription: 'Changez le rôle, désactivez le compte ou définissez un nouveau mot de passe.',
+    disableAccount: 'Désactiver le compte',
+    disableHelp: 'Un compte désactivé ne peut pas se connecter et ses mots de passe d’application WebDAV ne fonctionnent plus.',
+    newPasswordHelp: 'Laissez vide pour conserver le mot de passe. Un nouveau mot de passe déconnecte le compte partout.',
     twoFactor: '2FA',
     twoFactorOn: 'Activée',
     twoFactorOff: 'Désactivée',

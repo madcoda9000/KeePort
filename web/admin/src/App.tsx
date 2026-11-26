@@ -16,6 +16,10 @@ import {
   MailWarningIcon,
   ScrollTextIcon,
   SendIcon,
+  EllipsisIcon,
+  PencilIcon,
+  ShieldOffIcon,
+  Trash2Icon,
   MoonIcon,
   NetworkIcon,
   PlusIcon,
@@ -72,6 +76,7 @@ import {
   DialogTitle,
   DialogTrigger
 } from '@/components/ui/dialog';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Field, FieldDescription, FieldGroup, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
@@ -176,22 +181,21 @@ function accountColumns(): readonly TableColumn<User>[] {
      */
     { id: 'role', label: translate(usersText, 'role'), sortValue: (account) => account.role },
     /**
-     * Sorts enabled accounts before disabled accounts in ascending order.
+     * Sorts active accounts before disabled accounts in ascending order.
      * @param account - The account row supplying the displayed fields.
      */
-    { id: 'disabled', label: translate(usersText, 'disabled'), sortValue: (account) => Number(account.disabled) },
+    { id: 'status', label: translate(commonText, 'status'), sortValue: (account) => Number(account.disabled) },
     /**
      * Sorts accounts without a second factor first in ascending order.
      * @param account - The account row supplying the displayed fields.
      */
     { id: 'twoFactor', label: translate(usersText, 'twoFactor'), sortValue: (account) => Number(account.twoFactor) },
-    { id: 'newPassword', label: translate(usersText, 'newPassword') },
     /**
      * Sorts by the last sign-in time, leaving missing dates distinct.
      * @param account - The account row supplying the displayed fields.
      */
     { id: 'lastLogin', label: translate(usersText, 'lastLogin'), sortValue: (account) => timestampSortValue(account.lastLoginAt) },
-    { id: 'actions', label: translate(commonText, 'actions') }
+    { id: 'actions', label: translate(commonText, 'actions'), className: 'pe-6 text-end' }
   ];
 }
 
@@ -276,8 +280,9 @@ function uint8ToArrayBuffer(bytes: Uint8Array): ArrayBuffer {
 }
 
 /**
- * Renders account details and controls for editing or deleting that account.
- * @param props - The managed account, signed-in account ID, and callbacks for refreshing data and reporting outcomes.
+ * Shows one account with role, status, two-factor state and last sign-in. The actions are in a menu: editing role,
+ * status and password in a dialog, sending an invitation, resetting two-factor sign-in and deleting.
+ * @param props - The account, the signed-in administrator's ID, and callbacks to refresh the list and report outcomes.
  */
 function UserRow({
   user,
@@ -294,25 +299,33 @@ function UserRow({
   const [disabled, setDisabled] = useState(user.disabled);
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [confirm, setConfirm] = useState<'reset' | 'delete' | null>(null);
   const t = useT(usersText);
   const tc = useT(commonText);
 
-  /** Resets account edits when the server-provided account changes. */
-  useEffect(() => {
+  /** Opens the edit dialog with the account's current values. */
+  function openEdit() {
     setRole(user.role);
     setDisabled(user.disabled);
     setPassword('');
-  }, [user]);
+    setEditing(true);
+  }
 
   const changed = role !== user.role || disabled !== user.disabled || Boolean(password);
 
-  /** Saves the account changes, sending a new password only when entered. */
-  async function save() {
+  /**
+   * Saves the account changes, sending a new password only when entered.
+   * @param event - The submission event of the edit form.
+   */
+  async function save(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
     setBusy(true);
     setMessage(null);
     try {
       await api.updateUser(user.id, { role, disabled, ...(password ? { password } : {}) });
       setPassword('');
+      setEditing(false);
       setMessage({ kind: 'notice', text: t('updated', { name: user.username }) });
       await onChanged();
     } catch (error) {
@@ -366,10 +379,11 @@ function UserRow({
     }
   }
 
+  const isSelf = user.id === currentUserId;
   return (
     <TableRow>
-      <TableCell className="max-w-48 truncate ps-6 font-medium" title={user.id}>
-        {user.username}
+      <TableCell className="max-w-64 ps-6 font-medium" title={user.id}>
+        <span className="block truncate">{user.username}</span>
         {user.email && (
           <div className="flex min-w-0 items-center gap-1.5 text-xs font-normal text-muted-foreground">
             <span className="truncate" title={user.email}>{user.email}</span>
@@ -386,90 +400,134 @@ function UserRow({
         )}
       </TableCell>
       <TableCell>
-        <NativeSelect
-          aria-label={t('roleFor', { name: user.username })}
-          value={role}
-          onChange={/**
-           * Updates the draft account role.
-           * @param event - The account role selector change event.
-           */ (event) => setRole(event.target.value as 'admin' | 'user')}
-        >
-          <NativeSelectOption value="admin">{t('roleAdmin')}</NativeSelectOption>
-          <NativeSelectOption value="user">{t('roleUser')}</NativeSelectOption>
-        </NativeSelect>
+        <Badge variant="outline" className={cn(user.role === 'admin' && ACCENTS.violet.badge)}>
+          {user.role === 'admin' ? t('roleAdmin') : t('roleUser')}
+        </Badge>
       </TableCell>
       <TableCell>
-        <Checkbox
-          aria-label={t('disableUser', { name: user.username })}
-          checked={disabled}
-          onCheckedChange={/**
-           * Updates whether the draft account is disabled.
-           * @param checked - The checkbox state indicating whether to disable the account.
-           */ (checked) => setDisabled(checked === true)}
-        />
+        {user.disabled ? (
+          <Badge variant="outline" className="border-destructive/40 text-destructive">{t('disabled')}</Badge>
+        ) : (
+          <Badge variant="outline" className={ACCENTS.emerald.badge}>{tc('active')}</Badge>
+        )}
       </TableCell>
       <TableCell>
         {user.twoFactor ? (
-          <div className="flex items-center gap-1">
-            <Badge variant="outline" className={cn('gap-1', ACCENTS.emerald.badge)}>
-              <ShieldCheckIcon /> {t('twoFactorOn')}
-            </Badge>
-            <ConfirmAction
-              label={t('resetMfa')}
-              title={t('resetMfaTitle', { name: user.username })}
-              description={t('resetMfaDescription')}
-              disabled={busy}
-              onConfirm={/** Resets the second factors after confirmation. */ () => {
-                void resetMfa();
-              }}
-            />
-          </div>
+          <Badge variant="outline" className={cn('gap-1', ACCENTS.emerald.badge)}>
+            <ShieldCheckIcon /> {t('twoFactorOn')}
+          </Badge>
         ) : (
           <Badge variant="outline" className="text-muted-foreground">{t('twoFactorOff')}</Badge>
         )}
       </TableCell>
-      <TableCell>
-        <Input
-          className="min-w-32"
-          aria-label={t('newPasswordFor', { name: user.username })}
-          type="password"
-          autoComplete="new-password"
-          placeholder={t('unchanged')}
-          value={password}
-          onChange={/**
-           * Stores the draft replacement password until save.
-           * @param event - The replacement password input change event.
-           */ (event) => setPassword(event.target.value)}
-        />
-      </TableCell>
-      <TableCell className="text-muted-foreground">{formatDate(user.lastLoginAt)}</TableCell>
-      <TableCell>
-        <div className="flex items-center gap-2">
-          <Button size="sm" variant="outline" disabled={!changed || busy} onClick={save}>
-            {tc('save')}
-          </Button>
-          {user.role === 'user' && user.email && (
-            <Button
-              size="sm"
-              variant="outline"
-              title={t('sendInvitationTo', { email: user.email })}
-              disabled={busy}
-              onClick={/** Sends the user a new invitation link. */ () => void invite()}
-            >
-              <SendIcon />
-              {t('sendInvitation')}
+      <TableCell className="whitespace-nowrap text-muted-foreground">{formatDate(user.lastLoginAt)}</TableCell>
+      <TableCell className="pe-6 text-end">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button size="icon" variant="ghost" disabled={busy} aria-label={t('actionsFor', { name: user.username })} title={t('actionsFor', { name: user.username })}>
+              <EllipsisIcon />
             </Button>
-          )}
-          <ConfirmAction
-            label={tc('delete')}
-            title={t('deleteTitle', { name: user.username })}
-            description={t('deleteDescription')}
-            disabled={user.id === currentUserId || busy}
-            onConfirm={/** Deletes the account after confirmation. */ () => {
-              void remove();
-            }}
-          />
-        </div>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="min-w-52">
+            <DropdownMenuItem onSelect={openEdit}>
+              <PencilIcon /> {t('edit')}
+            </DropdownMenuItem>
+            {user.role === 'user' && user.email && (
+              <DropdownMenuItem onSelect={/** Sends the user a new invitation link. */ () => void invite()}>
+                <SendIcon /> {t('sendInvitation')}
+              </DropdownMenuItem>
+            )}
+            {user.twoFactor && (
+              <DropdownMenuItem onSelect={/** Asks before resetting two-factor sign-in. */ () => setConfirm('reset')}>
+                <ShieldOffIcon /> {t('resetMfa')}
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem variant="destructive" disabled={isSelf} onSelect={/** Asks before deleting the account. */ () => setConfirm('delete')}>
+              <Trash2Icon /> {tc('delete')}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        <Dialog open={editing} onOpenChange={setEditing}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>{t('editTitle', { name: user.username })}</DialogTitle>
+              <DialogDescription>{t('editDescription')}</DialogDescription>
+            </DialogHeader>
+            <form className="grid gap-5 text-start" onSubmit={save}>
+              <FieldGroup className="gap-4">
+                <Field>
+                  <FieldLabel htmlFor={`role-${user.id}`}>{t('role')}</FieldLabel>
+                  <NativeSelect
+                    id={`role-${user.id}`}
+                    value={role}
+                    onChange={/**
+                     * Updates the draft account role.
+                     * @param event - The account role selector change event.
+                     */ (event) => setRole(event.target.value as 'admin' | 'user')}
+                  >
+                    <NativeSelectOption value="admin">{t('roleAdmin')}</NativeSelectOption>
+                    <NativeSelectOption value="user">{t('roleUser')}</NativeSelectOption>
+                  </NativeSelect>
+                </Field>
+                <Field orientation="horizontal">
+                  <Checkbox
+                    id={`disabled-${user.id}`}
+                    checked={disabled}
+                    aria-describedby={`disabled-help-${user.id}`}
+                    onCheckedChange={/**
+                     * Updates whether the draft account is disabled.
+                     * @param checked - The checkbox state.
+                     */ (checked) => setDisabled(checked === true)}
+                  />
+                  <div className="grid gap-1">
+                    <FieldLabel htmlFor={`disabled-${user.id}`} className="font-normal">{t('disableAccount')}</FieldLabel>
+                    <FieldDescription id={`disabled-help-${user.id}`}>{t('disableHelp')}</FieldDescription>
+                  </div>
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor={`password-${user.id}`}>{t('newPassword')}</FieldLabel>
+                  <Input
+                    id={`password-${user.id}`}
+                    type="password"
+                    autoComplete="new-password"
+                    placeholder={t('unchanged')}
+                    aria-describedby={`password-help-${user.id}`}
+                    value={password}
+                    onChange={/**
+                     * Stores the draft replacement password until save.
+                     * @param event - The replacement password input change event.
+                     */ (event) => setPassword(event.target.value)}
+                  />
+                  <FieldDescription id={`password-help-${user.id}`}>{t('newPasswordHelp')}</FieldDescription>
+                </Field>
+              </FieldGroup>
+              <div className="flex justify-end gap-2">
+                <Button type="button" variant="outline" onClick={/** Closes the dialog without saving. */ () => setEditing(false)}>{tc('cancel')}</Button>
+                <Button type="submit" disabled={!changed || busy}>{tc('save')}</Button>
+              </div>
+            </form>
+          </DialogContent>
+        </Dialog>
+
+        <AlertDialog open={confirm !== null} onOpenChange={/**
+         * Closes the confirmation.
+         * @param open - The requested state.
+         */ (open) => { if (!open) setConfirm(null); }}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>{confirm === 'reset' ? t('resetMfaTitle', { name: user.username }) : t('deleteTitle', { name: user.username })}</AlertDialogTitle>
+              <AlertDialogDescription>{confirm === 'reset' ? t('resetMfaDescription') : t('deleteDescription')}</AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>{tc('cancel')}</AlertDialogCancel>
+              <AlertDialogAction variant="destructive" onClick={/** Runs the confirmed action. */ () => void (confirm === 'reset' ? resetMfa() : remove())}>
+                {confirm === 'reset' ? t('resetMfa') : tc('delete')}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </TableCell>
     </TableRow>
   );

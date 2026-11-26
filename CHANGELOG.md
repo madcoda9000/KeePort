@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.21.1] - 2026-11-26
+
+### Changed
+
+- **Admin → Users** fits without scrolling sideways: the table shows user with e-mail, role, status, 2FA and last sign-in, and every action is in a **⋯** menu per row — **Edit…** (role, disable account, new password in a dialog), **Send invitation**, **Reset 2FA** and **Delete**, each with a confirmation where needed.
+
 ## [0.21.0] - 2026-11-26
 
 ### Added
@@ -489,6 +495,7 @@ First beta release.
 - Login and setup share a configurable per-IP rate limit; session checks and sign-out are exempt. WebDAV has a separate configurable limit applied before authentication.
 - Admin accounts can only sign in to the Admin console; Vault and WebDAV require a separate user account. Admin sessions are scoped to the Admin API, so existing admins need to sign in again after updating.
 
+[0.21.1]: https://github.com/madcoda9000/KeePort/compare/v0.21.0...v0.21.1
 [0.21.0]: https://github.com/madcoda9000/KeePort/compare/v0.20.1...v0.21.0
 [0.20.1]: https://github.com/madcoda9000/KeePort/compare/v0.20.0...v0.20.1
 [0.20.0]: https://github.com/madcoda9000/KeePort/compare/v0.19.0...v0.20.0
