@@ -457,10 +457,12 @@ function UserRow({
             </DialogHeader>
             <form className="grid gap-5 text-start" onSubmit={save}>
               <FieldGroup className="gap-4">
+                {isSelf && <p className="text-sm text-muted-foreground">{t('selfHint')}</p>}
                 <Field>
                   <FieldLabel htmlFor={`role-${user.id}`}>{t('role')}</FieldLabel>
                   <NativeSelect
                     id={`role-${user.id}`}
+                    disabled={isSelf}
                     value={role}
                     onChange={/**
                      * Updates the draft account role.
@@ -474,6 +476,7 @@ function UserRow({
                 <Field orientation="horizontal">
                   <Checkbox
                     id={`disabled-${user.id}`}
+                    disabled={isSelf}
                     checked={disabled}
                     aria-describedby={`disabled-help-${user.id}`}
                     onCheckedChange={/**

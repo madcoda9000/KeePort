@@ -223,6 +223,11 @@ public static class AdminEndpoints
             }
 
             var disabled = request.Disabled ?? target.Disabled;
+            // The signed-in admin would lock themselves out at once.
+            if (string.Equals(target.Id, ApiAuth.GetUser(context)?.Id, StringComparison.Ordinal) && (disabled || role != UserRole.Admin))
+            {
+                return Results.Json(new ErrorResponse("cannot_disable_self", "You cannot disable your own account or remove your own administrator role."), statusCode: StatusCodes.Status409Conflict);
+            }
             if (target.Role == UserRole.Admin && (role != UserRole.Admin || disabled) && CountAdmins(db) <= 1)
             {
                 return Results.Json(new ErrorResponse("last_admin", "The last admin cannot be disabled or demoted."), statusCode: StatusCodes.Status409Conflict);

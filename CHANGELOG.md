@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.21.2] - 2026-11-26
+
+### Fixed
+
+- The signed-in administrator can no longer disable their own account or remove their own administrator role, which locked them out at once. **Edit…** on the own account shows both as unavailable, and the server refuses it (`409 cannot_disable_self`); a new password for the own account still works.
+
 ## [0.21.1] - 2026-11-26
 
 ### Changed
@@ -495,6 +501,7 @@ First beta release.
 - Login and setup share a configurable per-IP rate limit; session checks and sign-out are exempt. WebDAV has a separate configurable limit applied before authentication.
 - Admin accounts can only sign in to the Admin console; Vault and WebDAV require a separate user account. Admin sessions are scoped to the Admin API, so existing admins need to sign in again after updating.
 
+[0.21.2]: https://github.com/madcoda9000/KeePort/compare/v0.21.1...v0.21.2
 [0.21.1]: https://github.com/madcoda9000/KeePort/compare/v0.21.0...v0.21.1
 [0.21.0]: https://github.com/madcoda9000/KeePort/compare/v0.20.1...v0.21.0
 [0.20.1]: https://github.com/madcoda9000/KeePort/compare/v0.20.0...v0.20.1

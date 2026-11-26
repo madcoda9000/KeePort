@@ -3,6 +3,7 @@ import { defineMessages } from '../../../shared/i18n/core.ts';
 /** Texts of the users page: creating accounts and editing roles, status and passwords. */
 export default defineMessages({
   en: {
+    selfHint: 'This is your own account: you cannot disable it or change its role.',
     actionsFor: 'Actions for {name}',
     edit: 'Edit…',
     editTitle: 'Edit {name}',
@@ -57,6 +58,7 @@ export default defineMessages({
     emailNotConfirmed: 'Not confirmed'
   },
   de: {
+    selfHint: 'Das ist dein eigenes Konto: Du kannst es nicht deaktivieren und seine Rolle nicht ändern.',
     actionsFor: 'Aktionen für {name}',
     edit: 'Bearbeiten…',
     editTitle: '{name} bearbeiten',
@@ -111,6 +113,7 @@ export default defineMessages({
     emailNotConfirmed: 'Nicht bestätigt'
   },
   fr: {
+    selfHint: 'C’est votre propre compte : vous ne pouvez ni le désactiver ni changer son rôle.',
     actionsFor: 'Actions pour {name}',
     edit: 'Modifier…',
     editTitle: 'Modifier {name}',

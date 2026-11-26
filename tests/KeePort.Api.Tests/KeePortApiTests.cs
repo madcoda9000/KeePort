@@ -1475,6 +1475,27 @@ public class KeePortApiTests : IDisposable
         Assert.Equal(1, (await GetJsonAsync(_admin, "/api/admin/logs/audit?action=PasskeyRemoved")).GetProperty("total").GetInt64());
     }
 
+    /// <summary>Checks that the signed-in administrator can neither disable their own account nor give up the admin role.</summary>
+    [Fact]
+    public async Task Admin_Cannot_Disable_Or_Demote_Themselves()
+    {
+        var adminCsrf = await SetupAdminAsync(_admin);
+        await CreateUserAsync(_admin, adminCsrf, "second", "admin");
+        var adminId = (await GetJsonAsync(_admin, $"{AdminAuthPath}/me")).GetProperty("id").GetString()!;
+        foreach (object change in new object[] { new { disabled = true }, new { role = "user" } })
+        {
+            using var response = await SendAsync(_admin, HttpMethod.Patch, $"/api/admin/users/{adminId}", json: change, csrf: adminCsrf);
+            Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+            Assert.Equal("cannot_disable_self", (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("error").GetString());
+        }
+        // A new password for the own account still works.
+        using (var password = await SendAsync(_admin, HttpMethod.Patch, $"/api/admin/users/{adminId}", json: new { password = "Admin passphrase 456" }, csrf: adminCsrf))
+        {
+            Assert.Equal(HttpStatusCode.OK, password.StatusCode);
+        }
+        Assert.False((await GetJsonAsync(_admin, "/api/admin/users")).EnumerateArray().Single(/* Me. */ u => u.GetProperty("id").GetString() == adminId).GetProperty("disabled").GetBoolean());
+    }
+
     /// <summary>Stores SMTP settings that point at a closed local port, so e-mails are queued but never delivered.</summary>
     /// <param name="adminCsrf">The admin's CSRF token.</param>
     /// <param name="password">An SMTP password to store, or null to keep the stored one.</param>
