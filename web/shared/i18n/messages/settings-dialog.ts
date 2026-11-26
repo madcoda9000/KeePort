@@ -5,7 +5,8 @@ export default defineMessages({
   en: {
     sections: 'Settings sections',
     account: 'Account',
-    security: 'Security',
+    password: 'Password',
+    twoFactor: 'Two-factor sign-in',
     notifications: 'Notifications',
     signIns: 'Sign-ins',
     vault: 'Vault'
@@ -13,7 +14,8 @@ export default defineMessages({
   de: {
     sections: 'Bereiche der Einstellungen',
     account: 'Konto',
-    security: 'Sicherheit',
+    password: 'Passwort',
+    twoFactor: 'Zwei-Faktor-Anmeldung',
     notifications: 'Benachrichtigungen',
     signIns: 'Anmeldungen',
     vault: 'Tresor'
@@ -21,7 +23,8 @@ export default defineMessages({
   fr: {
     sections: 'Sections des paramètres',
     account: 'Compte',
-    security: 'Sécurité',
+    password: 'Mot de passe',
+    twoFactor: 'Connexion à deux facteurs',
     notifications: 'Notifications',
     signIns: 'Connexions',
     vault: 'Coffre-fort'

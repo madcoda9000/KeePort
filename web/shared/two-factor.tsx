@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
-import { CheckIcon, CopyIcon, DownloadIcon, KeyRoundIcon, MailIcon, ShieldCheckIcon, SmartphoneIcon } from 'lucide-react';
+import { CheckIcon, CopyIcon, DownloadIcon, FingerprintIcon, KeyRoundIcon, MailIcon, ShieldCheckIcon, SmartphoneIcon } from 'lucide-react';
 import { encode } from 'uqr';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -12,6 +12,8 @@ import { formatDateTime } from '@shared/i18n/core';
 import messages from '@shared/i18n/messages/two-factor';
 import { useT } from '@shared/i18n/react';
 import type { MfaApi, MfaChallenge, MfaMethod, MfaStatus } from '@shared/two-factor-api';
+import { createPasskey, getPasskey, isPasskeyCancel, isPasskeyDuplicate, passkeyBlocker } from '@shared/passkey';
+import { describeUserAgent } from '@shared/user-agent';
 
 /**
  * Reads the message of a failed request.
@@ -20,6 +22,17 @@ import type { MfaApi, MfaChallenge, MfaMethod, MfaStatus } from '@shared/two-fac
  */
 function errorText(reason: unknown, fallback: string) {
   return reason instanceof Error && reason.message ? reason.message : fallback;
+}
+
+/**
+ * Reads the message of a failed passkey step, with a plain text when the user closed the browser's dialog.
+ * @param reason - The error.
+ * @param t - The translator of the two-factor texts.
+ */
+function passkeyErrorText(reason: unknown, t: (key: 'passkeyCancelled' | 'passkeyDuplicate' | 'failed') => string) {
+  if (isPasskeyCancel(reason)) return t('passkeyCancelled');
+  if (isPasskeyDuplicate(reason)) return t('passkeyDuplicate');
+  return errorText(reason, t('failed'));
 }
 
 /**
@@ -207,14 +220,17 @@ type Step =
   | { kind: 'emailOn' }
   | { kind: 'emailOff' }
   | { kind: 'newCodes' }
+  | { kind: 'passkeyAdd' }
+  | { kind: 'passkeyRemove'; id: string; name: string }
   | { kind: 'codes'; codes: string[] };
 
 /**
  * The two-factor section of the profile: authenticator app, e-mail codes and recovery codes, each set up inline.
- * @param props - The account name, the app's two-factor API calls, a callback after every change, and whether to show
- * the hint that the administrator requires a second factor.
+ * @param props - The account name, the app's two-factor API calls, a callback after every change, whether to show
+ * the hint that the administrator requires a second factor, and whether to show the title (off when the surrounding
+ * area already has it).
  */
-export function TwoFactorSettings({ username, api, onChange, showRequiredHint = true }: { username: string; api: MfaApi; onChange?: (status: MfaStatus) => void; showRequiredHint?: boolean }) {
+export function TwoFactorSettings({ username, api, onChange, showRequiredHint = true, showTitle = true }: { username: string; api: MfaApi; onChange?: (status: MfaStatus) => void; showRequiredHint?: boolean; showTitle?: boolean }) {
   const t = useT(messages);
   const [status, setStatus] = useState<MfaStatus | null>(null);
   const [step, setStep] = useState<Step>({ kind: 'idle' });
@@ -224,6 +240,8 @@ export function TwoFactorSettings({ username, api, onChange, showRequiredHint = 
   const [code, setCode] = useState('');
   const [useRecovery, setUseRecovery] = useState(false);
   const [copiedKey, setCopiedKey] = useState(false);
+  const [passkeyName, setPasskeyName] = useState('');
+  const blocker = passkeyBlocker();
 
   /** Loads the current state once. */
   useEffect(() => {
@@ -255,6 +273,7 @@ export function TwoFactorSettings({ username, api, onChange, showRequiredHint = 
     setCode('');
     setUseRecovery(false);
     setCopiedKey(false);
+    setPasskeyName(next.kind === 'passkeyAdd' ? describeUserAgent(navigator.userAgent) ?? '' : '');
     setError(null);
     setNotice(null);
   }
@@ -280,10 +299,23 @@ export function TwoFactorSettings({ username, api, onChange, showRequiredHint = 
         }
       }
     } catch (reason) {
-      setError(errorText(reason, t('failed')));
+      setError(passkeyErrorText(reason, t));
     } finally {
       setBusy(false);
     }
+  }
+
+  /**
+   * Adds a passkey: checks the password, lets the browser create the passkey and stores it.
+   * @param password - The account password.
+   */
+  async function addPasskey(password: string) {
+    const name = passkeyName.trim() || describeUserAgent(navigator.userAgent) || 'Passkey';
+    await run(/** Runs the ceremony. */ async () => {
+      const ceremony = await api.passkeyOptions(password);
+      const response = await createPasskey(ceremony.options);
+      return api.addPasskey(ceremony.challengeId, name, response);
+    }, t('passkeyAdded'));
   }
 
   /**
@@ -336,7 +368,7 @@ export function TwoFactorSettings({ username, api, onChange, showRequiredHint = 
 
   const totpOn = status.totpEnabledAt !== null;
   const emailOn = status.emailEnabledAt !== null;
-  const anyOn = totpOn || emailOn;
+  const anyOn = totpOn || emailOn || status.passkeys.length > 0;
   const onBadge = (
     <Badge variant="outline" className={cn('gap-1', ACCENTS.emerald.badge)}>
       <CheckIcon /> {t('on')}
@@ -347,7 +379,7 @@ export function TwoFactorSettings({ username, api, onChange, showRequiredHint = 
     <section className="grid gap-4" aria-labelledby="two-factor-title">
       <div className="space-y-1">
         <div className="flex items-center gap-2">
-          <h3 id="two-factor-title" className="text-sm font-semibold">{t('title')}</h3>
+          <h3 id="two-factor-title" className={showTitle ? 'text-sm font-semibold' : 'sr-only'}>{t('title')}</h3>
           {status.active ? onBadge : <Badge variant="outline">{t('off')}</Badge>}
         </div>
         <p className="text-sm text-muted-foreground">{t('help')}</p>
@@ -365,6 +397,70 @@ export function TwoFactorSettings({ username, api, onChange, showRequiredHint = 
         <RecoveryCodes codes={step.codes} username={username} onDone={/** Hides the codes. */ () => open({ kind: 'idle' })} />
       ) : (
         <>
+          <div className="grid gap-3 rounded-lg border p-3">
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div className="flex gap-3">
+                <FingerprintIcon className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden />
+                <div className="space-y-0.5">
+                  <p className="text-sm font-medium">{t('passkeysTitle')}</p>
+                  <p className="text-sm text-muted-foreground">{t('passkeysHelp')}</p>
+                  {blocker && (
+                    <p className="text-sm text-muted-foreground">{blocker === 'domain' ? t('passkeysBlockedDomain') : t('passkeysBlockedBrowser')}</p>
+                  )}
+                </div>
+              </div>
+              {step.kind === 'idle' && !blocker && (
+                <Button type="button" size="sm" variant={status.passkeys.length > 0 ? 'outline' : 'default'} onClick={/** Opens adding a passkey. */ () => open({ kind: 'passkeyAdd' })}>
+                  {t('addPasskey')}
+                </Button>
+              )}
+            </div>
+            {status.passkeys.length > 0 && (
+              <ul className="grid gap-2" aria-label={t('passkeysTitle')}>
+                {status.passkeys.map(/**
+                 * Shows one passkey.
+                 * @param passkey - The passkey.
+                 */ (passkey) => (
+                  <li key={passkey.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-muted/40 px-3 py-2">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium">{passkey.name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {t('passkeyDetails', { domain: passkey.domain, created: formatDateTime(passkey.createdAt, { dateStyle: 'medium' }) })}
+                        {passkey.lastUsedAt && ` · ${t('passkeyLastUsed', { date: formatDateTime(passkey.lastUsedAt, { dateStyle: 'medium' }) })}`}
+                      </p>
+                    </div>
+                    {step.kind === 'idle' && (
+                      <Button type="button" size="sm" variant="ghost" className="text-destructive" onClick={/** Opens removing this passkey. */ () => open({ kind: 'passkeyRemove', id: passkey.id, name: passkey.name })}>
+                        {t('removePasskey')}
+                      </Button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+            {step.kind === 'passkeyAdd' && (
+              <PasswordStep id="mfa-passkey-password" help={t('passkeyAddHelp')} submitLabel={t('addPasskey')} busy={busy} onSubmit={/**
+               * Adds the passkey.
+               * @param password - The account password.
+               */ (password) => void addPasskey(password)} onCancel={/** Closes the step. */ () => open({ kind: 'idle' })}>
+                <Field className="max-w-72">
+                  <FieldLabel htmlFor="mfa-passkey-name">{t('passkeyName')}</FieldLabel>
+                  <Input id="mfa-passkey-name" maxLength={60} value={passkeyName} aria-describedby="mfa-passkey-name-help" onChange={/**
+                   * Stores the typed name.
+                   * @param event - The input change event.
+                   */ (event) => setPasskeyName(event.target.value)} />
+                  <FieldDescription id="mfa-passkey-name-help">{t('passkeyNameHelp')}</FieldDescription>
+                </Field>
+              </PasswordStep>
+            )}
+            {step.kind === 'passkeyRemove' && (
+              <PasswordStep id="mfa-passkey-remove-password" help={t('removePasskeyHelp', { name: step.name })} submitLabel={t('removePasskey')} busy={busy} onSubmit={/**
+               * Removes the passkey.
+               * @param password - The account password.
+               */ (password) => void run(/** Sends the request. */ () => api.removePasskey(step.id, password), t('passkeyRemoved'))} onCancel={/** Closes the step. */ () => open({ kind: 'idle' })} />
+            )}
+          </div>
+
           <div className="grid gap-3 rounded-lg border p-3">
             <div className="flex flex-wrap items-start justify-between gap-2">
               <div className="flex gap-3">
@@ -562,6 +658,23 @@ export function MfaChallengeForm<T>({
     }
   }
 
+  /** Checks the passkey as second factor; on success the app continues with the session. */
+  async function verifyPasskey() {
+    setBusy('verify');
+    setError(null);
+    try {
+      const ceremony = await api.mfaPasskeyOptions(challenge.mfaToken);
+      const response = await getPasskey(ceremony.options);
+      await onSignedIn(await api.mfaPasskey<T>(challenge.mfaToken, ceremony.challengeId, response));
+    } catch (reason) {
+      setError(passkeyErrorText(reason, t));
+      const errorCode = (reason as { code?: unknown } | null)?.code;
+      if (errorCode === 'mfa_expired') setExpired(true);
+    } finally {
+      setBusy(null);
+    }
+  }
+
   /**
    * Sends the code; on success the app continues with the session.
    * @param event - The form submission event.
@@ -584,7 +697,8 @@ export function MfaChallengeForm<T>({
     }
   }
 
-  const intro = method === 'totp' ? t('totpIntro')
+  const intro = method === 'passkey' ? t('passkeyIntro')
+    : method === 'totp' ? t('totpIntro')
     : method === 'email' ? (emailSent ? t('emailSent', { email: challenge.emailHint ?? '' }) : t('emailIntro', { email: challenge.emailHint ?? '' }))
     : t('recoveryIntro');
   const ready = method === 'recovery' ? code.replace(/[^a-z0-9]/gi, '').length === 16 : code.length === 6;
@@ -604,7 +718,11 @@ export function MfaChallengeForm<T>({
       )}
       {!expired && (
         <>
-          {method === 'recovery' ? (
+          {method === 'passkey' ? (
+            <Button type="button" disabled={busy !== null} onClick={/** Starts the passkey check. */ () => void verifyPasskey()}>
+              <FingerprintIcon /> {busy === 'verify' ? t('signingInWithPasskey') : t('passkeyContinue')}
+            </Button>
+          ) : method === 'recovery' ? (
             <Field>
               <FieldLabel htmlFor="mfa-recovery">{t('recoveryLabel')}</FieldLabel>
               <Input id="mfa-recovery" autoComplete="off" autoFocus required className="font-mono" placeholder="xxxx-xxxx-xxxx-xxxx" value={code} onChange={/**
@@ -620,12 +738,15 @@ export function MfaChallengeForm<T>({
               <MailIcon /> {busy === 'send' ? t('sending') : emailSent ? t('sendAgain') : t('sendCode')}
             </Button>
           )}
-          {(method !== 'email' || emailSent) && (
+          {method !== 'passkey' && (method !== 'email' || emailSent) && (
             <Button type="submit" disabled={busy !== null || !ready}>
               {busy === 'verify' ? t('verifying') : t('verify')}
             </Button>
           )}
           <FieldDescription className="grid justify-items-start gap-1">
+            {method !== 'passkey' && challenge.methods.includes('passkey') && (
+              <Button type="button" variant="link" className="h-auto px-0" onClick={/** Uses a passkey. */ () => choose('passkey')}>{t('usePasskey')}</Button>
+            )}
             {method !== 'totp' && challenge.methods.includes('totp') && (
               <Button type="button" variant="link" className="h-auto px-0" onClick={/** Uses the app. */ () => choose('totp')}>{t('useApp')}</Button>
             )}
@@ -682,5 +803,35 @@ export function MfaSetupRequired({
         <Button type="button" variant="ghost" onClick={onSignOut}>{t('signOut')}</Button>
       </div>
     </div>
+  );
+}
+
+/**
+ * "Sign in with a passkey" for the sign-in page; shown only where the browser offers passkeys.
+ * @param props - The app's two-factor API calls, the callback with the finished sign-in, and the error callback.
+ */
+export function PasskeySignIn<T>({ api, onSignedIn, onError }: { api: MfaApi; onSignedIn: (result: T) => Promise<void> | void; onError: (message: string) => void }) {
+  const t = useT(messages);
+  const [busy, setBusy] = useState(false);
+  if (passkeyBlocker()) return null;
+
+  /** Runs the passkey sign-in. */
+  async function signIn() {
+    setBusy(true);
+    try {
+      const ceremony = await api.loginPasskeyOptions();
+      const response = await getPasskey(ceremony.options);
+      await onSignedIn(await api.loginPasskey<T>(ceremony.challengeId, response));
+    } catch (reason) {
+      onError(passkeyErrorText(reason, t));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Button type="button" variant="outline" disabled={busy} onClick={/** Starts the passkey sign-in. */ () => void signIn()}>
+      <FingerprintIcon /> {busy ? t('signingInWithPasskey') : t('signInWithPasskey')}
+    </Button>
   );
 }

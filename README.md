@@ -54,7 +54,7 @@ KeePass files are great: open format, strong encryption, dozens of apps. Keeping
 | 🛡️ **No silent overwrites** | Every write is checked against the version the client last saw. Stale saves are kept as admin-only conflict copies. |
 | ⏪ **Vault versions** | Every save keeps the previous state on the server; administrators can download or restore any of the last 30 versions (configurable) with one click. |
 | 🧰 **Admin console** | A dashboard with status, storage, sign-ins and sync activity; manage vault files, users, permissions, WebDAV app passwords and rate limits; inspect WebDAV request logs. |
-| 🔐 **Two-factor sign-in** | Codes from an authenticator app (with QR code) or by e-mail, plus recovery codes; administrators can require it for admins or users and reset it for a lost phone. WebDAV app passwords keep working. |
+| 🔐 **Passkeys & two-factor sign-in** | Sign in with a passkey (fingerprint, face, PIN or security key) without a password, or add codes from an authenticator app (with QR code) or by e-mail, plus recovery codes; administrators can require it for admins or users and reset it for a lost phone. WebDAV app passwords keep working. |
 | ✉️ **E-mail** | Optional SMTP: invite users so they choose their own password, “Forgot password?” links, confirmed addresses, security notifications and warnings for administrators — in English, German or French. |
 | 📜 **Audit log** | Who signed in and who changed users, vaults, permissions and settings — with colour-coded action tags, filters, CSV export and configurable retention. Users see their own recent sign-ins. |
 | 💾 **Crash-safe storage** | Atomic writes (temp file → fsync → rename), soft delete with restore, plain files in a host folder or Docker volume. |
@@ -233,7 +233,7 @@ Setup instructions per client are in the [deployment guide](docs/DEPLOYMENT.md#-
 - **Separate roles:** admin accounts can only use the admin console; the web vault and WebDAV require a regular user account.
 - **Separate WebDAV credentials:** one app password per device, stored as an Argon2id hash and revocable at any time.
 - **Hardened sessions:** `HttpOnly`/`SameSite` cookies, CSRF tokens, Argon2id password hashing and configurable per-IP rate limits for sign-in and WebDAV.
-- **Two-factor sign-in:** optional or required TOTP or e-mail codes; TOTP secrets are encrypted at rest, a code works only once, recovery codes are stored as hashes.
+- **Two-factor sign-in:** passkeys (WebAuthn, phishing-resistant), optional or required TOTP or e-mail codes; TOTP secrets are encrypted at rest, a code works only once, recovery codes are stored as hashes.
 - **Explicit proxy trust:** client addresses from `X-Forwarded-For` are only accepted from reverse proxies you list; catch-all entries are refused.
 - **Admin isolation:** admin endpoints only answer on the admin port, which is served over HTTPS with a self-signed certificate created on first start.
 - **Privacy-aware logging:** WebDAV logs record method, path, status and headers such as `If-Match`; the audit log records who did what to which user, vault or setting — never passwords, tokens or file contents.

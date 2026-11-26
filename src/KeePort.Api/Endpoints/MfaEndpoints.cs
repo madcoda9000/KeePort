@@ -275,7 +275,7 @@ public static class MfaEndpoints
                 return error;
             }
             var user = ApiAuth.GetUser(context)!;
-            if (user.MfaTotpEnabledAt is null && user.MfaEmailEnabledAt is null)
+            if (!mfa.HasAnyFactor(user))
             {
                 return Results.Json(new ErrorResponse("mfa_off", "Set up two-factor sign-in first."), statusCode: StatusCodes.Status400BadRequest);
             }
@@ -385,7 +385,7 @@ public static class MfaEndpoints
     /// <param name="hasher">The service for verifying passwords.</param>
     /// <param name="password">The entered password.</param>
     /// <returns>An error result, or null when everything is fine.</returns>
-    private static IResult? Authorize(HttpContext context, PasswordHasher hasher, string? password)
+    internal static IResult? Authorize(HttpContext context, PasswordHasher hasher, string? password)
     {
         if (ApiAuth.RequireAuthenticated(context) is { } unauthorized)
         {
@@ -401,7 +401,7 @@ public static class MfaEndpoints
     /// <param name="mfa">Two-factor sign-in.</param>
     /// <param name="user">The account.</param>
     /// <param name="method">The method that would be turned off.</param>
-    private static IResult? WouldBreakRule(MfaService mfa, UserRecord user, string method)
+    internal static IResult? WouldBreakRule(MfaService mfa, UserRecord user, string method)
     {
         var remaining = mfa.Methods(user).Where(/* Other methods. */ m => m != method);
         return mfa.Required(user.Role) && !remaining.Any()
@@ -412,15 +412,15 @@ public static class MfaEndpoints
     /// <summary>Describes the two-factor state of an account for its profile.</summary>
     /// <param name="mfa">Two-factor sign-in.</param>
     /// <param name="user">The account.</param>
-    private static MfaStatusDto Status(MfaService mfa, UserRecord user)
+    internal static MfaStatusDto Status(MfaService mfa, UserRecord user)
     {
         var settings = mfa.GetSettings();
         return new MfaStatusDto(user.MfaTotpEnabledAt, user.MfaEmailEnabledAt, mfa.EmailAllowed(user.Role, settings), user.EmailVerifiedAt is not null,
-            mfa.RecoveryCodesLeft(user.Id), mfa.Required(user.Role, settings), mfa.IsActive(user, settings));
+            mfa.RecoveryCodesLeft(user.Id), mfa.Required(user.Role, settings), mfa.IsActive(user, settings), mfa.Passkeys(user.Id));
     }
 
     /// <summary>The answer for an unknown, expired or used-up pending sign-in.</summary>
-    private static IResult Expired()
+    internal static IResult Expired()
         => Results.Json(new ErrorResponse("mfa_expired", "The sign-in has expired. Sign in again."), statusCode: StatusCodes.Status401Unauthorized);
 
     /// <summary>Writes on or off for the audit log.</summary>

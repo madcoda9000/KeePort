@@ -451,6 +451,14 @@ WebDAV is not affected: KeePass apps keep signing in with their app passwords.
 
 A user who forgot the password and uses an authenticator app needs a code from it (or a recovery code) as well as the reset link.
 
+### Passkeys
+
+Users and administrators can add **passkeys** under **Profile → Two-factor sign-in**: fingerprint, face or device PIN, a password manager with passkeys, or a security key. A passkey signs in on its own (**Sign in with a passkey**, no username or password), and after a password it counts as second factor — accounts with a passkey can no longer sign in with the password alone.
+
+Browsers offer passkeys only on a **domain name with HTTPS** (or `localhost`), never on an IP address. Behind your reverse proxy (`https://vault.example.com`) they work without any setting. The admin console on `https://192.168.1.20:8081` with its self-signed certificate shows a short note instead; it gets passkeys only if you reach it under a name with a valid certificate.
+
+A passkey belongs to the domain it was created on. If you later move KeePort to another domain, add the passkeys again. If your reverse proxy hides the domain from KeePort (passkeys fail with "could not be checked"), set `KEEPORT_PASSKEY_RP_ID` and `KEEPORT_PASSKEY_ORIGINS` ([configuration](#️-configuration-reference)).
+
 ### Locked out as the only administrator
 
 If the only administrator lost both the phone and the recovery codes, turn two-factor sign-in off from the container's command line:
@@ -612,6 +620,7 @@ Use an absolute path for `KEEPORT_DATA`. A relative path such as `./keeport-data
 | `KEEPORT_FAVICON_DOWNLOAD` | `true` | Lets users store a website's icon in a vault entry ("Save website icon"). KeePort then fetches the icon once from the public site, only over HTTPS and never from addresses in your network. Set to `false` if the server has no internet access or must not contact other sites. |
 | `KEEPORT_ADMIN_HOST_PORT` | `8081` | Host port for the admin console. The container side is always `8081`. |
 | `KEEPORT_COOKIE_SECURE` | `false` | Set to `true` once KeePort is served over HTTPS (`yes`/`no` also work). |
+| `KEEPORT_PASSKEY_RP_ID` / `KEEPORT_PASSKEY_ORIGINS` | *(empty: the page's domain)* | Only if passkeys fail behind your proxy: the domain (e.g. `vault.example.com`) and the address(es) users open (e.g. `https://vault.example.com`, comma-separated). |
 | `KEEPORT_TRUSTED_PROXIES` | *(empty: loopback only)* | Reverse proxies whose `X-Forwarded-For` is accepted — `gateway` for a proxy on the same host, or IPs/CIDR networks, comma-separated. See [Trust your reverse proxy](#-trust-your-reverse-proxy). |
 
 After changing `.env`, run `docker compose up -d` (with `sudo` on Synology).
@@ -642,6 +651,7 @@ Limits apply per client address. Behind a reverse proxy, [trust the proxy](#-tru
 | `429 Too Many Requests` | Wait for `Retry-After`. If all devices show the same address in the WebDAV log, [trust your reverse proxy](#-trust-your-reverse-proxy); otherwise raise the limits in **Admin → Settings**. |
 | All devices show the same Client IP in the WebDAV log | That is your reverse proxy. Set `KEEPORT_TRUSTED_PROXIES=gateway` if it runs on the same host, otherwise add its address ([how](#-trust-your-reverse-proxy)). |
 | Devices in your Wi-Fi show your own public IP in the WebDAV log | Your router sends the requests back in (NAT reflection) and replaces the address. Set up local DNS for the public name ([how](#devices-at-home-show-your-own-public-ip)). |
+| No "Sign in with a passkey" button, or "Passkeys need the address with a domain name" | Open KeePort with its domain name over HTTPS, not with an IP address ([details](#passkeys)). |
 | Lost phone, no recovery codes left | An administrator clicks **Reset 2FA** in **Users**. If you are the only administrator, run `keeport-admin reset-mfa <username>` in the container ([how](#locked-out-as-the-only-administrator)). |
 | `KeePort cannot start: invalid KEEPORT_TRUSTED_PROXIES` | Fix the named entry: use `gateway` (only inside Docker), single IPs or CIDR networks such as `10.10.0.0/16`; catch-all entries like `0.0.0.0/0` are refused. |
 

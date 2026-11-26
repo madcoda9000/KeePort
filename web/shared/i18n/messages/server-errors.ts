@@ -6,6 +6,9 @@ import { defineMessages, translate } from '../core.ts';
  */
 const serverErrors = defineMessages({
   en: {
+    'Passkeys need the address with a domain name and HTTPS, not an IP address.': 'Passkeys need the address with a domain name and HTTPS, not an IP address.',
+    'The passkey could not be checked. Try again.': 'The passkey could not be checked. Try again.',
+    'Passkey not found.': 'Passkey not found.',
     'Turn off sign-in codes by e-mail before you change your e-mail address.': 'Turn off sign-in codes by e-mail before you change your e-mail address.',
     'This method is not available for your account.': 'This method is not available for your account.',
     'Too many wrong codes. Sign in again.': 'Too many wrong codes. Sign in again.',
@@ -83,6 +86,9 @@ const serverErrors = defineMessages({
     'The vault changed on the server. Your submitted version was saved as a conflict copy for an administrator.': 'The vault changed on the server. Your submitted version was saved as a conflict copy for an administrator.'
   },
   de: {
+    'Passkeys need the address with a domain name and HTTPS, not an IP address.': 'Passkeys brauchen die Adresse mit Domain-Namen und HTTPS, keine IP-Adresse.',
+    'The passkey could not be checked. Try again.': 'Der Passkey konnte nicht geprüft werden. Versuche es erneut.',
+    'Passkey not found.': 'Passkey nicht gefunden.',
     'Turn off sign-in codes by e-mail before you change your e-mail address.': 'Schalte die Anmeldecodes per E-Mail aus, bevor du deine E-Mail-Adresse änderst.',
     'This method is not available for your account.': 'Diese Methode ist für dein Konto nicht verfügbar.',
     'Too many wrong codes. Sign in again.': 'Zu viele falsche Codes. Melde dich erneut an.',
@@ -160,6 +166,9 @@ const serverErrors = defineMessages({
     'The vault changed on the server. Your submitted version was saved as a conflict copy for an administrator.': 'Der Tresor wurde inzwischen auf dem Server geändert. Deine Version wurde als Konfliktkopie für einen Administrator gespeichert.'
   },
   fr: {
+    'Passkeys need the address with a domain name and HTTPS, not an IP address.': 'Les clés d’accès nécessitent une adresse avec un nom de domaine et HTTPS, pas une adresse IP.',
+    'The passkey could not be checked. Try again.': 'La clé d’accès n’a pas pu être vérifiée. Réessayez.',
+    'Passkey not found.': 'Clé d’accès introuvable.',
     'Turn off sign-in codes by e-mail before you change your e-mail address.': 'Désactivez les codes de connexion par e-mail avant de changer votre adresse e-mail.',
     'This method is not available for your account.': 'Cette méthode n’est pas disponible pour votre compte.',
     'Too many wrong codes. Sign in again.': 'Trop de codes incorrects. Reconnectez-vous.',

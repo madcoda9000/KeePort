@@ -1381,6 +1381,100 @@ public class KeePortApiTests : IDisposable
         Assert.Equal(HttpStatusCode.NoContent, (await _admin.PostAsJsonAsync("/api/auth/set-password", new { token = resetToken, password = "Dora fresh passphrase 1", method = "recovery", code = recovery })).StatusCode);
     }
 
+    /// <summary>
+    /// Adds a passkey and checks the sign-in with it: without username and password, as second factor after the
+    /// password, no reuse of a ceremony or an old signature counter, other domains and IP addresses refused, the area
+    /// enforced, and removing it.
+    /// </summary>
+    [Fact]
+    public async Task Passkeys_Register_Sign_In_And_Remove()
+    {
+        const string origin = "https://vault.example.test";
+        var adminCsrf = await SetupAdminAsync(_admin);
+        (await SendAsync(_admin, HttpMethod.Put, RateLimitsPath, json: new { authPerMinute = 1000, webDavPerMinute = 1000 }, csrf: adminCsrf)).EnsureSuccessStatusCode();
+        await CreateUserAsync(_admin, adminCsrf, "erik", "user");
+        HttpClient Browser(string from = origin)
+        {
+            var client = _factory.CreateClient();
+            client.DefaultRequestHeaders.Add("Origin", from);
+            return client;
+        }
+        using var browser = Browser();
+        var (csrf, _) = await LoginAsync(browser, "erik", "User passphrase 123");
+        using var key = new SoftAuthenticator();
+
+        // Adding a passkey needs the password; the first one creates recovery codes.
+        using (var wrong = await SendAsync(browser, HttpMethod.Post, "/api/auth/mfa/passkeys/options", json: new { password = "wrong" }, csrf: csrf))
+        {
+            Assert.Equal(HttpStatusCode.Forbidden, wrong.StatusCode);
+        }
+        var start = await (await SendAsync(browser, HttpMethod.Post, "/api/auth/mfa/passkeys/options", json: new { password = "User passphrase 123" }, csrf: csrf)).Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("vault.example.test", start.GetProperty("options").GetProperty("rp").GetProperty("id").GetString());
+        var added = await SendAsync(browser, HttpMethod.Post, "/api/auth/mfa/passkeys", json: new
+        {
+            challengeId = start.GetProperty("challengeId").GetString(),
+            name = "Laptop",
+            response = key.Register(start.GetProperty("options"), origin)
+        }, csrf: csrf);
+        Assert.Equal(HttpStatusCode.OK, added.StatusCode);
+        var change = await added.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(10, change.GetProperty("recoveryCodes").GetArrayLength());
+        Assert.Equal("Laptop", change.GetProperty("status").GetProperty("passkeys")[0].GetProperty("name").GetString());
+        Assert.True(change.GetProperty("status").GetProperty("active").GetBoolean());
+
+        // Sign-in without username and password.
+        async Task<(HttpResponseMessage Response, JsonElement Options, string ChallengeId)> PasskeyLoginAsync(HttpClient client, string path, uint? counter = null)
+        {
+            var options = await (await client.PostAsync($"{path}/login/passkey/options", null)).Content.ReadFromJsonAsync<JsonElement>();
+            var answer = key.SignIn(options.GetProperty("options"), origin, counter);
+            var response = await client.PostAsJsonAsync($"{path}/login/passkey", new { challengeId = options.GetProperty("challengeId").GetString(), response = answer });
+            return (response, options, options.GetProperty("challengeId").GetString()!);
+        }
+        using var second = Browser();
+        var (signIn, firstOptions, firstChallenge) = await PasskeyLoginAsync(second, "/api/auth");
+        Assert.Equal(HttpStatusCode.OK, signIn.StatusCode);
+        Assert.Equal("erik", (await GetJsonAsync(second, "/api/auth/me")).GetProperty("username").GetString());
+        Assert.Equal("required", firstOptions.GetProperty("options").GetProperty("userVerification").GetString());
+        // A ceremony works only once.
+        Assert.Equal(HttpStatusCode.BadRequest, (await second.PostAsJsonAsync("/api/auth/login/passkey", new { challengeId = firstChallenge, response = key.SignIn(firstOptions.GetProperty("options"), origin) })).StatusCode);
+        // A signature counter that does not go up points to a cloned key.
+        using var third = Browser();
+        Assert.Equal(HttpStatusCode.BadRequest, (await PasskeyLoginAsync(third, "/api/auth", counter: 1)).Response.StatusCode);
+        // A user's passkey does not open the admin console.
+        Assert.Equal(HttpStatusCode.BadRequest, (await PasskeyLoginAsync(Browser(), "/api/admin/auth")).Response.StatusCode);
+        // Another domain and an IP address are refused.
+        using var evil = Browser("https://evil.example.test");
+        var evilOptions = await (await evil.PostAsync("/api/auth/login/passkey/options", null)).Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(HttpStatusCode.BadRequest, (await evil.PostAsJsonAsync("/api/auth/login/passkey", new { challengeId = evilOptions.GetProperty("challengeId").GetString(), response = key.SignIn(evilOptions.GetProperty("options"), "https://evil.example.test") })).StatusCode);
+        using var ip = Browser("http://192.168.1.5:8080");
+        var ipAnswer = await ip.PostAsync("/api/auth/login/passkey/options", null);
+        Assert.Equal(HttpStatusCode.BadRequest, ipAnswer.StatusCode);
+        Assert.Contains("domain name", (await ipAnswer.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("message").GetString());
+
+        // With a passkey, the password alone is no longer enough: the passkey is the second factor.
+        using var fourth = Browser();
+        var challenge = await (await fourth.PostAsJsonAsync("/api/auth/login", new { username = "erik", password = "User passphrase 123" })).Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(["passkey"], challenge.GetProperty("methods").EnumerateArray().Select(/* Method. */ m => m.GetString()).ToArray());
+        var mfaToken = challenge.GetProperty("mfaToken").GetString();
+        var mfaOptions = await (await fourth.PostAsJsonAsync("/api/auth/login/mfa/passkey/options", new { mfaToken })).Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Single(mfaOptions.GetProperty("options").GetProperty("allowCredentials").EnumerateArray());
+        var mfa = await fourth.PostAsJsonAsync("/api/auth/login/mfa/passkey", new { mfaToken, challengeId = mfaOptions.GetProperty("challengeId").GetString(), response = key.SignIn(mfaOptions.GetProperty("options"), origin) });
+        Assert.Equal(HttpStatusCode.OK, mfa.StatusCode);
+        Assert.Equal(2, (await GetJsonAsync(_admin, "/api/admin/logs/audit?action=LoginSucceeded&search=Passkey")).GetProperty("total").GetInt64());
+
+        // Removing it needs the password; afterwards the password alone works again and the recovery codes are gone.
+        var passkeyId = change.GetProperty("status").GetProperty("passkeys")[0].GetProperty("id").GetString();
+        using (var removed = await SendAsync(browser, HttpMethod.Post, $"/api/auth/mfa/passkeys/{passkeyId}/delete", json: new { password = "User passphrase 123" }, csrf: csrf))
+        {
+            var status = (await removed.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("status");
+            Assert.False(status.GetProperty("active").GetBoolean());
+            Assert.Equal(0, status.GetProperty("recoveryCodesLeft").GetInt32());
+        }
+        var plain = await (await Browser().PostAsJsonAsync("/api/auth/login", new { username = "erik", password = "User passphrase 123" })).Content.ReadFromJsonAsync<JsonElement>();
+        Assert.False(plain.TryGetProperty("mfaRequired", out _));
+        Assert.Equal(1, (await GetJsonAsync(_admin, "/api/admin/logs/audit?action=PasskeyRemoved")).GetProperty("total").GetInt64());
+    }
+
     /// <summary>Stores SMTP settings that point at a closed local port, so e-mails are queued but never delivered.</summary>
     /// <param name="adminCsrf">The admin's CSRF token.</param>
     /// <param name="password">An SMTP password to store, or null to keep the stored one.</param>

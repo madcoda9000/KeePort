@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.21.0] - 2026-11-26
+
+### Added
+
+- **Passkeys** for the web vault and the admin console: fingerprint, face or device PIN, a password manager with passkeys, or a security key.
+  - **Profile → Two-factor sign-in → Passkeys:** add a passkey (with the account password and a name), see where and when each was used, and remove one. The first passkey of an account creates recovery codes, like the other factors.
+  - **Sign in with a passkey** on the sign-in page, without username and password. The passkey must check the user (fingerprint, face or PIN), so it proves both factors.
+  - After a password, a passkey counts as **second factor** ("Continue with passkey"). Accounts with a passkey can no longer sign in with the password alone, and a passkey fulfils the administrator's two-factor requirement.
+  - Passkeys need a domain name with HTTPS; on an IP address (e.g. the admin console with its self-signed certificate) the profile explains why they are missing.
+  - **Reset 2FA** in **Admin → Users** also removes the account's passkeys.
+  - Optional `KEEPORT_PASSKEY_RP_ID` and `KEEPORT_PASSKEY_ORIGINS` if a reverse proxy hides the domain from KeePort.
+  - Audit log: `PasskeyAdded`, `PasskeyRemoved`; sign-ins name the passkey used.
+  - New endpoints under `…/auth`: `POST mfa/passkeys/options`, `POST mfa/passkeys`, `POST mfa/passkeys/{id}/delete`, `POST login/passkey/options`, `POST login/passkey`, `POST login/mfa/passkey/options`, `POST login/mfa/passkey`. The two-factor state lists `passkeys`.
+
+### Changed
+
+- The account settings split **Security** into **Password** and **Two-factor sign-in**, so neither needs much scrolling.
+
+### Security
+
+- New dependency **Fido2 4.3.3** (fido2-net-lib, MIT) checks passkeys on the server, with Fido2.Models, NSec.Cryptography (libsodium), System.Formats.Cbor and Microsoft.IdentityModel.JsonWebTokens.
+- Attestation is not requested; a passkey is bound to its domain, each sign-in ceremony works once within 5 minutes, and a signature counter that does not go up is refused. Only the public key is stored.
+
 ## [0.20.1] - 2026-11-26
 
 ### Changed
@@ -466,6 +489,7 @@ First beta release.
 - Login and setup share a configurable per-IP rate limit; session checks and sign-out are exempt. WebDAV has a separate configurable limit applied before authentication.
 - Admin accounts can only sign in to the Admin console; Vault and WebDAV require a separate user account. Admin sessions are scoped to the Admin API, so existing admins need to sign in again after updating.
 
+[0.21.0]: https://github.com/madcoda9000/KeePort/compare/v0.20.1...v0.21.0
 [0.20.1]: https://github.com/madcoda9000/KeePort/compare/v0.20.0...v0.20.1
 [0.20.0]: https://github.com/madcoda9000/KeePort/compare/v0.19.0...v0.20.0
 [0.19.0]: https://github.com/madcoda9000/KeePort/compare/v0.18.0...v0.19.0

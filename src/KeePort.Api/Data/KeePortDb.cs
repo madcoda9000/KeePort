@@ -182,6 +182,7 @@ public sealed partial class KeePortDb : IDisposable
         EnsureRevisionSchema(connection);
         EnsureEmailSchema(connection);
         EnsureMfaSchema(connection);
+        EnsurePasskeySchema(connection);
         Execute(connection, "INSERT INTO app_state (key, value) VALUES ('login_stats_since', @now) ON CONFLICT(key) DO NOTHING;",
             new SqliteParameter("@now", DateTimeOffset.UtcNow.ToString("O")));
         EnsureSetupToken();

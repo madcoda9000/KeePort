@@ -51,6 +51,8 @@ public static class AuditActions
     public const string MfaRecoveryCodesCreated = nameof(MfaRecoveryCodesCreated);
     public const string MfaReset = nameof(MfaReset);
     public const string MfaSettingsChanged = nameof(MfaSettingsChanged);
+    public const string PasskeyAdded = nameof(PasskeyAdded);
+    public const string PasskeyRemoved = nameof(PasskeyRemoved);
 
     /// <summary>Every known tag with its category, in the order shown in the admin console's filter.</summary>
     public static readonly IReadOnlyList<AuditActionDto> All =
@@ -59,6 +61,7 @@ public static class AuditActions
         new(InvitationAccepted, "auth"), new(PasswordResetRequested, "auth"), new(PasswordResetCompleted, "auth"),
         new(PasswordChanged, "account"), new(EmailChanged, "account"), new(SettingsChanged, "account"), new(EmailVerified, "account"),
         new(MfaEnabled, "account"), new(MfaDisabled, "account"), new(MfaRecoveryCodesCreated, "account"),
+        new(PasskeyAdded, "account"), new(PasskeyRemoved, "account"),
         new(UserCreated, "user"), new(UserRoleChanged, "user"), new(UserDisabled, "user"), new(UserEnabled, "user"),
         new(UserPasswordReset, "user"), new(UserDeleted, "user"), new(InvitationSent, "user"), new(MfaReset, "user"),
         new(VaultUploaded, "vault"), new(VaultRenamed, "vault"), new(VaultDeleted, "vault"), new(VaultRestored, "vault"),

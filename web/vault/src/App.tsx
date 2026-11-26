@@ -3,7 +3,7 @@ import type { Kdbx } from 'kdbxweb';
 import { api, ApiError, mfaApi, setCsrfToken } from './lib/api';
 import type { AuthResponse, User, VaultFile } from './lib/api';
 import { isMfaChallenge, type MfaChallenge } from '@shared/two-factor-api';
-import { MfaChallengeForm, MfaSetupRequired, TwoFactorSettings } from '@shared/two-factor';
+import { MfaChallengeForm, MfaSetupRequired, PasskeySignIn, TwoFactorSettings } from '@shared/two-factor';
 import { SettingsDialogContent } from '@shared/settings-dialog';
 import settingsDialogText from '@shared/i18n/messages/settings-dialog';
 import {
@@ -1610,6 +1610,14 @@ export default function App() {
             <Button type="submit" disabled={busy === 'login'}>
               {busy === 'login' ? tUnlock('signingIn') : tUnlock('signIn')}
             </Button>
+            <PasskeySignIn<AuthResponse>
+              api={mfaApi}
+              onSignedIn={enterVault}
+              onError={/**
+               * Shows why the passkey sign-in failed.
+               * @param text - The message.
+               */ (text) => setMessage({ kind: 'error', text })}
+            />
             <Button
               type="button"
               variant="link"
@@ -1739,7 +1747,7 @@ export default function App() {
                   </Field>
                   </>
                 ) },
-                { id: 'security', label: tSettings('security'), icon: ShieldCheckIcon, content: (
+                { id: 'password', label: tSettings('password'), icon: KeyRoundIcon, content: (
                   <>
                   <form className="grid gap-4" onSubmit={handleChangePassword}>
                     <div className="space-y-1">
@@ -1782,8 +1790,11 @@ export default function App() {
                       {busy === 'password' ? tProfile('changing') : tProfile('changePassword')}
                     </Button>
                   </form>
-                  <Separator />
-                  <TwoFactorSettings username={user.username} api={mfaApi} onChange={/**
+                  </>
+                ) },
+                { id: 'twoFactor', label: tSettings('twoFactor'), icon: ShieldCheckIcon, content: (
+                  <>
+                  <TwoFactorSettings username={user.username} api={mfaApi} showTitle={false} onChange={/**
                    * Shows the new two-factor state in the account.
                    * @param status - The new state.
                    */ (status) => setUser({ ...user, twoFactor: status.active })} />

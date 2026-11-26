@@ -141,7 +141,7 @@ public sealed partial class KeePortDb
             new SqliteParameter("@value", enabled ? DateTimeOffset.UtcNow.ToString("O") : DBNull.Value), new SqliteParameter("@id", userId));
     }
 
-    /// <summary>Turns off every second factor of an account and removes recovery codes, e-mail codes and pending sign-ins.</summary>
+    /// <summary>Turns off every second factor of an account and removes passkeys, recovery codes, e-mail codes and pending sign-ins.</summary>
     /// <param name="userId">The account's ID.</param>
     public void ResetMfa(string userId)
     {
@@ -156,6 +156,8 @@ public sealed partial class KeePortDb
         Execute(connection, transaction, "DELETE FROM mfa_recovery_codes WHERE user_id = @id;", new SqliteParameter("@id", userId));
         Execute(connection, transaction, "DELETE FROM mfa_email_codes WHERE user_id = @id;", new SqliteParameter("@id", userId));
         Execute(connection, transaction, "DELETE FROM mfa_pending WHERE user_id = @id;", new SqliteParameter("@id", userId));
+        Execute(connection, transaction, "DELETE FROM webauthn_credentials WHERE user_id = @id;", new SqliteParameter("@id", userId));
+        Execute(connection, transaction, "DELETE FROM webauthn_challenges WHERE user_id = @id;", new SqliteParameter("@id", userId));
         transaction.Commit();
     }
 

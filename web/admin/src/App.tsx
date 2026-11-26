@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { api, ApiError, mfaApi, setCsrfToken } from './lib/api';
 import type { AdminFile, AuthResponse, DataStorage, User, WebDavCredential } from './lib/api';
 import { isMfaChallenge, type MfaChallenge } from '@shared/two-factor-api';
-import { MfaChallengeForm, MfaSetupRequired } from '@shared/two-factor';
+import { MfaChallengeForm, MfaSetupRequired, PasskeySignIn } from '@shared/two-factor';
 import { EmailConfirmation } from '@shared/email-account';
 import { createKdbxBytes } from './lib/kdbx';
 import { getTheme, toggleTheme } from './theme';
@@ -1261,6 +1261,16 @@ export default function App() {
                   ? ta('signingIn')
                   : ta('signIn')}
             </Button>
+            {!setupRequired && (
+              <PasskeySignIn<AuthResponse>
+                api={mfaApi}
+                onSignedIn={afterMfa}
+                onError={/**
+                 * Shows why the passkey sign-in failed.
+                 * @param text - The message.
+                 */ (text) => setMessage({ kind: 'error', text })}
+              />
+            )}
           </form>
         )}
       </AuthLayout>

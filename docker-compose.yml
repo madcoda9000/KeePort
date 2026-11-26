@@ -16,6 +16,9 @@ services:
       KeePort__AdminTlsHosts: ${KEEPORT_ADMIN_TLS_HOSTS:-}
       # Lets users store a website's icon in a vault entry; KeePort then fetches it from the public site once.
       KeePort__FaviconDownload: ${KEEPORT_FAVICON_DOWNLOAD:-true}
+      # Passkeys: normally the domain the page is opened with; set these only if that does not work behind your proxy.
+      KeePort__PasskeyRpId: ${KEEPORT_PASSKEY_RP_ID:-}
+      KeePort__PasskeyOrigins: ${KEEPORT_PASSKEY_ORIGINS:-}
     ports:
       - "${KEEPORT_HTTP_HOST_PORT:-8080}:8080"
       - "${KEEPORT_ADMIN_BIND:-0.0.0.0}:${KEEPORT_ADMIN_HOST_PORT:-8081}:8081"

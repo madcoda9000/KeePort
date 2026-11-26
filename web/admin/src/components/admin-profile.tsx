@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { BellIcon, ShieldCheckIcon, UserRoundIcon } from 'lucide-react';
+import { BellIcon, KeyRoundIcon, ShieldCheckIcon, UserRoundIcon } from 'lucide-react';
 import { api, mfaApi, type User } from '@/lib/api';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -191,7 +191,7 @@ export function AdminProfile({ user, onUpdate }: { user: User; onUpdate: (user: 
                   </Field>
                   </>
                 ) },
-                { id: 'security', label: tSettings('security'), icon: ShieldCheckIcon, content: (
+                { id: 'password', label: tSettings('password'), icon: KeyRoundIcon, content: (
                   <>
                   <form className="grid gap-4" onSubmit={handlePassword}>
                     <h3 className="text-sm font-semibold">{t('changePassword')}</h3>
@@ -213,8 +213,11 @@ export function AdminProfile({ user, onUpdate }: { user: User; onUpdate: (user: 
                       {busy === 'password' ? t('changing') : t('changePassword')}
                     </Button>
                   </form>
-                  <Separator />
-                  <TwoFactorSettings username={user.username} api={mfaApi} onChange={/**
+                  </>
+                ) },
+                { id: 'twoFactor', label: tSettings('twoFactor'), icon: ShieldCheckIcon, content: (
+                  <>
+                  <TwoFactorSettings username={user.username} api={mfaApi} showTitle={false} onChange={/**
                    * Shows the new two-factor state in the account.
                    * @param status - The new state.
                    */ (status) => onUpdate({ ...user, twoFactor: status.active })} />

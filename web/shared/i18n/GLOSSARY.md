@@ -48,6 +48,7 @@ Use these terms everywhere. German addresses the user with **du** (informal, low
 | second factor | zweiter Faktor | second facteur |
 | authenticator app | Authenticator-App | application d’authentification |
 | recovery code | Wiederherstellungscode | code de récupération |
+| passkey | Passkey | clé d’accès |
 
 Keep as they are in every language: KeePort, KeePass, KeePassXC, KeePass2Android, KeePassium, WebDAV, TOTP, KDBX,
 ETag, CSRF, URL, HTTPS, Have I Been Pwned, the action tags of the audit log (e.g. `LoginFailed`), file names and

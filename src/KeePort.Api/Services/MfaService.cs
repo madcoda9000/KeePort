@@ -28,6 +28,7 @@ public enum MfaCheck
 /// <summary>The second-factor methods of KeePort.</summary>
 public static class MfaMethods
 {
+    public const string Passkey = "passkey";
     public const string Totp = "totp";
     public const string Email = "email";
     public const string Recovery = "recovery";
@@ -108,14 +109,18 @@ public sealed class MfaService
     }
 
     /// <summary>
-    /// Lists the second factors an account can use right now. E-mail codes count only while the rules allow them for
-    /// the account's role and the address is confirmed; recovery codes are not listed (they are a fallback).
+    /// Lists the second factors an account can use right now, passkeys first. E-mail codes count only while the rules
+    /// allow them for the account's role and the address is confirmed; recovery codes are not listed (they are a fallback).
     /// </summary>
     /// <param name="user">The account.</param>
     /// <param name="settings">The rules, or null to read them.</param>
     public IReadOnlyList<string> Methods(UserRecord user, MfaSettings? settings = null)
     {
-        var methods = new List<string>(2);
+        var methods = new List<string>(3);
+        if (_db.CountPasskeys(user.Id) > 0)
+        {
+            methods.Add(MfaMethods.Passkey);
+        }
         if (user.MfaTotpEnabledAt is not null)
         {
             methods.Add(MfaMethods.Totp);
@@ -173,7 +178,7 @@ public sealed class MfaService
         {
             return null;
         }
-        var hadFactor = user.MfaTotpEnabledAt is not null || user.MfaEmailEnabledAt is not null;
+        var hadFactor = HasAnyFactor(user);
         _db.EnableTotp(user.Id, _protector.Protect(pending), step);
         return hadFactor && _db.CountRecoveryCodes(user.Id) > 0 ? [] : CreateRecoveryCodes(user.Id);
     }
@@ -185,7 +190,7 @@ public sealed class MfaService
     /// <param name="user">The account.</param>
     public IReadOnlyList<string> EnableEmail(UserRecord user)
     {
-        var hadFactor = user.MfaTotpEnabledAt is not null || user.MfaEmailEnabledAt is not null;
+        var hadFactor = HasAnyFactor(user);
         _db.SetEmailMfa(user.Id, true);
         return hadFactor && _db.CountRecoveryCodes(user.Id) > 0 ? [] : CreateRecoveryCodes(user.Id);
     }
@@ -203,12 +208,36 @@ public sealed class MfaService
         {
             _db.SetEmailMfa(user.Id, false);
         }
-        var updated = _db.GetUserById(user.Id);
-        if (updated is not null && updated.MfaTotpEnabledAt is null && updated.MfaEmailEnabledAt is null)
+        RemoveCodesIfNoFactorLeft(user.Id);
+    }
+
+    /// <summary>
+    /// Returns new recovery codes after a passkey was added when the account had no second factor before, otherwise
+    /// an empty list.
+    /// </summary>
+    /// <param name="user">The account, as it was before the passkey was added.</param>
+    /// <param name="passkeysBefore">How many passkeys the account had before.</param>
+    public IReadOnlyList<string> PasskeyAdded(UserRecord user, int passkeysBefore)
+    {
+        var hadFactor = user.MfaTotpEnabledAt is not null || user.MfaEmailEnabledAt is not null || passkeysBefore > 0;
+        return hadFactor && _db.CountRecoveryCodes(user.Id) > 0 ? [] : CreateRecoveryCodes(user.Id);
+    }
+
+    /// <summary>Removes the recovery codes when the account has no second factor any more.</summary>
+    /// <param name="userId">The account's ID.</param>
+    public void RemoveCodesIfNoFactorLeft(string userId)
+    {
+        var updated = _db.GetUserById(userId);
+        if (updated is not null && !HasAnyFactor(updated))
         {
-            _db.ReplaceRecoveryCodes(user.Id, []);
+            _db.ReplaceRecoveryCodes(userId, []);
         }
     }
+
+    /// <summary>Whether the account has any second factor stored, whether or not the rules let it count.</summary>
+    /// <param name="user">The account.</param>
+    public bool HasAnyFactor(UserRecord user)
+        => user.MfaTotpEnabledAt is not null || user.MfaEmailEnabledAt is not null || _db.CountPasskeys(user.Id) > 0;
 
     /// <summary>Replaces the account's recovery codes with 10 new ones and returns them; only their hashes are stored.</summary>
     /// <param name="userId">The account's ID.</param>
@@ -218,6 +247,11 @@ public sealed class MfaService
         _db.ReplaceRecoveryCodes(userId, codes.Select(/* Hash. */ code => HashRecoveryCode(userId, code)));
         return codes;
     }
+
+    /// <summary>Lists the account's passkeys for its profile.</summary>
+    /// <param name="userId">The account's ID.</param>
+    public IReadOnlyList<PasskeyDto> Passkeys(string userId)
+        => _db.ListPasskeys(userId).Select(/* For the profile. */ p => new PasskeyDto(p.Id, p.Name, p.RpId, p.CreatedAt, p.LastUsedAt)).ToList();
 
     /// <summary>Counts the account's unused recovery codes.</summary>
     /// <param name="userId">The account's ID.</param>

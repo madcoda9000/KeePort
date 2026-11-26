@@ -124,9 +124,17 @@ public static class ApiSecurityExtensions
                path.Equals("/api/auth/set-password", StringComparison.OrdinalIgnoreCase) ||
                path.Equals("/api/auth/login/mfa", StringComparison.OrdinalIgnoreCase) ||
                path.Equals("/api/auth/login/mfa/email", StringComparison.OrdinalIgnoreCase) ||
+               path.Equals("/api/auth/login/mfa/passkey", StringComparison.OrdinalIgnoreCase) ||
+               path.Equals("/api/auth/login/mfa/passkey/options", StringComparison.OrdinalIgnoreCase) ||
+               path.Equals("/api/auth/login/passkey", StringComparison.OrdinalIgnoreCase) ||
+               path.Equals("/api/auth/login/passkey/options", StringComparison.OrdinalIgnoreCase) ||
                path.Equals(SessionService.AdminApiPath + "/auth/login", StringComparison.OrdinalIgnoreCase) ||
                path.Equals(SessionService.AdminApiPath + "/auth/login/mfa", StringComparison.OrdinalIgnoreCase) ||
                path.Equals(SessionService.AdminApiPath + "/auth/login/mfa/email", StringComparison.OrdinalIgnoreCase) ||
+               path.Equals(SessionService.AdminApiPath + "/auth/login/mfa/passkey", StringComparison.OrdinalIgnoreCase) ||
+               path.Equals(SessionService.AdminApiPath + "/auth/login/mfa/passkey/options", StringComparison.OrdinalIgnoreCase) ||
+               path.Equals(SessionService.AdminApiPath + "/auth/login/passkey", StringComparison.OrdinalIgnoreCase) ||
+               path.Equals(SessionService.AdminApiPath + "/auth/login/passkey/options", StringComparison.OrdinalIgnoreCase) ||
                path.Equals(SessionService.AdminApiPath + "/auth/setup", StringComparison.OrdinalIgnoreCase);
     }
 }

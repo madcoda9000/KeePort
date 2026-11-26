@@ -1,5 +1,7 @@
+import type { PasskeyCeremony } from '@shared/passkey';
+
 /** A second factor an account can use to sign in; recovery codes are the fallback for all of them. */
-export type MfaMethod = 'totp' | 'email' | 'recovery';
+export type MfaMethod = 'passkey' | 'totp' | 'email' | 'recovery';
 
 /** The server's answer to a correct password when the account needs a second factor; there is no session yet. */
 export interface MfaChallenge {
@@ -7,7 +9,7 @@ export interface MfaChallenge {
   /** The one-time token for the second step, valid for 10 minutes. */
   mfaToken: string;
   /** The methods the account can use, apart from recovery codes. */
-  methods: ('totp' | 'email')[];
+  methods: ('passkey' | 'totp' | 'email')[];
   /** The masked address e-mail codes go to, e.g. "a…@example.org". */
   emailHint: string | null;
 }
@@ -25,6 +27,18 @@ export interface MfaStatus {
   required: boolean;
   /** Whether signing in needs a second factor right now. */
   active: boolean;
+  /** The account's passkeys. */
+  passkeys: Passkey[];
+}
+
+/** A passkey of the account. */
+export interface Passkey {
+  id: string;
+  name: string;
+  /** The domain it works on. */
+  domain: string;
+  createdAt: string;
+  lastUsedAt: string | null;
 }
 
 /** The state after a change, with new recovery codes to show once (empty when the old ones stay valid). */
@@ -102,7 +116,45 @@ export function createMfaApi(authPath: string, send: ApiSend) {
      * Asks for a sign-in code by e-mail.
      * @param mfaToken - The token from the challenge.
      */
-    sendLoginEmail: (mfaToken: string) => post<void>('/login/mfa/email', { mfaToken })
+    sendLoginEmail: (mfaToken: string) => post<void>('/login/mfa/email', { mfaToken }),
+    /**
+     * Starts adding a passkey.
+     * @param password - The account password.
+     */
+    passkeyOptions: (password: string) => post<PasskeyCeremony>('/mfa/passkeys/options', { password }),
+    /**
+     * Stores a new passkey.
+     * @param challengeId - The ID from the options.
+     * @param name - The passkey's name.
+     * @param response - The browser's answer.
+     */
+    addPasskey: (challengeId: string, name: string, response: Record<string, unknown>) => post<MfaChange>('/mfa/passkeys', { challengeId, name, response }),
+    /**
+     * Removes a passkey.
+     * @param id - KeePort's ID of the passkey.
+     * @param password - The account password.
+     */
+    removePasskey: (id: string, password: string) => post<MfaChange>(`/mfa/passkeys/${encodeURIComponent(id)}/delete`, { password }),
+    /** Starts a sign-in with a passkey without username and password. */
+    loginPasskeyOptions: () => post<PasskeyCeremony>('/login/passkey/options', {}),
+    /**
+     * Signs in with a passkey; the answer is the same as a sign-in without a second factor.
+     * @param challengeId - The ID from the options.
+     * @param response - The browser's answer.
+     */
+    loginPasskey: <T>(challengeId: string, response: Record<string, unknown>) => post<T>('/login/passkey', { challengeId, response }),
+    /**
+     * Starts the passkey check as second factor.
+     * @param mfaToken - The token from the challenge.
+     */
+    mfaPasskeyOptions: (mfaToken: string) => post<PasskeyCeremony>('/login/mfa/passkey/options', { mfaToken }),
+    /**
+     * Finishes a sign-in with the passkey as second factor.
+     * @param mfaToken - The token from the challenge.
+     * @param challengeId - The ID from the options.
+     * @param response - The browser's answer.
+     */
+    mfaPasskey: <T>(mfaToken: string, challengeId: string, response: Record<string, unknown>) => post<T>('/login/mfa/passkey', { mfaToken, challengeId, response })
   };
 }
 

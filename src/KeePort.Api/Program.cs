@@ -58,6 +58,7 @@ builder.Services.AddSingleton<EmailSettingsService>();
 builder.Services.AddSingleton<EmailQueue>();
 builder.Services.AddSingleton<AccountTokens>();
 builder.Services.AddSingleton<MfaService>();
+builder.Services.AddSingleton<PasskeyService>();
 builder.Services.AddSingleton<SecurityNotifier>();
 builder.Services.AddHostedService<EmailWorker>();
 builder.Services.AddHostedService<AdminWarningService>();
@@ -291,6 +292,7 @@ app.MapVaultEndpoints();
 app.MapAdminEndpoints();
 app.MapEmailEndpoints();
 app.MapMfaEndpoints();
+app.MapPasskeyEndpoints();
 app.MapWebDavEndpoints();
 
 app.UseDefaultFiles();

@@ -638,7 +638,28 @@ public sealed record MfaEmailCodeRequest(string? MfaToken);
 /// <param name="RecoveryCodesLeft">How many unused recovery codes are left.</param>
 /// <param name="Required">Whether the administrator requires a second factor for this account.</param>
 /// <param name="Active">Whether signing in needs a second factor right now.</param>
-public sealed record MfaStatusDto(DateTimeOffset? TotpEnabledAt, DateTimeOffset? EmailEnabledAt, bool EmailAllowed, bool EmailVerified, int RecoveryCodesLeft, bool Required, bool Active);
+/// <param name="Passkeys">The account's passkeys.</param>
+public sealed record MfaStatusDto(DateTimeOffset? TotpEnabledAt, DateTimeOffset? EmailEnabledAt, bool EmailAllowed, bool EmailVerified, int RecoveryCodesLeft, bool Required, bool Active, IReadOnlyList<PasskeyDto> Passkeys);
+
+/// <summary>A passkey as the profile shows it.</summary>
+/// <param name="Id">KeePort's ID of the passkey.</param>
+/// <param name="Name">The name the user gave it.</param>
+/// <param name="Domain">The domain it works on.</param>
+/// <param name="CreatedAt">When it was added.</param>
+/// <param name="LastUsedAt">When it was last used to sign in.</param>
+public sealed record PasskeyDto(string Id, string Name, string Domain, DateTimeOffset CreatedAt, DateTimeOffset? LastUsedAt);
+
+/// <summary>The browser's answer to adding a passkey.</summary>
+/// <param name="ChallengeId">The ID from the options.</param>
+/// <param name="Name">The name for the passkey.</param>
+/// <param name="Response">The PublicKeyCredential as JSON.</param>
+public sealed record PasskeyRegisterRequest(string? ChallengeId, string? Name, System.Text.Json.JsonElement Response);
+
+/// <summary>The browser's answer to a sign-in with a passkey.</summary>
+/// <param name="ChallengeId">The ID from the options.</param>
+/// <param name="Response">The PublicKeyCredential as JSON.</param>
+/// <param name="MfaToken">For the second factor: the token from the first sign-in step.</param>
+public sealed record PasskeyLoginRequest(string? ChallengeId, System.Text.Json.JsonElement Response, string? MfaToken = null);
 
 /// <summary>A request that needs the account password.</summary>
 /// <param name="Password">The account password.</param>
