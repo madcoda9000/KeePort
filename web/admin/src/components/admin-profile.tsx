@@ -1,10 +1,10 @@
 import { useState, type FormEvent } from 'react';
-import { UserRoundIcon } from 'lucide-react';
+import { BellIcon, ShieldCheckIcon, UserRoundIcon } from 'lucide-react';
 import { api, mfaApi, type User } from '@/lib/api';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogTrigger } from '@/components/ui/dialog';
 import { Field, FieldDescription, FieldGroup, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
@@ -17,6 +17,8 @@ import { applyPreference, type LanguagePreference } from '@shared/i18n/core';
 import { LanguageSetting } from '@shared/i18n/language-select';
 import { useT } from '@shared/i18n/react';
 import { TwoFactorSettings } from '@shared/two-factor';
+import { SettingsDialogContent } from '@shared/settings-dialog';
+import settingsDialogText from '@shared/i18n/messages/settings-dialog';
 
 type ProfileMessage = { kind: 'notice' | 'error'; text: string };
 
@@ -30,6 +32,7 @@ export function AdminProfile({ user, onUpdate }: { user: User; onUpdate: (user: 
   const t = useT(messages);
   const tLanguage = useT(languageMessages);
   const tEmail = useT(emailAccountMessages);
+  const tSettings = useT(settingsDialogText);
 
   /**
    * Saves the contact email and updates the account displayed in the sidebar.
@@ -149,76 +152,85 @@ export function AdminProfile({ user, onUpdate }: { user: User; onUpdate: (user: 
                 <span>{t('profile')}</span>
               </SidebarMenuButton>
             </DialogTrigger>
-            <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-lg">
-              <DialogHeader>
-                <DialogTitle>{t('title')}</DialogTitle>
-                <DialogDescription>{t('description')}</DialogDescription>
-              </DialogHeader>
-              {message && (
+            <SettingsDialogContent
+              title={t('title')}
+              description={t('description')}
+              message={message && (
                 <Alert variant={message.kind === 'error' ? 'destructive' : 'default'}>
                   <AlertDescription>{message.text}</AlertDescription>
                 </Alert>
               )}
-              <form key={user.email ?? ''} className="grid gap-4" onSubmit={handleEmail}>
-                <h3 className="text-sm font-semibold">{t('contact')}</h3>
-                <Field>
-                  <FieldLabel htmlFor="admin-profile-email">{t('email')}</FieldLabel>
-                  <Input id="admin-profile-email" name="email" type="email" autoComplete="email" defaultValue={user.email ?? ''} maxLength={254} required />
-                </Field>
-                <Button type="submit" variant="outline" className="justify-self-start" disabled={busy !== null}>
-                  {busy === 'email' ? t('saving') : t('saveEmail')}
-                </Button>
-              </form>
-              <EmailConfirmation
-                key={`confirm-${user.email ?? ''}`}
-                email={user.email}
-                verified={user.emailVerified}
-                onRequestCode={requestEmailCode}
-                onVerify={verifyEmail}
-              />
-              <EmailNotifications
-                signIn={user.notifySignIn}
-                appPassword={user.notifyAppPassword}
-                showAppPassword={false}
-                verified={user.emailVerified}
-                onSave={saveNotifications}
-              />
-              <Separator />
-              <Field>
-                <FieldLabel htmlFor="account-language">{tLanguage('label')}</FieldLabel>
-                <LanguageSetting value={user.language ?? null} disabled={busy !== null} onSave={/**
-                 * Saves the chosen language.
-                 * @param language - The new preference.
-                 */ (language) => void handleLanguage(language)} />
-                <FieldDescription id="account-language-help">{tLanguage('help')}</FieldDescription>
-              </Field>
-              <Separator />
-              <form className="grid gap-4" onSubmit={handlePassword}>
-                <h3 className="text-sm font-semibold">{t('security')}</h3>
-                <FieldGroup className="gap-4">
+              sections={[
+                { id: 'account', label: tSettings('account'), icon: UserRoundIcon, content: (
+                  <>
+                  <form key={user.email ?? ''} className="grid gap-4" onSubmit={handleEmail}>
+                    <h3 className="text-sm font-semibold">{t('contact')}</h3>
+                    <Field>
+                      <FieldLabel htmlFor="admin-profile-email">{t('email')}</FieldLabel>
+                      <Input id="admin-profile-email" name="email" type="email" autoComplete="email" defaultValue={user.email ?? ''} maxLength={254} required />
+                    </Field>
+                    <Button type="submit" variant="outline" className="justify-self-start" disabled={busy !== null}>
+                      {busy === 'email' ? t('saving') : t('saveEmail')}
+                    </Button>
+                  </form>
+                  <EmailConfirmation
+                    key={`confirm-${user.email ?? ''}`}
+                    email={user.email}
+                    verified={user.emailVerified}
+                    onRequestCode={requestEmailCode}
+                    onVerify={verifyEmail}
+                  />
+                  <Separator />
                   <Field>
-                    <FieldLabel htmlFor="admin-current-password">{t('currentPassword')}</FieldLabel>
-                    <Input id="admin-current-password" name="currentPassword" type="password" autoComplete="current-password" required />
+                    <FieldLabel htmlFor="account-language">{tLanguage('label')}</FieldLabel>
+                    <LanguageSetting value={user.language ?? null} disabled={busy !== null} onSave={/**
+                     * Saves the chosen language.
+                     * @param language - The new preference.
+                     */ (language) => void handleLanguage(language)} />
+                    <FieldDescription id="account-language-help">{tLanguage('help')}</FieldDescription>
                   </Field>
-                  <Field>
-                    <FieldLabel htmlFor="admin-new-password">{t('newPassword')}</FieldLabel>
-                    <Input id="admin-new-password" name="newPassword" type="password" autoComplete="new-password" required />
-                  </Field>
-                  <Field>
-                    <FieldLabel htmlFor="admin-confirm-password">{t('confirmPassword')}</FieldLabel>
-                    <Input id="admin-confirm-password" name="confirmPassword" type="password" autoComplete="new-password" required />
-                  </Field>
-                </FieldGroup>
-                <Button type="submit" className="justify-self-start" disabled={busy !== null}>
-                  {busy === 'password' ? t('changing') : t('changePassword')}
-                </Button>
-              </form>
-              <Separator />
-              <TwoFactorSettings username={user.username} api={mfaApi} onChange={/**
-               * Shows the new two-factor state in the account.
-               * @param status - The new state.
-               */ (status) => onUpdate({ ...user, twoFactor: status.active })} />
-            </DialogContent>
+                  </>
+                ) },
+                { id: 'security', label: tSettings('security'), icon: ShieldCheckIcon, content: (
+                  <>
+                  <form className="grid gap-4" onSubmit={handlePassword}>
+                    <h3 className="text-sm font-semibold">{t('changePassword')}</h3>
+                    <FieldGroup className="gap-4">
+                      <Field>
+                        <FieldLabel htmlFor="admin-current-password">{t('currentPassword')}</FieldLabel>
+                        <Input id="admin-current-password" name="currentPassword" type="password" autoComplete="current-password" required />
+                      </Field>
+                      <Field>
+                        <FieldLabel htmlFor="admin-new-password">{t('newPassword')}</FieldLabel>
+                        <Input id="admin-new-password" name="newPassword" type="password" autoComplete="new-password" required />
+                      </Field>
+                      <Field>
+                        <FieldLabel htmlFor="admin-confirm-password">{t('confirmPassword')}</FieldLabel>
+                        <Input id="admin-confirm-password" name="confirmPassword" type="password" autoComplete="new-password" required />
+                      </Field>
+                    </FieldGroup>
+                    <Button type="submit" className="justify-self-start" disabled={busy !== null}>
+                      {busy === 'password' ? t('changing') : t('changePassword')}
+                    </Button>
+                  </form>
+                  <Separator />
+                  <TwoFactorSettings username={user.username} api={mfaApi} onChange={/**
+                   * Shows the new two-factor state in the account.
+                   * @param status - The new state.
+                   */ (status) => onUpdate({ ...user, twoFactor: status.active })} />
+                  </>
+                ) },
+                { id: 'notifications', label: tSettings('notifications'), icon: BellIcon, content: (
+                  <EmailNotifications
+                    signIn={user.notifySignIn}
+                    appPassword={user.notifyAppPassword}
+                    showAppPassword={false}
+                    verified={user.emailVerified}
+                    onSave={saveNotifications}
+                  />
+                ) }
+              ]}
+            />
           </Dialog>
         </SidebarMenuItem>
       </SidebarMenu>

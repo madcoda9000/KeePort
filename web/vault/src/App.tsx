@@ -4,6 +4,8 @@ import { api, ApiError, mfaApi, setCsrfToken } from './lib/api';
 import type { AuthResponse, User, VaultFile } from './lib/api';
 import { isMfaChallenge, type MfaChallenge } from '@shared/two-factor-api';
 import { MfaChallengeForm, MfaSetupRequired, TwoFactorSettings } from '@shared/two-factor';
+import { SettingsDialogContent } from '@shared/settings-dialog';
+import settingsDialogText from '@shared/i18n/messages/settings-dialog';
 import {
   clearVaultCredentials,
   entryMatches,
@@ -47,6 +49,8 @@ import {
   DatabaseIcon,
   FolderInputIcon,
   KeyRoundIcon,
+  BellIcon,
+  HistoryIcon,
   LockKeyholeIcon,
   LockKeyholeOpenIcon,
   LogOutIcon,
@@ -132,14 +136,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger
-} from '@/components/ui/dialog';
+import { Dialog, DialogTrigger } from '@/components/ui/dialog';
 import { Field, FieldDescription, FieldGroup, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
@@ -362,6 +359,7 @@ export default function App() {
   const tEntry = useT(entryDialogText);
   const tMsg = useT(messagesText);
   const tProfile = useT(profileText);
+  const tSettings = useT(settingsDialogText);
   const tUnlock = useT(unlockText);
   const [message, setMessage] = useState<Message>(null);
   const [theme, setTheme] = useState(getTheme);
@@ -1693,170 +1691,176 @@ export default function App() {
                 <span>{tProfile('profile')}</span>
               </SidebarMenuButton>
             </DialogTrigger>
-            <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-lg">
-              <DialogHeader>
-                <DialogTitle>{tProfile('title')}</DialogTitle>
-                <DialogDescription>
-                  {tProfile('description', { username: user.username })}
-                </DialogDescription>
-              </DialogHeader>
-              {profileMessage && (
+            <SettingsDialogContent
+              title={tProfile('title')}
+              description={tProfile('description', { username: user.username })}
+              message={profileMessage && (
                 <Alert variant={profileMessage.kind === 'error' ? 'destructive' : 'default'}>
                   <AlertDescription>{profileMessage.text}</AlertDescription>
                 </Alert>
               )}
-              <form className="grid gap-4" onSubmit={handleSaveEmail}>
-                <h3 className="text-sm font-semibold">{tProfile('contact')}</h3>
-                <Field>
-                  <FieldLabel htmlFor="profile-email">{tProfile('email')}</FieldLabel>
-                  <Input
-                    key={user.email}
-                    id="profile-email"
-                    name="email"
-                    type="email"
-                    autoComplete="email"
-                    maxLength={254}
-                    defaultValue={user.email ?? ''}
-                    required
+              sections={[
+                { id: 'account', label: tSettings('account'), icon: UserRoundIcon, content: (
+                  <>
+                  <form className="grid gap-4" onSubmit={handleSaveEmail}>
+                    <h3 className="text-sm font-semibold">{tProfile('contact')}</h3>
+                    <Field>
+                      <FieldLabel htmlFor="profile-email">{tProfile('email')}</FieldLabel>
+                      <Input
+                        key={user.email}
+                        id="profile-email"
+                        name="email"
+                        type="email"
+                        autoComplete="email"
+                        maxLength={254}
+                        defaultValue={user.email ?? ''}
+                        required
+                      />
+                    </Field>
+                    <Button type="submit" size="sm" className="justify-self-start" disabled={busy !== null}>
+                      {busy === 'email' ? tProfile('saving') : tProfile('saveEmail')}
+                    </Button>
+                  </form>
+                  <EmailConfirmation
+                    key={user.email ?? ''}
+                    email={user.email}
+                    verified={user.emailVerified}
+                    onRequestCode={/** Sends a confirmation code to the account's address. */ () => api.requestEmailCode()}
+                    onVerify={handleVerifyEmail}
                   />
-                </Field>
-                <Button type="submit" size="sm" className="justify-self-start" disabled={busy !== null}>
-                  {busy === 'email' ? tProfile('saving') : tProfile('saveEmail')}
-                </Button>
-              </form>
-              <EmailConfirmation
-                key={user.email ?? ''}
-                email={user.email}
-                verified={user.emailVerified}
-                onRequestCode={/** Sends a confirmation code to the account's address. */ () => api.requestEmailCode()}
-                onVerify={handleVerifyEmail}
-              />
-              <Separator />
-              <Field>
-                <FieldLabel htmlFor="account-language">{tLanguage('label')}</FieldLabel>
-                <LanguageSetting value={user.language} disabled={busy !== null} onSave={/**
-                 * Saves the chosen language.
-                 * @param language - The new preference.
-                 */ (language) => void handleSaveLanguage(language)} />
-                <FieldDescription id="account-language-help">{tLanguage('help')}</FieldDescription>
-              </Field>
-              <Separator />
-              <EmailNotifications
-                signIn={user.notifySignIn}
-                appPassword={user.notifyAppPassword}
-                showAppPassword
-                verified={user.emailVerified}
-                onSave={handleSaveNotifications}
-              />
-              <Separator />
-              <form className="grid gap-4" onSubmit={handleSaveAutoLock}>
-                <h3 className="text-sm font-semibold">{tProfile('preferences')}</h3>
-                <Field>
-                  <FieldLabel htmlFor="auto-lock">{tProfile('autoLock')}</FieldLabel>
-                  <Input
-                    id="auto-lock"
-                    name="autoLockMinutes"
-                    className="max-w-32"
-                    type="number"
-                    min={1}
-                    max={1440}
-                    defaultValue={autoLockMinutes}
-                    required
-                    aria-describedby="auto-lock-help"
+                  <Separator />
+                  <Field>
+                    <FieldLabel htmlFor="account-language">{tLanguage('label')}</FieldLabel>
+                    <LanguageSetting value={user.language} disabled={busy !== null} onSave={/**
+                     * Saves the chosen language.
+                     * @param language - The new preference.
+                     */ (language) => void handleSaveLanguage(language)} />
+                    <FieldDescription id="account-language-help">{tLanguage('help')}</FieldDescription>
+                  </Field>
+                  </>
+                ) },
+                { id: 'security', label: tSettings('security'), icon: ShieldCheckIcon, content: (
+                  <>
+                  <form className="grid gap-4" onSubmit={handleChangePassword}>
+                    <div className="space-y-1">
+                      <h3 className="text-sm font-semibold">{tProfile('changePasswordTitle')}</h3>
+                      <p className="text-sm text-muted-foreground">{tProfile('changePasswordHint')}</p>
+                    </div>
+                    <FieldGroup className="gap-3">
+                      <Field>
+                        <FieldLabel htmlFor="current-password">{tProfile('currentPassword')}</FieldLabel>
+                        <Input
+                          id="current-password"
+                          name="currentPassword"
+                          type="password"
+                          autoComplete="current-password"
+                          required
+                        />
+                      </Field>
+                      <Field>
+                        <FieldLabel htmlFor="new-password">{tProfile('newPassword')}</FieldLabel>
+                        <Input id="new-password" name="newPassword" type="password" autoComplete="new-password" required />
+                      </Field>
+                      <Field>
+                        <FieldLabel htmlFor="confirm-password">{tProfile('confirmPassword')}</FieldLabel>
+                        <Input
+                          id="confirm-password"
+                          name="confirmPassword"
+                          type="password"
+                          autoComplete="new-password"
+                          required
+                        />
+                      </Field>
+                    </FieldGroup>
+                    <Button
+                      type="submit"
+                      variant="outline"
+                      size="sm"
+                      className="justify-self-start"
+                      disabled={busy !== null}
+                    >
+                      {busy === 'password' ? tProfile('changing') : tProfile('changePassword')}
+                    </Button>
+                  </form>
+                  <Separator />
+                  <TwoFactorSettings username={user.username} api={mfaApi} onChange={/**
+                   * Shows the new two-factor state in the account.
+                   * @param status - The new state.
+                   */ (status) => setUser({ ...user, twoFactor: status.active })} />
+                  </>
+                ) },
+                { id: 'signIns', label: tSettings('signIns'), icon: HistoryIcon, content: <RecentSignIns /> },
+                { id: 'notifications', label: tSettings('notifications'), icon: BellIcon, content: (
+                  <EmailNotifications
+                    signIn={user.notifySignIn}
+                    appPassword={user.notifyAppPassword}
+                    showAppPassword
+                    verified={user.emailVerified}
+                    onSave={handleSaveNotifications}
                   />
-                  <FieldDescription id="auto-lock-help">
-                    {tProfile('autoLockHelp')}
-                  </FieldDescription>
-                </Field>
-                <Field>
-                  <FieldLabel htmlFor="clipboard-clear">{tProfile('clipboardClear')}</FieldLabel>
-                  <Input
-                    id="clipboard-clear"
-                    name="clipboardClearSeconds"
-                    className="max-w-32"
-                    type="number"
-                    min={0}
-                    max={600}
-                    defaultValue={user.clipboardClearSeconds ?? DEFAULT_CLIPBOARD_CLEAR_SECONDS}
-                    required
-                    aria-describedby="clipboard-clear-help"
-                  />
-                  <FieldDescription id="clipboard-clear-help">
-                    {tProfile('clipboardHelp')}
-                  </FieldDescription>
-                </Field>
-                <Field orientation="horizontal">
-                  <Checkbox id="show-favicons" name="showFavicons" defaultChecked={user.showFavicons} aria-describedby="show-favicons-help" />
-                  <div className="grid gap-1">
-                    <FieldLabel htmlFor="show-favicons" className="font-normal">{tProfile('favicons')}</FieldLabel>
-                    <FieldDescription id="show-favicons-help">
-                      {tProfile('faviconsHelp')}
-                    </FieldDescription>
-                  </div>
-                </Field>
-                <Field orientation="horizontal">
-                  <Checkbox id="check-breaches" name="checkBreaches" defaultChecked={user.checkBreaches} aria-describedby="check-breaches-help" />
-                  <div className="grid gap-1">
-                    <FieldLabel htmlFor="check-breaches" className="font-normal">{tProfile('breaches')}</FieldLabel>
-                    <FieldDescription id="check-breaches-help">
-                      {tProfile('breachesHelp')}
-                    </FieldDescription>
-                  </div>
-                </Field>
-                <Button type="submit" size="sm" className="justify-self-start" disabled={busy !== null}>
-                  {busy === 'settings' ? tProfile('saving') : tProfile('savePreferences')}
-                </Button>
-              </form>
-              <Separator />
-              <form className="grid gap-4" onSubmit={handleChangePassword}>
-                <div className="space-y-1">
-                  <h3 className="text-sm font-semibold">{tProfile('changePasswordTitle')}</h3>
-                  <p className="text-sm text-muted-foreground">{tProfile('changePasswordHint')}</p>
-                </div>
-                <FieldGroup className="gap-3">
-                  <Field>
-                    <FieldLabel htmlFor="current-password">{tProfile('currentPassword')}</FieldLabel>
-                    <Input
-                      id="current-password"
-                      name="currentPassword"
-                      type="password"
-                      autoComplete="current-password"
-                      required
-                    />
-                  </Field>
-                  <Field>
-                    <FieldLabel htmlFor="new-password">{tProfile('newPassword')}</FieldLabel>
-                    <Input id="new-password" name="newPassword" type="password" autoComplete="new-password" required />
-                  </Field>
-                  <Field>
-                    <FieldLabel htmlFor="confirm-password">{tProfile('confirmPassword')}</FieldLabel>
-                    <Input
-                      id="confirm-password"
-                      name="confirmPassword"
-                      type="password"
-                      autoComplete="new-password"
-                      required
-                    />
-                  </Field>
-                </FieldGroup>
-                <Button
-                  type="submit"
-                  variant="outline"
-                  size="sm"
-                  className="justify-self-start"
-                  disabled={busy !== null}
-                >
-                  {busy === 'password' ? tProfile('changing') : tProfile('changePassword')}
-                </Button>
-              </form>
-              <Separator />
-              <TwoFactorSettings username={user.username} api={mfaApi} onChange={/**
-               * Shows the new two-factor state in the account.
-               * @param status - The new state.
-               */ (status) => setUser({ ...user, twoFactor: status.active })} />
-              <Separator />
-              <RecentSignIns />
-            </DialogContent>
+                ) },
+                { id: 'vault', label: tSettings('vault'), icon: LockKeyholeIcon, content: (
+                  <form className="grid gap-4" onSubmit={handleSaveAutoLock}>
+                    <h3 className="text-sm font-semibold">{tProfile('preferences')}</h3>
+                    <Field>
+                      <FieldLabel htmlFor="auto-lock">{tProfile('autoLock')}</FieldLabel>
+                      <Input
+                        id="auto-lock"
+                        name="autoLockMinutes"
+                        className="max-w-32"
+                        type="number"
+                        min={1}
+                        max={1440}
+                        defaultValue={autoLockMinutes}
+                        required
+                        aria-describedby="auto-lock-help"
+                      />
+                      <FieldDescription id="auto-lock-help">
+                        {tProfile('autoLockHelp')}
+                      </FieldDescription>
+                    </Field>
+                    <Field>
+                      <FieldLabel htmlFor="clipboard-clear">{tProfile('clipboardClear')}</FieldLabel>
+                      <Input
+                        id="clipboard-clear"
+                        name="clipboardClearSeconds"
+                        className="max-w-32"
+                        type="number"
+                        min={0}
+                        max={600}
+                        defaultValue={user.clipboardClearSeconds ?? DEFAULT_CLIPBOARD_CLEAR_SECONDS}
+                        required
+                        aria-describedby="clipboard-clear-help"
+                      />
+                      <FieldDescription id="clipboard-clear-help">
+                        {tProfile('clipboardHelp')}
+                      </FieldDescription>
+                    </Field>
+                    <Field orientation="horizontal">
+                      <Checkbox id="show-favicons" name="showFavicons" defaultChecked={user.showFavicons} aria-describedby="show-favicons-help" />
+                      <div className="grid gap-1">
+                        <FieldLabel htmlFor="show-favicons" className="font-normal">{tProfile('favicons')}</FieldLabel>
+                        <FieldDescription id="show-favicons-help">
+                          {tProfile('faviconsHelp')}
+                        </FieldDescription>
+                      </div>
+                    </Field>
+                    <Field orientation="horizontal">
+                      <Checkbox id="check-breaches" name="checkBreaches" defaultChecked={user.checkBreaches} aria-describedby="check-breaches-help" />
+                      <div className="grid gap-1">
+                        <FieldLabel htmlFor="check-breaches" className="font-normal">{tProfile('breaches')}</FieldLabel>
+                        <FieldDescription id="check-breaches-help">
+                          {tProfile('breachesHelp')}
+                        </FieldDescription>
+                      </div>
+                    </Field>
+                    <Button type="submit" size="sm" className="justify-self-start" disabled={busy !== null}>
+                      {busy === 'settings' ? tProfile('saving') : tProfile('savePreferences')}
+                    </Button>
+                  </form>
+                ) }
+              ]}
+            />
           </Dialog>
         }
       />
