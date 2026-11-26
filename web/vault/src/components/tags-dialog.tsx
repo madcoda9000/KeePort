@@ -12,6 +12,8 @@ import {
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { TagInput } from '@/components/tag-input';
+import messages from '@/i18n/tags-dialog';
+import { useT } from '@shared/i18n/react';
 
 /**
  * Adds tags to and removes tags from several selected entries at once.
@@ -66,7 +68,7 @@ function TagsForm({
 }) {
   const [add, setAdd] = useState<string[]>([]);
   const [remove, setRemove] = useState<ReadonlySet<string>>(new Set());
-  const noun = count === 1 ? 'entry' : 'entries';
+  const t = useT(messages);
 
   /**
    * Marks a tag for removal or keeps it.
@@ -89,17 +91,17 @@ function TagsForm({
   return (
     <DialogContent className="sm:max-w-md">
       <DialogHeader>
-        <DialogTitle className="flex items-center gap-2"><TagIcon className="size-4" /> Tags for {count} {noun}</DialogTitle>
-        <DialogDescription>Add tags to all selected {noun} or remove tags from them. Each changed entry keeps its previous state in the history.</DialogDescription>
+        <DialogTitle className="flex items-center gap-2"><TagIcon className="size-4" /> {t('title', { count })}</DialogTitle>
+        <DialogDescription>{t('description', { count })}</DialogDescription>
       </DialogHeader>
       <div className="grid gap-5">
         <div className="grid gap-2">
-          <Label htmlFor="bulk-tags">Add tags</Label>
+          <Label htmlFor="bulk-tags">{t('addTags')}</Label>
           <TagInput id="bulk-tags" tags={add} suggestions={vaultTags} canWrite onChange={setAdd} />
         </div>
         {selectionTags.length > 0 && (
           <fieldset className="grid gap-2">
-            <legend className="mb-1 text-sm font-medium">Remove tags</legend>
+            <legend className="mb-1 text-sm font-medium">{t('removeTags')}</legend>
             {selectionTags.map(/**
              * Renders the removal checkbox of one tag.
              * @param item - A tag on the selection with how many entries have it.
@@ -114,7 +116,7 @@ function TagsForm({
                    */ (checked) => toggleRemove(item.tag, checked === true)}
                 />
                 <Label htmlFor={`remove-tag-${item.tag}`} className="font-normal">
-                  {item.tag} <span className="text-muted-foreground">({item.count} of {count})</span>
+                  {item.tag} <span className="text-muted-foreground">{t('share', { used: item.count, total: count })}</span>
                 </Label>
               </div>
             ))}
@@ -123,7 +125,7 @@ function TagsForm({
       </div>
       <DialogFooter>
         <Button type="button" disabled={busy || (!add.length && !remove.size)} onClick={/** Applies the changes. */ () => onApply(add, [...remove])}>
-          {busy ? 'Saving…' : 'Apply'}
+          {busy ? t('saving') : t('apply')}
         </Button>
       </DialogFooter>
     </DialogContent>

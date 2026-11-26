@@ -35,23 +35,37 @@ import {
   type PassphraseOptions,
   type PassphraseSeparator
 } from '@/lib/passphrase';
+import messages from '@/i18n/password-generator';
+import { useT } from '@shared/i18n/react';
 
-const SET_LABELS: Record<CharacterSet, string> = {
-  lower: 'Lowercase (a–z)',
-  upper: 'Uppercase (A–Z)',
-  digits: 'Digits (0–9)',
-  symbols: 'Symbols (!#$…)'
+type MessageKey = keyof typeof messages.en;
+
+/** The catalog keys of the character group labels. */
+const SET_LABELS: Record<CharacterSet, MessageKey> = {
+  lower: 'setLower',
+  upper: 'setUpper',
+  digits: 'setDigits',
+  symbols: 'setSymbols'
 };
 
 const DEFAULT_OPTIONS: PasswordOptions = { length: 20, sets: ['lower', 'upper', 'digits', 'symbols'], avoidLookAlikes: false };
 const DEFAULT_PASSPHRASE: PassphraseOptions = { words: 6, separator: 'hyphen', capitalize: false, addNumber: false };
 
-const SEPARATOR_LABELS: Record<PassphraseSeparator, string> = {
-  hyphen: 'Hyphen (-)',
-  space: 'Space',
-  dot: 'Dot (.)',
-  underscore: 'Underscore (_)',
-  none: 'None'
+/** The catalog keys of the separator labels. */
+const SEPARATOR_LABELS: Record<PassphraseSeparator, MessageKey> = {
+  hyphen: 'separatorHyphen',
+  space: 'separatorSpace',
+  dot: 'separatorDot',
+  underscore: 'separatorUnderscore',
+  none: 'separatorNone'
+};
+
+/** The catalog keys of the strength names returned by strengthLabel. */
+const STRENGTH_LABELS: Record<ReturnType<typeof strengthLabel>, MessageKey> = {
+  Weak: 'strengthWeak',
+  Fair: 'strengthFair',
+  Strong: 'strengthStrong',
+  'Very strong': 'strengthVeryStrong'
 };
 
 /**
@@ -60,10 +74,11 @@ const SEPARATOR_LABELS: Record<PassphraseSeparator, string> = {
  */
 export function PasswordGenerator({ onUse, disabled }: { onUse: (password: string) => void; disabled?: boolean }) {
   const [open, setOpen] = useState(false);
+  const t = useT(messages);
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button type="button" variant="outline" size="icon" aria-label="Generate password" title="Generate password" disabled={disabled}>
+        <Button type="button" variant="outline" size="icon" aria-label={t('generate')} title={t('generate')} disabled={disabled}>
           <WandSparklesIcon />
         </Button>
       </DialogTrigger>
@@ -95,7 +110,8 @@ function GeneratorForm({ onUse }: { onUse: (password: string) => void }) {
   const latestPhraseOptions = useRef(DEFAULT_PASSPHRASE);
   const [words, setWords] = useState<readonly string[] | null>(null);
   const [phrase, setPhrase] = useState('');
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState(false);
+  const t = useT(messages);
   const bits = mode === 'password' ? passwordEntropyBits(options) : words ? passphraseEntropyBits(phraseOptions, words.length) : 0;
   const strength = strengthLabel(bits);
   const value = mode === 'password' ? password : phrase;
@@ -118,7 +134,7 @@ function GeneratorForm({ onUse }: { onUse: (password: string) => void }) {
           setPhrase(generatePassphrase(latestPhraseOptions.current, list));
         },
         /** Reports that the word list could not be loaded. */
-        () => setLoadError('The word list could not be loaded. Reload the page and try again.')
+        () => setLoadError(true)
       );
     }
   }
@@ -164,38 +180,38 @@ function GeneratorForm({ onUse }: { onUse: (password: string) => void }) {
   return (
     <DialogContent className="sm:max-w-md">
       <DialogHeader>
-        <DialogTitle>Generate password</DialogTitle>
-        <DialogDescription>Generated in your browser with a cryptographically secure random source.</DialogDescription>
+        <DialogTitle>{t('generate')}</DialogTitle>
+        <DialogDescription>{t('description')}</DialogDescription>
       </DialogHeader>
       <div className="grid gap-5">
         <Tabs value={mode} onValueChange={switchMode}>
           <TabsList className="w-full">
-            <TabsTrigger value="password">Password</TabsTrigger>
-            <TabsTrigger value="passphrase">Passphrase</TabsTrigger>
+            <TabsTrigger value="password">{t('password')}</TabsTrigger>
+            <TabsTrigger value="passphrase">{t('passphrase')}</TabsTrigger>
           </TabsList>
         </Tabs>
         <div className="flex items-center gap-2 rounded-lg border bg-muted/40 p-3">
-          <output aria-label="Generated password" className="min-w-0 flex-1 font-mono text-sm break-all">
-            {value || (loadError ?? 'Loading word list…')}
+          <output aria-label={t('generated')} className="min-w-0 flex-1 font-mono text-sm break-all">
+            {value || (loadError ? t('loadFailed') : t('loadingWords'))}
           </output>
-          <Button type="button" variant="ghost" size="icon-sm" aria-label="Generate another password" title="Generate another" disabled={!value} onClick={regenerate}>
+          <Button type="button" variant="ghost" size="icon-sm" aria-label={t('generateAnotherLabel')} title={t('generateAnother')} disabled={!value} onClick={regenerate}>
             <RefreshCwIcon />
           </Button>
         </div>
         <div className="flex items-center justify-between text-sm">
-          <span className="text-muted-foreground">Strength</span>
-          <Badge variant={strength === 'Weak' ? 'destructive' : 'secondary'}>{strength} · {bits} bits</Badge>
+          <span className="text-muted-foreground">{t('strength')}</span>
+          <Badge variant={strength === 'Weak' ? 'destructive' : 'secondary'}>{t('strengthBits', { strength: t(STRENGTH_LABELS[strength]), bits })}</Badge>
         </div>
         {mode === 'password' ? (
         <>
         <div className="grid gap-3">
           <div className="flex items-center justify-between">
-            <Label htmlFor="generator-length">Length</Label>
+            <Label htmlFor="generator-length">{t('length')}</Label>
             <span className="text-sm tabular-nums">{options.length}</span>
           </div>
           <Slider
             id="generator-length"
-            aria-label="Password length"
+            aria-label={t('passwordLength')}
             min={MIN_PASSWORD_LENGTH}
             max={64}
             step={1}
@@ -207,7 +223,7 @@ function GeneratorForm({ onUse }: { onUse: (password: string) => void }) {
           />
         </div>
         <fieldset className="grid gap-2.5">
-          <legend className="mb-1 text-sm font-medium">Characters</legend>
+          <legend className="mb-1 text-sm font-medium">{t('characters')}</legend>
           {(Object.keys(CHARACTER_SETS) as CharacterSet[]).map(/**
            * Renders the checkbox of one character group.
            * @param set - The character group.
@@ -222,7 +238,7 @@ function GeneratorForm({ onUse }: { onUse: (password: string) => void }) {
                  * @param checked - The new checkbox state.
                  */ (checked) => toggleSet(set, checked === true)}
               />
-              <Label htmlFor={`generator-${set}`} className="font-normal">{SET_LABELS[set]}</Label>
+              <Label htmlFor={`generator-${set}`} className="font-normal">{t(SET_LABELS[set])}</Label>
             </div>
           ))}
           <div className="flex items-center gap-2">
@@ -234,7 +250,7 @@ function GeneratorForm({ onUse }: { onUse: (password: string) => void }) {
                * @param checked - The new checkbox state.
                */ (checked) => update({ ...options, avoidLookAlikes: checked === true })}
             />
-            <Label htmlFor="generator-look-alikes" className="font-normal">Avoid look-alikes (I, l, 1, O, 0)</Label>
+            <Label htmlFor="generator-look-alikes" className="font-normal">{t('avoidLookAlikes')}</Label>
           </div>
         </fieldset>
         </>
@@ -242,12 +258,12 @@ function GeneratorForm({ onUse }: { onUse: (password: string) => void }) {
           <div className="grid gap-4">
             <div className="grid gap-3">
               <div className="flex items-center justify-between">
-                <Label htmlFor="generator-words">Words</Label>
+                <Label htmlFor="generator-words">{t('words')}</Label>
                 <span className="text-sm tabular-nums">{phraseOptions.words}</span>
               </div>
               <Slider
                 id="generator-words"
-                aria-label="Number of words"
+                aria-label={t('wordCount')}
                 min={MIN_PASSPHRASE_WORDS}
                 max={MAX_PASSPHRASE_WORDS}
                 step={1}
@@ -259,7 +275,7 @@ function GeneratorForm({ onUse }: { onUse: (password: string) => void }) {
               />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="generator-separator">Separator</Label>
+              <Label htmlFor="generator-separator">{t('separator')}</Label>
               <NativeSelect
                 id="generator-separator"
                 value={phraseOptions.separator}
@@ -271,7 +287,7 @@ function GeneratorForm({ onUse }: { onUse: (password: string) => void }) {
                 {(Object.keys(PASSPHRASE_SEPARATORS) as PassphraseSeparator[]).map(/**
                  * Renders one separator option.
                  * @param separator - One separator.
-                 */ (separator) => <NativeSelectOption key={separator} value={separator}>{SEPARATOR_LABELS[separator]}</NativeSelectOption>)}
+                 */ (separator) => <NativeSelectOption key={separator} value={separator}>{t(SEPARATOR_LABELS[separator])}</NativeSelectOption>)}
               </NativeSelect>
             </div>
             <div className="flex items-center gap-2">
@@ -283,7 +299,7 @@ function GeneratorForm({ onUse }: { onUse: (password: string) => void }) {
                  * @param checked - The new checkbox state.
                  */ (checked) => updatePhrase({ ...phraseOptions, capitalize: checked === true })}
               />
-              <Label htmlFor="generator-capitalize" className="font-normal">Capitalize words</Label>
+              <Label htmlFor="generator-capitalize" className="font-normal">{t('capitalize')}</Label>
             </div>
             <div className="flex items-center gap-2">
               <Checkbox
@@ -294,17 +310,15 @@ function GeneratorForm({ onUse }: { onUse: (password: string) => void }) {
                  * @param checked - The new checkbox state.
                  */ (checked) => updatePhrase({ ...phraseOptions, addNumber: checked === true })}
               />
-              <Label htmlFor="generator-number" className="font-normal">Add a number</Label>
+              <Label htmlFor="generator-number" className="font-normal">{t('addNumber')}</Label>
             </div>
-            <p className="text-xs text-muted-foreground">
-              Words from the EFF Large Wordlist (7,776 words, CC BY 3.0 Electronic Frontier Foundation).
-            </p>
+            <p className="text-xs text-muted-foreground">{t('wordlistCredit')}</p>
           </div>
         )}
       </div>
       <DialogFooter>
         <Button type="button" disabled={!value} onClick={/** Uses the generated password or passphrase. */ () => onUse(value)}>
-          {mode === 'password' ? 'Use password' : 'Use passphrase'}
+          {mode === 'password' ? t('usePassword') : t('usePassphrase')}
         </Button>
       </DialogFooter>
     </DialogContent>

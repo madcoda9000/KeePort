@@ -1,4 +1,6 @@
 import * as kdbxweb from 'kdbxweb';
+import messages from '../i18n/lib-entry-actions.ts';
+import { translate } from '../../../shared/i18n/core.ts';
 
 /**
  * Collects the entries with the given IDs from all groups of the database.
@@ -14,7 +16,7 @@ function findEntries(db: kdbxweb.Kdbx, entryIds: Iterable<string>): kdbxweb.Kdbx
    * Keeps the requested entries.
    * @param entry - One entry.
    */ (entry) => wanted.has(entry.uuid.id));
-  if (entries.length !== wanted.size) throw new Error('Some entries no longer exist. Reload the vault and try again.');
+  if (entries.length !== wanted.size) throw new Error(translate(messages, 'entriesMissing'));
   return entries;
 }
 

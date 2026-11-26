@@ -1,4 +1,6 @@
 import * as kdbxweb from 'kdbxweb';
+import messages from '../i18n/lib-fields.ts';
+import { translate } from '../../../shared/i18n/core.ts';
 
 /** The KeePass standard fields, edited by the fixed inputs of the entry form. */
 export const STANDARD_FIELDS = ['Title', 'UserName', 'Password', 'URL', 'Notes'] as const;
@@ -273,17 +275,17 @@ export function templateStartFields(template: TemplateInfo): CustomField[] {
  */
 export function customFieldNameError(name: string, existing: readonly string[]): string | null {
   const trimmed = name.trim();
-  if (!trimmed) return 'Enter a field name.';
-  if (trimmed.length > MAX_FIELD_NAME_LENGTH) return `Field names can have at most ${MAX_FIELD_NAME_LENGTH} characters.`;
+  if (!trimmed) return translate(messages, 'nameRequired');
+  if (trimmed.length > MAX_FIELD_NAME_LENGTH) return translate(messages, 'nameTooLong', { max: MAX_FIELD_NAME_LENGTH });
   const lower = trimmed.toLowerCase();
   if ([...STANDARD_FIELDS, OTP_FIELD].some(/**
    * Detects a clash with a standard field.
    * @param standard - One standard field name.
-   */ (standard) => standard.toLowerCase() === lower)) return `“${trimmed}” is a standard field.`;
-  if (isInternalField(trimmed) || trimmed.startsWith('@')) return 'This name is reserved for KeePass apps.';
+   */ (standard) => standard.toLowerCase() === lower)) return translate(messages, 'standardField', { name: trimmed });
+  if (isInternalField(trimmed) || trimmed.startsWith('@')) return translate(messages, 'reserved');
   if (existing.some(/**
    * Detects a clash with another custom field.
    * @param other - The name of another custom field.
-   */ (other) => other.toLowerCase() === lower)) return `A field named “${trimmed}” already exists.`;
+   */ (other) => other.toLowerCase() === lower)) return translate(messages, 'duplicate', { name: trimmed });
   return null;
 }

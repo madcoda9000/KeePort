@@ -25,15 +25,18 @@ import { api, type AuditCategory, type AuditEntry, type AuditFilter, type AuditP
 import { cn } from '@/lib/utils';
 import { ACCENTS, type Accent } from '@shared/accent';
 import { describeUserAgent } from '@shared/user-agent';
+import messages from '@/i18n/audit-log';
+import { formatDateTime, formatNumber, translate } from '@shared/i18n/core';
+import { useT } from '@shared/i18n/react';
 
-/** Names and badge colours of the audit categories, in the order of the filter. */
-const CATEGORIES: Record<AuditCategory, { label: string; accent: Accent }> = {
-  auth: { label: 'Sign-in', accent: ACCENTS.sky },
-  account: { label: 'Own account', accent: ACCENTS.violet },
-  user: { label: 'Users', accent: ACCENTS.amber },
-  vault: { label: 'Vaults', accent: ACCENTS.emerald },
-  webdav: { label: 'WebDAV', accent: ACCENTS.orange },
-  settings: { label: 'Settings', accent: ACCENTS.fuchsia }
+/** Catalog keys of the names and badge colours of the audit categories, in the order of the filter. */
+const CATEGORIES: Record<AuditCategory, { label: keyof typeof messages.en; accent: Accent }> = {
+  auth: { label: 'categoryAuth', accent: ACCENTS.sky },
+  account: { label: 'categoryAccount', accent: ACCENTS.violet },
+  user: { label: 'categoryUser', accent: ACCENTS.amber },
+  vault: { label: 'categoryVault', accent: ACCENTS.emerald },
+  webdav: { label: 'categoryWebdav', accent: ACCENTS.orange },
+  settings: { label: 'categorySettings', accent: ACCENTS.fuchsia }
 };
 
 const PAGE_SIZES = [25, 50, 100] as const;
@@ -81,8 +84,7 @@ function toFilter(draft: FilterDraft): AuditFilter {
  * @param value - The ISO timestamp of the event.
  */
 function formatTime(value: string) {
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'medium' });
+  return formatDateTime(value, { dateStyle: 'short', timeStyle: 'medium' });
 }
 
 /**
@@ -90,6 +92,7 @@ function formatTime(value: string) {
  * @param props - The log entry and an optional click handler that filters by the tag.
  */
 function ActionBadge({ entry, onSelect }: { entry: AuditEntry; onSelect?: (action: string) => void }) {
+  const t = useT(messages);
   const className = cn(
     'font-mono text-[0.7rem] font-semibold',
     entry.success ? CATEGORIES[entry.category]?.accent.badge : 'border-destructive/40 bg-destructive/10 text-destructive'
@@ -97,7 +100,7 @@ function ActionBadge({ entry, onSelect }: { entry: AuditEntry; onSelect?: (actio
   if (!onSelect) return <Badge variant="outline" className={className}>{entry.action}</Badge>;
   return (
     <Badge asChild variant="outline" className={className}>
-      <button type="button" title={`Show only ${entry.action}`} onClick={/** Filters by this tag. */ () => onSelect(entry.action)}>
+      <button type="button" title={t('showOnly', { action: entry.action })} onClick={/** Filters by this tag. */ () => onSelect(entry.action)}>
         {entry.action}
       </button>
     </Badge>
@@ -109,6 +112,7 @@ function ActionBadge({ entry, onSelect }: { entry: AuditEntry; onSelect?: (actio
  * @param props - The label, icon, accent colour, value, and an optional action that applies a matching filter.
  */
 function StatTile({ label, icon, accent, value, onClick }: { label: string; icon: ReactNode; accent: Accent; value: number | null; onClick?: () => void }) {
+  const t = useT(messages);
   return (
     <Card size="sm">
       <CardHeader>
@@ -117,11 +121,11 @@ function StatTile({ label, icon, accent, value, onClick }: { label: string; icon
           {label}
         </CardDescription>
         <CardTitle className="mt-1 text-2xl font-semibold tracking-tight tabular-nums">
-          {value === null ? '–' : value.toLocaleString()}
+          {value === null ? '–' : formatNumber(value)}
         </CardTitle>
         {onClick && (
           <CardAction>
-            <Button variant="ghost" size="sm" onClick={onClick}>Show</Button>
+            <Button variant="ghost" size="sm" onClick={onClick}>{t('show')}</Button>
           </CardAction>
         )}
       </CardHeader>
@@ -140,6 +144,17 @@ export function AuditLogPanel() {
   const [loadedKey, setLoadedKey] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const [reload, setReload] = useState(0);
+  const t = useT(messages);
+
+  /**
+   * Returns the target to show; the server stores the sign-in channels in English, so those are translated here.
+   * @param entry - The audit entry.
+   */
+  function targetLabel(entry: AuditEntry) {
+    if (entry.targetType === 'session' && entry.targetName === 'Admin console') return t('sessionAdminConsole');
+    if (entry.targetType === 'session' && entry.targetName === 'Web vault') return t('sessionWebVault');
+    return entry.targetName;
+  }
 
   const requestKey = JSON.stringify([applied, page, pageSize, reload]);
   const loading = loadedKey !== requestKey;
@@ -164,7 +179,7 @@ export function AuditLogPanel() {
        */
       (reason: unknown) => {
         if (controller.signal.aborted) return;
-        setError(reason instanceof Error ? reason.message : 'Could not load the audit log.');
+        setError(reason instanceof Error ? reason.message : translate(messages, 'loadFailed'));
         setLoadedKey(requestKey);
       }
     );
@@ -202,7 +217,7 @@ export function AuditLogPanel() {
       anchor.click();
       URL.revokeObjectURL(url);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Could not export the audit log.');
+      setError(reason instanceof Error ? reason.message : t('exportFailed'));
     } finally {
       setExporting(false);
     }
@@ -236,11 +251,11 @@ export function AuditLogPanel() {
       )}
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <StatTile label="All entries" icon={<SigmaIcon />} accent={ACCENTS.violet} value={stats?.total ?? null} />
-        <StatTile label="Last 24 hours" icon={<HistoryIcon />} accent={ACCENTS.sky} value={stats?.last24Hours ?? null} />
-        <StatTile label="Last 7 days" icon={<CalendarClockIcon />} accent={ACCENTS.emerald} value={stats?.last7Days ?? null} />
+        <StatTile label={t('allEntries')} icon={<SigmaIcon />} accent={ACCENTS.violet} value={stats?.total ?? null} />
+        <StatTile label={t('last24Hours')} icon={<HistoryIcon />} accent={ACCENTS.sky} value={stats?.last24Hours ?? null} />
+        <StatTile label={t('last7Days')} icon={<CalendarClockIcon />} accent={ACCENTS.emerald} value={stats?.last7Days ?? null} />
         <StatTile
-          label="Failed sign-ins (24 h)"
+          label={t('failedSignIns')}
           icon={<ShieldAlertIcon />}
           accent={stats && stats.failedSignIns24Hours > 0 ? ACCENTS.rose : ACCENTS.amber}
           value={stats?.failedSignIns24Hours ?? null}
@@ -256,17 +271,17 @@ export function AuditLogPanel() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Filters</CardTitle>
-          <CardDescription>Narrow the audit trail by account, action, area and time.</CardDescription>
+          <CardTitle>{t('filters')}</CardTitle>
+          <CardDescription>{t('filtersDescription')}</CardDescription>
         </CardHeader>
         <CardContent>
           <form className="grid gap-4" onSubmit={submit}>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               <Field>
-                <FieldLabel htmlFor="audit-actor">User</FieldLabel>
+                <FieldLabel htmlFor="audit-actor">{t('user')}</FieldLabel>
                 <Input
                   id="audit-actor"
-                  placeholder="Filter by username"
+                  placeholder={t('userPlaceholder')}
                   value={draft.actor}
                   onChange={/**
                    * Updates the account filter.
@@ -275,7 +290,7 @@ export function AuditLogPanel() {
                 />
               </Field>
               <Field>
-                <FieldLabel htmlFor="audit-action">Action</FieldLabel>
+                <FieldLabel htmlFor="audit-action">{t('action')}</FieldLabel>
                 <NativeSelect
                   id="audit-action"
                   className="w-full"
@@ -285,12 +300,12 @@ export function AuditLogPanel() {
                    * @param event - The select change event.
                    */ (event) => setDraft({ ...draft, action: event.target.value })}
                 >
-                  <NativeSelectOption value="">All actions</NativeSelectOption>
+                  <NativeSelectOption value="">{t('allActions')}</NativeSelectOption>
                   {actionsByCategory.map(/**
                    * Renders the tags of one category as a group.
                    * @param group - The category and its tags.
                    */ (group) => (
-                    <NativeSelectOptGroup key={group.category} label={CATEGORIES[group.category].label}>
+                    <NativeSelectOptGroup key={group.category} label={t(CATEGORIES[group.category].label)}>
                       {group.actions.map(/**
                        * Renders one tag.
                        * @param action - The tag.
@@ -300,7 +315,7 @@ export function AuditLogPanel() {
                 </NativeSelect>
               </Field>
               <Field>
-                <FieldLabel htmlFor="audit-category">Area</FieldLabel>
+                <FieldLabel htmlFor="audit-category">{t('area')}</FieldLabel>
                 <NativeSelect
                   id="audit-category"
                   className="w-full"
@@ -310,15 +325,15 @@ export function AuditLogPanel() {
                    * @param event - The select change event.
                    */ (event) => setDraft({ ...draft, category: event.target.value })}
                 >
-                  <NativeSelectOption value="">All areas</NativeSelectOption>
+                  <NativeSelectOption value="">{t('allAreas')}</NativeSelectOption>
                   {(Object.keys(CATEGORIES) as AuditCategory[]).map(/**
                    * Renders one category.
                    * @param category - The category.
-                   */ (category) => <NativeSelectOption key={category} value={category}>{CATEGORIES[category].label}</NativeSelectOption>)}
+                   */ (category) => <NativeSelectOption key={category} value={category}>{t(CATEGORIES[category].label)}</NativeSelectOption>)}
                 </NativeSelect>
               </Field>
               <Field>
-                <FieldLabel htmlFor="audit-from">From</FieldLabel>
+                <FieldLabel htmlFor="audit-from">{t('from')}</FieldLabel>
                 <Input
                   id="audit-from"
                   type="date"
@@ -331,7 +346,7 @@ export function AuditLogPanel() {
                 />
               </Field>
               <Field>
-                <FieldLabel htmlFor="audit-to">To</FieldLabel>
+                <FieldLabel htmlFor="audit-to">{t('to')}</FieldLabel>
                 <Input
                   id="audit-to"
                   type="date"
@@ -344,11 +359,11 @@ export function AuditLogPanel() {
                 />
               </Field>
               <Field>
-                <FieldLabel htmlFor="audit-search">Search</FieldLabel>
+                <FieldLabel htmlFor="audit-search">{t('search')}</FieldLabel>
                 <Input
                   id="audit-search"
                   type="search"
-                  placeholder="Target, details, IP address…"
+                  placeholder={t('searchPlaceholder')}
                   value={draft.search}
                   onChange={/**
                    * Updates the free-text search.
@@ -367,12 +382,12 @@ export function AuditLogPanel() {
                    * @param checked - The new checkbox state.
                    */ (checked) => setDraft({ ...draft, failedOnly: checked === true })}
                 />
-                <Label htmlFor="audit-failed">Only failed actions</Label>
+                <Label htmlFor="audit-failed">{t('failedOnly')}</Label>
               </div>
               <div className="flex gap-2 sm:ms-auto">
-                <Button type="submit"><SearchIcon /> Search</Button>
+                <Button type="submit"><SearchIcon /> {t('search')}</Button>
                 <Button type="button" variant="outline" disabled={!filtered && draft === EMPTY_DRAFT} onClick={/** Clears all filters. */ () => apply(EMPTY_DRAFT)}>
-                  <RotateCcwIcon /> Reset
+                  <RotateCcwIcon /> {t('reset')}
                 </Button>
               </div>
             </div>
@@ -382,37 +397,37 @@ export function AuditLogPanel() {
 
       <Card className="gap-0 overflow-hidden py-0">
         <CardHeader className="gap-1 border-b py-5">
-          <CardTitle>Audit trail</CardTitle>
+          <CardTitle>{t('trail')}</CardTitle>
           <CardDescription>
             {data
-              ? `${data.total.toLocaleString()} ${data.total === 1 ? 'entry' : 'entries'}${filtered ? ' match the filters' : ''}. Passwords, tokens and vault contents are never logged.`
-              : 'Who did what, and when. Passwords, tokens and vault contents are never logged.'}
+              ? `${t(filtered ? 'entriesMatching' : 'entries', { count: data.total })}. ${t('neverLogged')}`
+              : t('trailDescription')}
           </CardDescription>
           <CardAction className="flex gap-2">
             <Button type="button" variant="outline" size="sm" disabled={exporting || !data?.total} onClick={/** Exports the filtered entries. */ () => void exportCsv()}>
-              <DownloadIcon /> {exporting ? 'Exporting…' : 'Export CSV'}
+              <DownloadIcon /> {exporting ? t('exporting') : t('exportCsv')}
             </Button>
             <Button type="button" variant="outline" size="sm" disabled={loading} onClick={/** Reloads the current page. */ () => setReload((count) => count + 1)}>
-              <RefreshCwIcon className={loading ? 'animate-spin' : undefined} /> Refresh
+              <RefreshCwIcon className={loading ? 'animate-spin' : undefined} /> {t('refresh')}
             </Button>
           </CardAction>
         </CardHeader>
-        <Table aria-label="Audit trail">
+        <Table aria-label={t('trail')}>
           <TableHeader className="bg-muted/45">
             <TableRow>
-              <TableHead className="ps-6">Time</TableHead>
-              <TableHead>User</TableHead>
-              <TableHead>Action</TableHead>
-              <TableHead>Target</TableHead>
-              <TableHead>Details</TableHead>
-              <TableHead className="pe-6">IP address</TableHead>
+              <TableHead className="ps-6">{t('time')}</TableHead>
+              <TableHead>{t('user')}</TableHead>
+              <TableHead>{t('action')}</TableHead>
+              <TableHead>{t('target')}</TableHead>
+              <TableHead>{t('details')}</TableHead>
+              <TableHead className="pe-6">{t('ipAddress')}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {!data?.items.length ? (
               <TableRow>
                 <TableCell colSpan={6} className="py-10 text-center text-muted-foreground">
-                  {loading ? 'Loading audit log…' : filtered ? 'No entries match the filters.' : 'Nothing logged yet.'}
+                  {loading ? t('loading') : filtered ? t('noMatches') : t('nothingLogged')}
                 </TableCell>
               </TableRow>
             ) : data.items.map(/**
@@ -422,8 +437,8 @@ export function AuditLogPanel() {
               <TableRow key={entry.id}>
                 <TableCell className="ps-6 whitespace-nowrap text-muted-foreground tabular-nums">{formatTime(entry.occurredAt)}</TableCell>
                 <TableCell className="whitespace-nowrap">
-                  {entry.actorName ?? <span className="text-muted-foreground">System</span>}
-                  {entry.actorName && !entry.actorId && <span className="ms-1.5 text-xs text-muted-foreground">(unknown)</span>}
+                  {entry.actorName ?? <span className="text-muted-foreground">{t('system')}</span>}
+                  {entry.actorName && !entry.actorId && <span className="ms-1.5 text-xs text-muted-foreground">{t('unknown')}</span>}
                 </TableCell>
                 <TableCell>
                   <ActionBadge entry={entry} onSelect={/**
@@ -432,7 +447,7 @@ export function AuditLogPanel() {
                    */ (action) => apply({ ...applied, action })} />
                 </TableCell>
                 <TableCell>
-                  <div className="max-w-48 truncate" title={entry.targetName ?? undefined}>{entry.targetName ?? <span className="text-muted-foreground">—</span>}</div>
+                  <div className="max-w-48 truncate" title={targetLabel(entry) ?? undefined}>{targetLabel(entry) ?? <span className="text-muted-foreground">—</span>}</div>
                 </TableCell>
                 <TableCell className="text-sm text-muted-foreground">
                   {/* A width-limited block is needed because max-width on a table cell does not truncate in browsers. */}
@@ -447,10 +462,10 @@ export function AuditLogPanel() {
         </Table>
         <div className="flex flex-wrap items-center justify-between gap-3 border-t px-6 py-4 text-sm">
           <span className="text-muted-foreground tabular-nums">
-            {data && data.total > 0 ? `Showing ${first}–${last} of ${data.total.toLocaleString()}` : 'No entries'}
+            {data && data.total > 0 ? t('showing', { first, last, total: data.total }) : t('noEntries')}
           </span>
           <div className="flex items-center gap-3">
-            <Label htmlFor="audit-page-size" className="font-normal">Rows per page</Label>
+            <Label htmlFor="audit-page-size" className="font-normal">{t('rowsPerPage')}</Label>
             <NativeSelect
               id="audit-page-size"
               size="sm"
@@ -468,11 +483,11 @@ export function AuditLogPanel() {
                * @param size - Rows per page.
                */ (size) => <NativeSelectOption key={size} value={String(size)}>{size}</NativeSelectOption>)}
             </NativeSelect>
-            <span className="tabular-nums">Page {data?.page ?? 1} of {pages}</span>
-            <Button variant="outline" size="icon-sm" aria-label="Previous page" disabled={loading || page <= 1} onClick={/** Goes back one page. */ () => setPage(page - 1)}>
+            <span className="tabular-nums">{t('pageOf', { page: data?.page ?? 1, pages })}</span>
+            <Button variant="outline" size="icon-sm" aria-label={t('previousPage')} disabled={loading || page <= 1} onClick={/** Goes back one page. */ () => setPage(page - 1)}>
               <ChevronLeftIcon />
             </Button>
-            <Button variant="outline" size="icon-sm" aria-label="Next page" disabled={loading || page >= pages} onClick={/** Goes forward one page. */ () => setPage(page + 1)}>
+            <Button variant="outline" size="icon-sm" aria-label={t('nextPage')} disabled={loading || page >= pages} onClick={/** Goes forward one page. */ () => setPage(page + 1)}>
               <ChevronRightIcon />
             </Button>
           </div>

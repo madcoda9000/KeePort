@@ -19,6 +19,9 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { cn } from '@/lib/utils';
+import messages from '@/i18n/entry-history';
+import { formatDateTime, formatNumber, translate } from '@shared/i18n/core';
+import { useT } from '@shared/i18n/react';
 
 /** A pending confirmation for restoring or deleting one version. */
 type PendingAction = { kind: 'restore' | 'delete'; item: HistoryItem } | null;
@@ -35,11 +38,11 @@ function fieldValue(entry: KdbxEntry, name: string) {
 }
 
 /**
- * Formats the time of a version for the current locale.
+ * Formats the time of a version in the current language.
  * @param date - The modification time, if known.
  */
 function formatTime(date: Date | undefined) {
-  return date && !Number.isNaN(date.getTime()) ? date.toLocaleString() : 'Unknown time';
+  return date && !Number.isNaN(date.getTime()) ? formatDateTime(date) : translate(messages, 'unknownTime');
 }
 
 /**
@@ -47,9 +50,10 @@ function formatTime(date: Date | undefined) {
  * @param size - The size in bytes.
  */
 function formatSize(size: number) {
-  if (size < 1024) return `${size} B`;
-  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
-  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+  const oneDecimal = { minimumFractionDigits: 1, maximumFractionDigits: 1 };
+  if (size < 1024) return translate(messages, 'sizeBytes', { size: formatNumber(size) });
+  if (size < 1024 * 1024) return translate(messages, 'sizeKb', { size: formatNumber(size / 1024, oneDecimal) });
+  return translate(messages, 'sizeMb', { size: formatNumber(size / (1024 * 1024), oneDecimal) });
 }
 
 /**
@@ -68,6 +72,7 @@ function VersionField({
   onCopy: (value: string, label: string) => void;
 }) {
   const [shown, setShown] = useState(false);
+  const t = useT(messages);
   if (!value) return null;
   return (
     <div className="grid gap-0.5 sm:grid-cols-[8rem_1fr] sm:gap-3">
@@ -77,11 +82,11 @@ function VersionField({
           {protect && !shown ? '••••••••' : value}
         </span>
         {protect && (
-          <Button type="button" variant="ghost" size="icon-sm" aria-label={shown ? `Hide ${label}` : `Show ${label}`} onClick={/** Toggles the protected value. */ () => setShown(!shown)}>
+          <Button type="button" variant="ghost" size="icon-sm" aria-label={shown ? t('hideNamed', { label }) : t('showNamed', { label })} onClick={/** Toggles the protected value. */ () => setShown(!shown)}>
             {shown ? <EyeOffIcon /> : <EyeIcon />}
           </Button>
         )}
-        <Button type="button" variant="ghost" size="icon-sm" aria-label={`Copy ${label}`} onClick={/** Copies the value. */ () => onCopy(value, label)}>
+        <Button type="button" variant="ghost" size="icon-sm" aria-label={t('copyNamed', { label })} onClick={/** Copies the value. */ () => onCopy(value, label)}>
           <CopyIcon />
         </Button>
       </dd>
@@ -95,13 +100,14 @@ function VersionField({
  */
 function VersionDetails({ version, onCopy }: { version: KdbxEntry; onCopy: (value: string, label: string) => void }) {
   const expiry = readExpiry(version);
+  const t = useT(messages);
   return (
     <dl className="grid gap-1.5 border-t px-3 py-3">
-      <VersionField label="Title" value={fieldValue(version, 'Title')} protect={false} onCopy={onCopy} />
-      <VersionField label="Username" value={fieldValue(version, 'UserName')} protect={false} onCopy={onCopy} />
-      <VersionField label="Password" value={fieldValue(version, 'Password')} protect onCopy={onCopy} />
-      <VersionField label="Website" value={fieldValue(version, 'URL')} protect={false} onCopy={onCopy} />
-      <VersionField label="Notes" value={fieldValue(version, 'Notes')} protect={false} onCopy={onCopy} />
+      <VersionField label={t('title')} value={fieldValue(version, 'Title')} protect={false} onCopy={onCopy} />
+      <VersionField label={t('username')} value={fieldValue(version, 'UserName')} protect={false} onCopy={onCopy} />
+      <VersionField label={t('password')} value={fieldValue(version, 'Password')} protect onCopy={onCopy} />
+      <VersionField label={t('website')} value={fieldValue(version, 'URL')} protect={false} onCopy={onCopy} />
+      <VersionField label={t('notes')} value={fieldValue(version, 'Notes')} protect={false} onCopy={onCopy} />
       <VersionField label="TOTP" value={fieldValue(version, 'otp')} protect onCopy={onCopy} />
       {readCustomFields(version).map(/**
        * Renders one custom field of the version.
@@ -111,7 +117,7 @@ function VersionDetails({ version, onCopy }: { version: KdbxEntry; onCopy: (valu
       ))}
       {version.tags.length > 0 && (
         <div className="grid gap-0.5 sm:grid-cols-[8rem_1fr] sm:gap-3">
-          <dt className="text-xs text-muted-foreground sm:pt-1">Tags</dt>
+          <dt className="text-xs text-muted-foreground sm:pt-1">{t('tags')}</dt>
           <dd className="flex flex-wrap gap-1">
             {version.tags.map(/**
              * Renders one tag.
@@ -122,13 +128,13 @@ function VersionDetails({ version, onCopy }: { version: KdbxEntry; onCopy: (valu
       )}
       {expiry && (
         <div className="grid gap-0.5 sm:grid-cols-[8rem_1fr] sm:gap-3">
-          <dt className="text-xs text-muted-foreground sm:pt-0.5">Expires</dt>
-          <dd className="text-sm">{new Date(`${expiry}T00:00:00`).toLocaleDateString()}</dd>
+          <dt className="text-xs text-muted-foreground sm:pt-0.5">{t('expires')}</dt>
+          <dd className="text-sm">{formatDateTime(new Date(`${expiry}T00:00:00`), { year: 'numeric', month: 'numeric', day: 'numeric' })}</dd>
         </div>
       )}
       {version.binaries.size > 0 && (
         <div className="grid gap-0.5 sm:grid-cols-[8rem_1fr] sm:gap-3">
-          <dt className="text-xs text-muted-foreground sm:pt-1.5">Attachments</dt>
+          <dt className="text-xs text-muted-foreground sm:pt-1.5">{t('attachments')}</dt>
           <dd className="grid gap-1">
             {[...version.binaries].map(/**
              * Renders one attachment of the version with a download button.
@@ -137,7 +143,7 @@ function VersionDetails({ version, onCopy }: { version: KdbxEntry; onCopy: (valu
               <span key={name} className="flex min-w-0 items-center gap-1 text-sm">
                 <span className="min-w-0 truncate">{name}</span>
                 <span className="shrink-0 text-xs text-muted-foreground">{formatSize(attachmentSize(value))}</span>
-                <Button type="button" variant="ghost" size="icon-sm" aria-label={`Download ${name}`} onClick={/** Downloads the attachment. */ () => downloadAttachment(name, value)}>
+                <Button type="button" variant="ghost" size="icon-sm" aria-label={t('downloadNamed', { name })} onClick={/** Downloads the attachment. */ () => downloadAttachment(name, value)}>
                   <DownloadIcon />
                 </Button>
               </span>
@@ -175,6 +181,7 @@ export function EntryHistory({
   const [pending, setPending] = useState<PendingAction>(null);
   const items = listHistory(entry);
   const versions = items.length - 1;
+  const t = useT(messages);
 
   /** Runs the confirmed action and closes the confirmation when it is done. */
   async function confirm() {
@@ -187,12 +194,10 @@ export function EntryHistory({
   return (
     <div className="grid gap-4">
       <p className="text-sm text-muted-foreground">
-        {versions === 0 ? 'No earlier versions saved yet. ' : `${versions} earlier ${versions === 1 ? 'version' : 'versions'}. `}
-        {maxVersions !== undefined && maxVersions >= 0
-          ? `This vault keeps up to ${maxVersions} versions per entry; older ones are removed when the entry is saved.`
-          : 'This vault keeps all versions.'}
+        {versions === 0 ? t('noVersions') : t('versions', { count: versions })}{' '}
+        {maxVersions !== undefined && maxVersions >= 0 ? t('keepsUpTo', { count: maxVersions }) : t('keepsAll')}
       </p>
-      <ol className="grid gap-2" aria-label="Entry history">
+      <ol className="grid gap-2" aria-label={t('historyLabel')}>
         {items.map(/**
          * Renders the current state or one saved version.
          * @param item - One state of the entry.
@@ -206,14 +211,14 @@ export function EntryHistory({
                     <span className="grid min-w-0 gap-0.5">
                       <span className="flex flex-wrap items-center gap-2 text-sm font-medium">
                         {formatTime(item.modified)}
-                        {item.index === null && <Badge variant="secondary">Current</Badge>}
+                        {item.index === null && <Badge variant="secondary">{t('current')}</Badge>}
                       </span>
                       <span className="truncate text-xs font-normal text-muted-foreground">
                         {item.changes === null
-                          ? `Oldest saved version · ${item.title}`
+                          ? t('oldest', { title: item.title })
                           : item.changes.length
-                            ? `Changed: ${item.changes.join(', ')}`
-                            : 'No visible changes'}
+                            ? t('changed', { changes: item.changes.join(', ') })
+                            : t('noChanges')}
                       </span>
                     </span>
                   </Button>
@@ -221,9 +226,9 @@ export function EntryHistory({
                 {canWrite && item.index !== null && (
                   <div className="flex shrink-0 gap-1">
                     <Button type="button" variant="outline" size="sm" disabled={busy} onClick={/** Asks to restore this version. */ () => setPending({ kind: 'restore', item })}>
-                      <RotateCcwIcon /> Restore
+                      <RotateCcwIcon /> {t('restore')}
                     </Button>
-                    <Button type="button" variant="ghost" size="icon-sm" disabled={busy} aria-label={`Delete version from ${formatTime(item.modified)}`} title="Delete version" onClick={/** Asks to delete this version. */ () => setPending({ kind: 'delete', item })}>
+                    <Button type="button" variant="ghost" size="icon-sm" disabled={busy} aria-label={t('deleteFrom', { time: formatTime(item.modified) })} title={t('deleteVersion')} onClick={/** Asks to delete this version. */ () => setPending({ kind: 'delete', item })}>
                       <Trash2Icon />
                     </Button>
                   </div>
@@ -238,7 +243,7 @@ export function EntryHistory({
       </ol>
       {versions === 0 && (
         <p className="flex items-center gap-2 text-xs text-muted-foreground">
-          <HistoryIcon className="size-4" /> A version is saved every time the entry changes, also in KeePass apps.
+          <HistoryIcon className="size-4" /> {t('savedOnChange')}
         </p>
       )}
       <AlertDialog open={pending !== null} onOpenChange={/**
@@ -251,16 +256,16 @@ export function EntryHistory({
           <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle>
-                {pending.kind === 'restore' ? 'Restore this version?' : 'Delete this version?'}
+                {pending.kind === 'restore' ? t('restoreTitle') : t('deleteTitle')}
               </AlertDialogTitle>
               <AlertDialogDescription>
                 {pending.kind === 'restore'
-                  ? `The entry gets the values from ${formatTime(pending.item.modified)}. The current state is kept as a version in the history, so nothing is lost.`
-                  : `The version from ${formatTime(pending.item.modified)} is removed from the history for good, e.g. to get rid of an old password.`}
+                  ? t('restoreDescription', { time: formatTime(pending.item.modified) })
+                  : t('deleteDescription', { time: formatTime(pending.item.modified) })}
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel disabled={busy}>Cancel</AlertDialogCancel>
+              <AlertDialogCancel disabled={busy}>{t('cancel')}</AlertDialogCancel>
               <AlertDialogAction
                 variant={pending.kind === 'delete' ? 'destructive' : 'default'}
                 disabled={busy}
@@ -272,7 +277,7 @@ export function EntryHistory({
                   void confirm();
                 }}
               >
-                {busy ? 'Saving…' : pending.kind === 'restore' ? 'Restore version' : 'Delete version'}
+                {busy ? t('saving') : pending.kind === 'restore' ? t('restoreVersion') : t('deleteVersion')}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>

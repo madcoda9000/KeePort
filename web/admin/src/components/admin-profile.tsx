@@ -5,20 +5,27 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Field, FieldGroup, FieldLabel } from '@/components/ui/field';
+import { Field, FieldDescription, FieldGroup, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
 import { SidebarFooter, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar';
+import messages from '@/i18n/admin-profile';
+import languageMessages from '@shared/i18n/messages/language';
+import { applyPreference, type LanguagePreference } from '@shared/i18n/core';
+import { LanguageSetting } from '@shared/i18n/language-select';
+import { useT } from '@shared/i18n/react';
 
 type ProfileMessage = { kind: 'notice' | 'error'; text: string };
 
 /**
- * Shows the admin account and lets the signed-in admin update its contact email and login password.
+ * Shows the admin account and lets the signed-in admin update its contact email, login password and language.
  * @param props - The signed-in administrator and the callback that receives the updated account after a profile change.
  */
 export function AdminProfile({ user, onUpdate }: { user: User; onUpdate: (user: User) => void }) {
-  const [busy, setBusy] = useState<'email' | 'password' | null>(null);
+  const [busy, setBusy] = useState<'email' | 'password' | 'language' | null>(null);
   const [message, setMessage] = useState<ProfileMessage | null>(null);
+  const t = useT(messages);
+  const tLanguage = useT(languageMessages);
 
   /**
    * Saves the contact email and updates the account displayed in the sidebar.
@@ -31,9 +38,9 @@ export function AdminProfile({ user, onUpdate }: { user: User; onUpdate: (user: 
     setMessage(null);
     try {
       onUpdate(await api.updateEmail(email));
-      setMessage({ kind: 'notice', text: 'Email address saved.' });
+      setMessage({ kind: 'notice', text: t('emailSaved') });
     } catch (error) {
-      setMessage({ kind: 'error', text: error instanceof Error ? error.message : 'Unable to save email address.' });
+      setMessage({ kind: 'error', text: error instanceof Error ? error.message : t('emailFailed') });
     } finally {
       setBusy(null);
     }
@@ -50,7 +57,7 @@ export function AdminProfile({ user, onUpdate }: { user: User; onUpdate: (user: 
     const currentPassword = String(data.get('currentPassword') ?? '');
     const newPassword = String(data.get('newPassword') ?? '');
     if (newPassword !== data.get('confirmPassword')) {
-      setMessage({ kind: 'error', text: 'New passwords do not match.' });
+      setMessage({ kind: 'error', text: t('passwordsDiffer') });
       return;
     }
     setBusy('password');
@@ -58,9 +65,27 @@ export function AdminProfile({ user, onUpdate }: { user: User; onUpdate: (user: 
     try {
       await api.changePassword({ currentPassword, newPassword });
       form.reset();
-      setMessage({ kind: 'notice', text: 'Password changed.' });
+      setMessage({ kind: 'notice', text: t('passwordChanged') });
     } catch (error) {
-      setMessage({ kind: 'error', text: error instanceof Error ? error.message : 'Unable to change password.' });
+      setMessage({ kind: 'error', text: error instanceof Error ? error.message : t('passwordFailed') });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  /**
+   * Stores the chosen language on the account and shows it right away.
+   * @param language - de, en or fr, or null to follow the browser.
+   */
+  async function handleLanguage(language: LanguagePreference) {
+    setBusy('language');
+    setMessage(null);
+    try {
+      onUpdate(await api.updateLanguage(language));
+      applyPreference(language);
+      setMessage({ kind: 'notice', text: tLanguage('saved') });
+    } catch (error) {
+      setMessage({ kind: 'error', text: error instanceof Error ? error.message : t('languageFailed') });
     } finally {
       setBusy(null);
     }
@@ -77,7 +102,7 @@ export function AdminProfile({ user, onUpdate }: { user: User; onUpdate: (user: 
         <div className="min-w-0">
           <p className="truncate text-sm font-semibold" title={user.username}>{user.username}</p>
           <p className="truncate text-xs text-muted-foreground" title={user.email ?? undefined}>
-            {user.email ?? 'No email set'}
+            {user.email ?? t('noEmail')}
           </p>
         </div>
       </div>
@@ -90,13 +115,13 @@ export function AdminProfile({ user, onUpdate }: { user: User; onUpdate: (user: 
             <DialogTrigger asChild>
               <SidebarMenuButton type="button" variant="outline">
                 <UserRoundIcon />
-                <span>Profile</span>
+                <span>{t('profile')}</span>
               </SidebarMenuButton>
             </DialogTrigger>
             <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-lg">
               <DialogHeader>
-                <DialogTitle>Account settings</DialogTitle>
-                <DialogDescription>Update your admin email address or login password.</DialogDescription>
+                <DialogTitle>{t('title')}</DialogTitle>
+                <DialogDescription>{t('description')}</DialogDescription>
               </DialogHeader>
               {message && (
                 <Alert variant={message.kind === 'error' ? 'destructive' : 'default'}>
@@ -104,34 +129,43 @@ export function AdminProfile({ user, onUpdate }: { user: User; onUpdate: (user: 
                 </Alert>
               )}
               <form key={user.email ?? ''} className="grid gap-4" onSubmit={handleEmail}>
-                <h3 className="text-sm font-semibold">Contact information</h3>
+                <h3 className="text-sm font-semibold">{t('contact')}</h3>
                 <Field>
-                  <FieldLabel htmlFor="admin-profile-email">Email address</FieldLabel>
+                  <FieldLabel htmlFor="admin-profile-email">{t('email')}</FieldLabel>
                   <Input id="admin-profile-email" name="email" type="email" autoComplete="email" defaultValue={user.email ?? ''} maxLength={254} required />
                 </Field>
                 <Button type="submit" variant="outline" className="justify-self-start" disabled={busy !== null}>
-                  {busy === 'email' ? 'Saving…' : 'Save email'}
+                  {busy === 'email' ? t('saving') : t('saveEmail')}
                 </Button>
               </form>
               <Separator />
+              <Field>
+                <FieldLabel htmlFor="account-language">{tLanguage('label')}</FieldLabel>
+                <LanguageSetting value={user.language ?? null} disabled={busy !== null} onSave={/**
+                 * Saves the chosen language.
+                 * @param language - The new preference.
+                 */ (language) => void handleLanguage(language)} />
+                <FieldDescription id="account-language-help">{tLanguage('help')}</FieldDescription>
+              </Field>
+              <Separator />
               <form className="grid gap-4" onSubmit={handlePassword}>
-                <h3 className="text-sm font-semibold">Security</h3>
+                <h3 className="text-sm font-semibold">{t('security')}</h3>
                 <FieldGroup className="gap-4">
                   <Field>
-                    <FieldLabel htmlFor="admin-current-password">Current password</FieldLabel>
+                    <FieldLabel htmlFor="admin-current-password">{t('currentPassword')}</FieldLabel>
                     <Input id="admin-current-password" name="currentPassword" type="password" autoComplete="current-password" required />
                   </Field>
                   <Field>
-                    <FieldLabel htmlFor="admin-new-password">New password</FieldLabel>
+                    <FieldLabel htmlFor="admin-new-password">{t('newPassword')}</FieldLabel>
                     <Input id="admin-new-password" name="newPassword" type="password" autoComplete="new-password" required />
                   </Field>
                   <Field>
-                    <FieldLabel htmlFor="admin-confirm-password">Confirm new password</FieldLabel>
+                    <FieldLabel htmlFor="admin-confirm-password">{t('confirmPassword')}</FieldLabel>
                     <Input id="admin-confirm-password" name="confirmPassword" type="password" autoComplete="new-password" required />
                   </Field>
                 </FieldGroup>
                 <Button type="submit" className="justify-self-start" disabled={busy !== null}>
-                  {busy === 'password' ? 'Changing…' : 'Change password'}
+                  {busy === 'password' ? t('changing') : t('changePassword')}
                 </Button>
               </form>
             </DialogContent>

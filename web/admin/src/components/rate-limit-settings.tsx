@@ -5,6 +5,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Field, FieldDescription, FieldGroup, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { api } from '@/lib/api';
+import messages from '@/i18n/rate-limit-settings';
+import { translate } from '@shared/i18n/core';
+import { useT } from '@shared/i18n/react';
 
 const MAX_LIMIT = 2_147_483_647;
 
@@ -14,6 +17,7 @@ export function RateLimitSettingsPanel() {
   const [message, setMessage] = useState<{ text: string; error: boolean } | null>(null);
   const [saving, setSaving] = useState(false);
   const [loadAttempt, setLoadAttempt] = useState(0);
+  const t = useT(messages);
 
   /** Loads the active limits on mount and on retry, aborting obsolete requests. */
   useEffect(() => {
@@ -34,7 +38,7 @@ export function RateLimitSettingsPanel() {
        */
       (error: unknown) => {
         if (!controller.signal.aborted) {
-          setMessage({ text: error instanceof Error ? error.message : 'Could not load rate limits.', error: true });
+          setMessage({ text: error instanceof Error ? error.message : translate(messages, 'loadFailed'), error: true });
         }
       }
     );
@@ -52,7 +56,7 @@ export function RateLimitSettingsPanel() {
     const webDavPerMinute = Number(draft.webDav);
     if (!Number.isInteger(authPerMinute) || authPerMinute < 1 || authPerMinute > MAX_LIMIT ||
         !Number.isInteger(webDavPerMinute) || webDavPerMinute < 1 || webDavPerMinute > MAX_LIMIT) {
-      setMessage({ text: 'Enter a positive whole number for each limit.', error: true });
+      setMessage({ text: t('invalid'), error: true });
       return;
     }
 
@@ -61,9 +65,9 @@ export function RateLimitSettingsPanel() {
     try {
       const settings = await api.updateRateLimits({ authPerMinute, webDavPerMinute });
       setDraft({ auth: String(settings.authPerMinute), webDav: String(settings.webDavPerMinute) });
-      setMessage({ text: 'Rate limits saved and applied.', error: false });
+      setMessage({ text: t('saved'), error: false });
     } catch (error) {
-      setMessage({ text: error instanceof Error ? error.message : 'Could not save rate limits.', error: true });
+      setMessage({ text: error instanceof Error ? error.message : t('saveFailed'), error: true });
     } finally {
       setSaving(false);
     }
@@ -72,8 +76,8 @@ export function RateLimitSettingsPanel() {
   return (
     <Card className="w-full max-w-xl">
       <CardHeader>
-        <CardTitle>Rate limits</CardTitle>
-        <CardDescription>Requests per minute per IP address. Changes take effect immediately.</CardDescription>
+        <CardTitle>{t('title')}</CardTitle>
+        <CardDescription>{t('description')}</CardDescription>
       </CardHeader>
       <CardContent className="grid gap-4">
         {message && (
@@ -85,7 +89,7 @@ export function RateLimitSettingsPanel() {
           <form className="grid gap-5" onSubmit={save}>
             <FieldGroup>
               <Field>
-                <FieldLabel htmlFor="auth-per-minute">Sign-in and setup</FieldLabel>
+                <FieldLabel htmlFor="auth-per-minute">{t('auth')}</FieldLabel>
                 <Input
                   id="auth-per-minute"
                   aria-describedby="auth-limit-help"
@@ -101,7 +105,7 @@ export function RateLimitSettingsPanel() {
                    * @param event - The authentication limit input change event.
                    */ (event) => setDraft({ ...draft, auth: event.target.value })}
                 />
-                <FieldDescription id="auth-limit-help">Shared by the Admin and Vault sign-in forms and first-run setup. Default: 10.</FieldDescription>
+                <FieldDescription id="auth-limit-help">{t('authHelp')}</FieldDescription>
               </Field>
               <Field>
                 <FieldLabel htmlFor="webdav-per-minute">WebDAV</FieldLabel>
@@ -120,10 +124,10 @@ export function RateLimitSettingsPanel() {
                    * @param event - The WebDAV limit input change event.
                    */ (event) => setDraft({ ...draft, webDav: event.target.value })}
                 />
-                <FieldDescription id="webdav-limit-help">Applies to all WebDAV requests, including failed authentication attempts. Default: 60.</FieldDescription>
+                <FieldDescription id="webdav-limit-help">{t('webDavHelp')}</FieldDescription>
               </Field>
             </FieldGroup>
-            <Button type="submit" className="w-fit" disabled={saving}>{saving ? 'Saving…' : 'Save rate limits'}</Button>
+            <Button type="submit" className="w-fit" disabled={saving}>{saving ? t('saving') : t('save')}</Button>
           </form>
         ) : message ? (
           <Button type="button" variant="outline" className="w-fit" onClick={/** Clears the error and retries loading the saved limits. */ () => {
@@ -134,10 +138,10 @@ export function RateLimitSettingsPanel() {
              */
             setLoadAttempt((attempt) => attempt + 1);
           }}>
-            Retry
+            {t('retry')}
           </Button>
         ) : (
-          <p role="status" className="text-sm text-muted-foreground">Loading rate limits…</p>
+          <p role="status" className="text-sm text-muted-foreground">{t('loading')}</p>
         )}
       </CardContent>
     </Card>

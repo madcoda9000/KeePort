@@ -7,49 +7,76 @@ import { Card, CardAction, CardDescription, CardHeader, CardTitle } from '@/comp
 import { TableCell, TableRow } from '@/components/ui/table';
 import { api, type WebDavRequestLogEntry } from '@/lib/api';
 import { DataTable, type TableColumn } from '@shared/data-table';
-import { matchesTableSearch, timestampSortValue } from '@shared/table-data';
+import { matchesTableSearch, timestampSortValue, type SortValue } from '@shared/table-data';
+import messages from '@/i18n/webdav-logs';
+import { formatDateTime, formatNumber, translate } from '@shared/i18n/core';
+import { useT } from '@shared/i18n/react';
+
+/**
+ * Builds a table column whose header follows the current language.
+ * @param id - The column ID.
+ * @param label - The catalog key of the column header.
+ * @param sortValue - Picks the value the column sorts by.
+ * @param className - Optional CSS classes of the header cell.
+ */
+function column(
+  id: string,
+  label: keyof typeof messages.en,
+  sortValue: (entry: WebDavRequestLogEntry) => SortValue,
+  className?: string
+): TableColumn<WebDavRequestLogEntry> {
+  return {
+    id,
+    /** The header in the current language. */
+    get label() {
+      return translate(messages, label);
+    },
+    sortValue,
+    className
+  };
+}
 
 const LOG_COLUMNS: readonly TableColumn<WebDavRequestLogEntry>[] = [
   /**
    * Sorts by request time, not the formatted date.
    * @param entry - The log entry supplying this column's sort value.
    */
-  { id: 'time', label: 'Time', sortValue: (entry) => timestampSortValue(entry.occurredAt) },
+  column('time', 'time', (entry) => timestampSortValue(entry.occurredAt)),
   /**
    * Sorts by HTTP method.
    * @param entry - The log entry supplying this column's sort value.
    */
-  { id: 'method', label: 'Method', sortValue: (entry) => entry.method },
+  column('method', 'method', (entry) => entry.method),
   /**
    * Sorts by requested path.
    * @param entry - The log entry supplying this column's sort value.
    */
-  { id: 'path', label: 'Path', sortValue: (entry) => entry.path },
+  column('path', 'path', (entry) => entry.path),
   /**
    * Sorts by numeric HTTP status code.
    * @param entry - The log entry supplying this column's sort value.
    */
-  { id: 'status', label: 'Status', sortValue: (entry) => entry.status },
+  column('status', 'status', (entry) => entry.status),
   /**
    * Sorts by WebDAV username, keeping unauthenticated requests distinct.
    * @param entry - The log entry supplying this column's sort value.
    */
-  { id: 'credential', label: 'Credential', sortValue: (entry) => entry.credential },
+  column('credential', 'credential', (entry) => entry.credential),
   /**
    * Sorts by client IP address.
    * @param entry - The log entry supplying this column's sort value.
    */
-  { id: 'ip', label: 'Client IP', sortValue: (entry) => entry.remoteIp },
+  column('ip', 'clientIp', (entry) => entry.remoteIp),
   /**
    * Sorts by the summarized request headers.
    * @param entry - The log entry supplying this column's sort value.
    */
-  { id: 'details', label: 'Details', sortValue: (entry) => describeDetails(entry) },
+  column('details', 'details', (entry) => describeDetails(entry)),
   /**
    * Sorts by processing time in milliseconds.
    * @param entry - The log entry supplying this column's sort value.
    */
-  { id: 'duration', label: 'Duration', sortValue: (entry) => entry.durationMs, className: 'text-end' }
+  column('duration', 'duration', (entry) => entry.durationMs, 'text-end')
 ];
 
 /**
@@ -57,10 +84,7 @@ const LOG_COLUMNS: readonly TableColumn<WebDavRequestLogEntry>[] = [
  * @param value - The ISO timestamp of the request.
  */
 function formatTime(value: string) {
-  const date = new Date(value);
-  return Number.isNaN(date.getTime())
-    ? value
-    : date.toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'medium' });
+  return formatDateTime(value, { dateStyle: 'short', timeStyle: 'medium' });
 }
 
 /**
@@ -69,8 +93,9 @@ function formatTime(value: string) {
  */
 function formatBytes(size: number) {
   if (size < 1024) return `${size} B`;
-  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
-  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+  const oneDecimal = { minimumFractionDigits: 1, maximumFractionDigits: 1 };
+  if (size < 1024 * 1024) return `${formatNumber(size / 1024, oneDecimal)} KB`;
+  return `${formatNumber(size / (1024 * 1024), oneDecimal)} MB`;
 }
 
 /**
@@ -103,6 +128,7 @@ export function WebDavLogsPanel() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadAttempt, setLoadAttempt] = useState(0);
+  const t = useT(messages);
 
   /** Loads the log on mount and on refresh, ignoring responses of obsolete requests. */
   useEffect(() => {
@@ -124,7 +150,7 @@ export function WebDavLogsPanel() {
        */
       (reason: unknown) => {
         if (controller.signal.aborted) return;
-        setError(reason instanceof Error ? reason.message : 'Could not load WebDAV logs.');
+        setError(reason instanceof Error ? reason.message : translate(messages, 'loadFailed'));
         setLoading(false);
       }
     );
@@ -140,9 +166,9 @@ export function WebDavLogsPanel() {
       )}
       <Card className="gap-0 overflow-hidden py-0">
         <CardHeader className="gap-1 border-b py-5">
-          <CardTitle>WebDAV requests</CardTitle>
+          <CardTitle>{t('title')}</CardTitle>
           <CardDescription>
-            The latest 5,000 requests from KeePass clients. Passwords and file contents are never logged.
+            {t('description', { max: formatNumber(5_000) })}
           </CardDescription>
           <CardAction>
             <Button
@@ -156,23 +182,23 @@ export function WebDavLogsPanel() {
               }}
             >
               <RefreshCwIcon className={loading ? 'animate-spin' : undefined} />
-              Refresh
+              {t('refresh')}
             </Button>
           </CardAction>
         </CardHeader>
         <DataTable
-          label="WebDAV requests"
+          label={t('title')}
           rows={entries}
           columns={LOG_COLUMNS}
-          searchLabel="Search WebDAV logs"
-          emptyMessage={loading ? 'Loading WebDAV logs…' : 'No WebDAV requests logged yet.'}
+          searchLabel={t('search')}
+          emptyMessage={loading ? t('loading') : t('empty')}
           matches={/**
            * Searches every displayed value of a log entry.
            * @param entry - The log entry whose displayed values are searched.
            * @param query - The normalized search text.
            */ (entry, query) => matchesTableSearch(
             query, formatTime(entry.occurredAt), entry.method, entry.path, entry.status,
-            entry.credential ?? 'unauthenticated', entry.remoteIp, describeDetails(entry)
+            entry.credential ?? t('unauthenticated'), entry.remoteIp, describeDetails(entry)
           )}
           renderRow={/**
            * Renders one logged request.

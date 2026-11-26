@@ -7,6 +7,8 @@ import { FieldError } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import { accentFor } from '@shared/accent';
+import messages from '@/i18n/tag-input';
+import { useT } from '@shared/i18n/react';
 
 /** How many suggestions are offered below the input. */
 const MAX_SUGGESTIONS = 8;
@@ -32,6 +34,7 @@ export function TagInput({
   const errorId = useId();
   const [draft, setDraft] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const t = useT(messages);
   const query = draft.trim().toLowerCase();
   const offered = suggestions
     .filter(/**
@@ -74,7 +77,7 @@ export function TagInput({
   return (
     <div className="grid gap-2">
       {tags.length > 0 ? (
-        <div className="flex flex-wrap gap-1.5" aria-label="Tags">
+        <div className="flex flex-wrap gap-1.5" aria-label={t('tags')}>
           {tags.map(/**
            * Renders one tag chip.
            * @param tag - One tag of the entry.
@@ -85,7 +88,7 @@ export function TagInput({
                 <button
                   type="button"
                   className="rounded-sm opacity-70 hover:opacity-100 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden"
-                  aria-label={`Remove tag ${tag}`}
+                  aria-label={t('removeTag', { tag })}
                   onClick={/** Removes this tag. */ () => onChange(tags.filter(/**
                    * Keeps the other tags.
                    * @param item - One tag.
@@ -97,14 +100,14 @@ export function TagInput({
             </Badge>
           ))}
         </div>
-      ) : !canWrite && <p className="text-sm text-muted-foreground">No tags.</p>}
+      ) : !canWrite && <p className="text-sm text-muted-foreground">{t('noTags')}</p>}
       {canWrite && (
         <>
           <div className="flex gap-2">
             <Input
               id={id}
               value={draft}
-              placeholder="Add a tag…"
+              placeholder={t('placeholder')}
               autoComplete="off"
               aria-invalid={error ? true : undefined}
               aria-describedby={error ? errorId : undefined}
@@ -117,14 +120,14 @@ export function TagInput({
               }}
               onKeyDown={onKeyDown}
             />
-            <Button type="button" variant="outline" size="icon" aria-label="Add tag" title="Add tag" disabled={!draft.trim()} onClick={/** Adds the typed tag. */ () => add(draft)}>
+            <Button type="button" variant="outline" size="icon" aria-label={t('addTag')} title={t('addTag')} disabled={!draft.trim()} onClick={/** Adds the typed tag. */ () => add(draft)}>
               <PlusIcon />
             </Button>
           </div>
           {error && <FieldError id={errorId}>{error}</FieldError>}
           {offered.length > 0 && (
-            <div className="flex flex-wrap items-center gap-1.5" aria-label="Suggested tags">
-              <span className="text-xs text-muted-foreground">Suggestions:</span>
+            <div className="flex flex-wrap items-center gap-1.5" aria-label={t('suggested')}>
+              <span className="text-xs text-muted-foreground">{t('suggestions')}</span>
               {offered.map(/**
                * Renders one suggestion.
                * @param tag - A tag used elsewhere in the vault.

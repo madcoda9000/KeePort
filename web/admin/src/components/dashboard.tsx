@@ -21,6 +21,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { api, ApiError, type DashboardData, type LoginCounts } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { ACCENTS, type AccentName } from '@shared/accent';
+import messages from '@/i18n/dashboard';
+import { formatDateTime, translate } from '@shared/i18n/core';
+import { useT } from '@shared/i18n/react';
 
 /** Admin sections the dashboard links to. */
 export type DashboardTarget = 'vaults' | 'users' | 'webdav' | 'settings' | 'webdav-logs';
@@ -28,11 +31,12 @@ export type DashboardTarget = 'vaults' | 'users' | 'webdav' | 'settings' | 'webd
 /** Days before expiry from which the admin certificate is shown as expiring soon. */
 const CERTIFICATE_WARNING_DAYS = 30;
 
-const STORAGE_LABELS: Record<DashboardData['storage']['kind'], string> = {
-  hostFolder: 'Host folder',
-  dockerVolume: 'Docker volume',
-  notMounted: 'Not mounted',
-  unknown: 'Unknown (not in Docker)'
+/** Catalog keys of the storage kinds. */
+const STORAGE_LABELS: Record<DashboardData['storage']['kind'], keyof typeof messages.en> = {
+  hostFolder: 'storageHostFolder',
+  dockerVolume: 'storageDockerVolume',
+  notMounted: 'storageNotMounted',
+  unknown: 'storageUnknown'
 };
 
 /**
@@ -43,18 +47,9 @@ function formatUptime(seconds: number) {
   const days = Math.floor(seconds / 86400);
   const hours = Math.floor((seconds % 86400) / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
-  if (days > 0) return `${days} d ${hours} h ${minutes} min`;
-  if (hours > 0) return `${hours} h ${minutes} min`;
-  return `${minutes} min`;
-}
-
-/**
- * Formats a timestamp for the current locale.
- * @param value - An ISO timestamp.
- */
-function formatDateTime(value: string) {
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+  if (days > 0) return translate(messages, 'uptimeDays', { days, hours, minutes });
+  if (hours > 0) return translate(messages, 'uptimeHours', { hours, minutes });
+  return translate(messages, 'uptimeMinutes', { minutes });
 }
 
 /**
@@ -98,6 +93,7 @@ function StatCard({
   detail: ReactNode;
   action?: ReactNode;
 }) {
+  const t = useT(messages);
   return (
     <Card size="sm">
       <CardHeader>
@@ -105,7 +101,7 @@ function StatCard({
           <span className={cn('grid size-8 shrink-0 place-items-center rounded-lg [&_svg]:size-4', ACCENTS[accent].tile)}>{icon}</span>
           {title}
         </CardDescription>
-        <CardTitle className="mt-1 text-2xl font-semibold tracking-tight tabular-nums">{value ?? <span className="text-base text-muted-foreground">Not available</span>}</CardTitle>
+        <CardTitle className="mt-1 text-2xl font-semibold tracking-tight tabular-nums">{value ?? <span className="text-base text-muted-foreground">{t('notAvailable')}</span>}</CardTitle>
         <CardDescription>{detail}</CardDescription>
         {action && <CardAction>{action}</CardAction>}
       </CardHeader>
@@ -118,11 +114,12 @@ function StatCard({
  * @param props - The counts to show.
  */
 function CountsCell({ counts }: { counts: LoginCounts }) {
+  const t = useT(messages);
   return (
     <TableCell className="tabular-nums">
-      <span title="Successful sign-ins">{counts.success}</span>
+      <span title={t('successfulSignIns')}>{counts.success}</span>
       <span className="text-muted-foreground"> / </span>
-      <span title="Failed sign-ins" className={counts.failure > 0 ? 'font-medium text-destructive' : 'text-muted-foreground'}>
+      <span title={t('failedSignIns')} className={counts.failure > 0 ? 'font-medium text-destructive' : 'text-muted-foreground'}>
         {counts.failure}
       </span>
     </TableCell>
@@ -140,6 +137,7 @@ export function DashboardPanel({ onNavigate }: { onNavigate: (target: DashboardT
   const [loading, setLoading] = useState(true);
   const [loadedAt, setLoadedAt] = useState<Date | null>(null);
   const [loadAttempt, setLoadAttempt] = useState(0);
+  const t = useT(messages);
 
   /** Loads the dashboard on opening and on refresh, keeping the previous data visible if a request fails. */
   useEffect(() => {
@@ -162,7 +160,7 @@ export function DashboardPanel({ onNavigate }: { onNavigate: (target: DashboardT
        */
       (cause: unknown) => {
         if (controller.signal.aborted) return;
-        setError(cause instanceof ApiError || cause instanceof Error ? cause.message : 'The dashboard could not be loaded.');
+        setError(cause instanceof ApiError || cause instanceof Error ? cause.message : translate(messages, 'loadFailed'));
         setLoading(false);
       }
     );
@@ -187,49 +185,49 @@ export function DashboardPanel({ onNavigate }: { onNavigate: (target: DashboardT
   const certificateDays = server?.adminCertificateNotAfter && now ? daysUntil(server.adminCertificateNotAfter, now) : null;
 
   const attention: { text: string; target?: DashboardTarget; label?: string }[] = [];
-  if (data?.storage.needsAttention) attention.push({ text: 'The data is not stored in a host folder and may be missing from NAS backups.', target: 'settings', label: 'Storage details' });
-  if (counts && counts.conflictCopies > 0) attention.push({ text: `${counts.conflictCopies} conflict ${counts.conflictCopies === 1 ? 'copy waits' : 'copies wait'} for review.`, target: 'vaults', label: 'Vault files' });
-  if (certificateDays !== null && certificateDays < CERTIFICATE_WARNING_DAYS) attention.push({ text: `The admin certificate expires in ${Math.max(certificateDays, 0)} days. KeePort renews it on the next restart.` });
-  if (logins && logins.adminLast24Hours.failure > 0) attention.push({ text: `${logins.adminLast24Hours.failure} failed admin sign-in${logins.adminLast24Hours.failure === 1 ? '' : 's'} in the last 24 hours.` });
+  if (data?.storage.needsAttention) attention.push({ text: t('attentionStorage'), target: 'settings', label: t('storageDetails') });
+  if (counts && counts.conflictCopies > 0) attention.push({ text: t('attentionConflicts', { count: counts.conflictCopies }), target: 'vaults', label: t('vaultFiles') });
+  if (certificateDays !== null && certificateDays < CERTIFICATE_WARNING_DAYS) attention.push({ text: t('attentionCertificate', { count: Math.max(certificateDays, 0) }) });
+  if (logins && logins.adminLast24Hours.failure > 0) attention.push({ text: t('attentionFailedAdmin', { count: logins.adminLast24Hours.failure }) });
 
   return (
     <div className="grid gap-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2 text-sm">
           {data && !error ? (
-            <Badge variant="outline" className={cn('gap-1.5', ACCENTS.emerald.badge)}><CircleCheckIcon /> KeePort is running</Badge>
+            <Badge variant="outline" className={cn('gap-1.5', ACCENTS.emerald.badge)}><CircleCheckIcon /> {t('running')}</Badge>
           ) : error ? (
-            <Badge variant="destructive" className="gap-1.5"><CircleAlertIcon /> Status not available</Badge>
+            <Badge variant="destructive" className="gap-1.5"><CircleAlertIcon /> {t('statusUnavailable')}</Badge>
           ) : null}
           <span className="text-muted-foreground" aria-live="polite">
-            {loadedAt ? `Updated ${loadedAt.toLocaleTimeString()}` : loading ? 'Loading…' : ''}
+            {loadedAt ? t('updated', { time: formatDateTime(loadedAt, { timeStyle: 'medium' }) }) : loading ? t('loading') : ''}
           </span>
         </div>
         <Button variant="outline" size="sm" disabled={loading} onClick={refresh}>
-          <RefreshCwIcon className={loading ? 'animate-spin' : undefined} /> Refresh
+          <RefreshCwIcon className={loading ? 'animate-spin' : undefined} /> {t('refresh')}
         </Button>
       </div>
 
       {error && (
         <Alert variant="destructive">
           <CircleAlertIcon />
-          <AlertTitle>The dashboard could not be loaded</AlertTitle>
+          <AlertTitle>{t('loadFailedTitle')}</AlertTitle>
           <AlertDescription>
-            {error}{data ? ' The values below are from the last successful update.' : ''}
+            {error}{data ? ` ${t('staleValues')}` : ''}
           </AlertDescription>
         </Alert>
       )}
       {data && data.errors.length > 0 && (
         <Alert variant="destructive">
           <CircleAlertIcon />
-          <AlertTitle>Some values are not available</AlertTitle>
+          <AlertTitle>{t('someUnavailable')}</AlertTitle>
           <AlertDescription>{data.errors.join(' ')}</AlertDescription>
         </Alert>
       )}
       {attention.length > 0 && (
         <Alert>
           <CircleAlertIcon />
-          <AlertTitle>Needs attention</AlertTitle>
+          <AlertTitle>{t('needsAttention')}</AlertTitle>
           <AlertDescription>
             <ul className="grid gap-1.5">
               {attention.map(/**
@@ -261,68 +259,68 @@ export function DashboardPanel({ onNavigate }: { onNavigate: (target: DashboardT
         <>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <StatCard
-              title="Uptime"
+              title={t('uptime')}
               accent="emerald"
               icon={<ActivityIcon />}
               value={server ? formatUptime(server.uptimeSeconds) : null}
-              detail={server ? `Since ${formatDateTime(server.startedAt)}` : ''}
+              detail={server ? t('since', { time: formatDateTime(server.startedAt) }) : ''}
             />
             <StatCard
-              title="Vaults"
+              title={t('vaults')}
               accent="sky"
               icon={<DatabaseIcon />}
               value={counts?.vaults ?? null}
-              detail={counts ? `${counts.deletedVaults} deleted · ${counts.conflictCopies} conflict ${counts.conflictCopies === 1 ? 'copy' : 'copies'}` : 'Totals not available'}
-              action={<Button variant="ghost" size="icon-sm" aria-label="Open vault files" onClick={/** Opens the vault files. */ () => onNavigate('vaults')}><ArrowRightIcon /></Button>}
+              detail={counts ? `${t('deletedCount', { count: counts.deletedVaults })} · ${t('conflictCopies', { count: counts.conflictCopies })}` : t('totalsUnavailable')}
+              action={<Button variant="ghost" size="icon-sm" aria-label={t('openVaultFiles')} onClick={/** Opens the vault files. */ () => onNavigate('vaults')}><ArrowRightIcon /></Button>}
             />
             <StatCard
-              title="Accounts"
+              title={t('accounts')}
               accent="violet"
               icon={<UsersIcon />}
               value={counts ? counts.users + counts.admins : null}
               detail={counts
-                ? `${counts.users} ${counts.users === 1 ? 'user' : 'users'} (${counts.disabledUsers} disabled) · ${counts.admins} ${counts.admins === 1 ? 'admin' : 'admins'}${counts.disabledAdmins ? ` (${counts.disabledAdmins} disabled)` : ''}`
-                : 'Totals not available'}
-              action={<Button variant="ghost" size="icon-sm" aria-label="Open users" onClick={/** Opens the users. */ () => onNavigate('users')}><ArrowRightIcon /></Button>}
+                ? `${t('userCount', { count: counts.users })} (${t('disabledCount', { count: counts.disabledUsers })}) · ${t('adminCount', { count: counts.admins })}${counts.disabledAdmins ? ` (${t('disabledCount', { count: counts.disabledAdmins })})` : ''}`
+                : t('totalsUnavailable')}
+              action={<Button variant="ghost" size="icon-sm" aria-label={t('openUsers')} onClick={/** Opens the users. */ () => onNavigate('users')}><ArrowRightIcon /></Button>}
             />
             <StatCard
-              title="WebDAV app passwords"
+              title={t('appPasswords')}
               accent="amber"
               icon={<NetworkIcon />}
               value={counts?.activeWebDavCredentials ?? null}
-              detail={counts ? `${counts.webDavRequestsLast24Hours} ${counts.webDavRequestsLast24Hours === 1 ? 'request' : 'requests'} in the last 24 hours` : 'Totals not available'}
-              action={<Button variant="ghost" size="icon-sm" aria-label="Open WebDAV credentials" onClick={/** Opens the WebDAV credentials. */ () => onNavigate('webdav')}><ArrowRightIcon /></Button>}
+              detail={counts ? t('requestsLast24Hours', { count: counts.webDavRequestsLast24Hours }) : t('totalsUnavailable')}
+              action={<Button variant="ghost" size="icon-sm" aria-label={t('openWebDav')} onClick={/** Opens the WebDAV credentials. */ () => onNavigate('webdav')}><ArrowRightIcon /></Button>}
             />
           </div>
 
           <div className="grid gap-4 xl:grid-cols-2">
             <Card>
               <CardHeader>
-                <CardTitle>Sign-ins</CardTitle>
+                <CardTitle>{t('signIns')}</CardTitle>
                 <CardDescription>
                   {logins
-                    ? `Successful / failed sign-ins. Counted since ${formatDateTime(logins.since)}; rate-limited requests are not included.`
-                    : 'Sign-in counts are not available.'}
+                    ? t('signInsDescription', { time: formatDateTime(logins.since) })
+                    : t('signInsUnavailable')}
                 </CardDescription>
               </CardHeader>
               {logins && (
                 <CardContent className="px-0">
-                  <Table aria-label="Sign-ins">
+                  <Table aria-label={t('signIns')}>
                     <TableHeader className="bg-muted/45">
                       <TableRow>
-                        <TableHead scope="col" className="ps-6">Where</TableHead>
-                        <TableHead scope="col">Last 24 hours</TableHead>
-                        <TableHead scope="col">Last 7 days</TableHead>
+                        <TableHead scope="col" className="ps-6">{t('where')}</TableHead>
+                        <TableHead scope="col">{t('last24Hours')}</TableHead>
+                        <TableHead scope="col">{t('last7Days')}</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       <TableRow>
-                        <TableCell className="ps-6 font-medium">Admin console</TableCell>
+                        <TableCell className="ps-6 font-medium">{t('adminConsole')}</TableCell>
                         <CountsCell counts={logins.adminLast24Hours} />
                         <CountsCell counts={logins.adminLast7Days} />
                       </TableRow>
                       <TableRow>
-                        <TableCell className="ps-6 font-medium">Web vault</TableCell>
+                        <TableCell className="ps-6 font-medium">{t('webVault')}</TableCell>
                         <CountsCell counts={logins.vaultLast24Hours} />
                         <CountsCell counts={logins.vaultLast7Days} />
                       </TableRow>
@@ -334,27 +332,27 @@ export function DashboardPanel({ onNavigate }: { onNavigate: (target: DashboardT
 
             <Card>
               <CardHeader>
-                <CardTitle>WebDAV activity</CardTitle>
-                <CardDescription>Requests from KeePass apps in the last 24 hours, from the request log.</CardDescription>
+                <CardTitle>{t('webDavActivity')}</CardTitle>
+                <CardDescription>{t('webDavActivityDescription')}</CardDescription>
                 <CardAction>
                   <Button variant="outline" size="sm" onClick={/** Opens the WebDAV logs. */ () => onNavigate('webdav-logs')}>
-                    Logs <ArrowRightIcon />
+                    {t('logs')} <ArrowRightIcon />
                   </Button>
                 </CardAction>
               </CardHeader>
               <CardContent>
                 {counts ? (
                   <dl className="grid gap-2.5">
-                    <Fact label="Requests">{counts.webDavRequestsLast24Hours}</Fact>
-                    <Fact label="Errors">
+                    <Fact label={t('requests')}>{counts.webDavRequestsLast24Hours}</Fact>
+                    <Fact label={t('errors')}>
                       <span className={counts.webDavErrorsLast24Hours > 0 ? 'font-medium text-destructive' : undefined}>{counts.webDavErrorsLast24Hours}</span>
                     </Fact>
-                    <Fact label="Outdated saves (412)">{counts.webDavStaleWritesLast24Hours}</Fact>
-                    <Fact label="Last request">{counts.lastWebDavRequestAt ? formatDateTime(counts.lastWebDavRequestAt) : 'None logged yet'}</Fact>
-                    <p className="text-xs text-muted-foreground">Errors are answers with status 400 or higher, without the 401 sign-in prompt every KeePass app receives first.</p>
+                    <Fact label={t('staleWrites')}>{counts.webDavStaleWritesLast24Hours}</Fact>
+                    <Fact label={t('lastRequest')}>{counts.lastWebDavRequestAt ? formatDateTime(counts.lastWebDavRequestAt) : t('noneLogged')}</Fact>
+                    <p className="text-xs text-muted-foreground">{t('errorsHint')}</p>
                   </dl>
                 ) : (
-                  <p className="text-sm text-muted-foreground">Not available.</p>
+                  <p className="text-sm text-muted-foreground">{t('notAvailableSentence')}</p>
                 )}
               </CardContent>
             </Card>
@@ -362,18 +360,18 @@ export function DashboardPanel({ onNavigate }: { onNavigate: (target: DashboardT
             {server && (
               <Card>
                 <CardHeader>
-                  <CardTitle className="flex items-center gap-2"><ServerIcon className="size-4 text-primary" /> System</CardTitle>
-                  <CardDescription>The running KeePort application. Docker's own status and engine version are not visible from inside the container.</CardDescription>
+                  <CardTitle className="flex items-center gap-2"><ServerIcon className="size-4 text-primary" /> {t('system')}</CardTitle>
+                  <CardDescription>{t('systemDescription')}</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <dl className="grid gap-2.5">
-                    <Fact label="KeePort version">
+                    <Fact label={t('version')}>
                       {server.version}{server.commit && <span className="text-muted-foreground"> ({server.commit.slice(0, 12)})</span>}
                     </Fact>
                     <Fact label=".NET">{server.runtime}</Fact>
-                    <Fact label="Operating system">{server.operatingSystem}</Fact>
-                    <Fact label="Docker">{server.inDocker ? 'Runs in a Docker container' : 'Not in Docker'}</Fact>
-                    <Fact label="Started">{formatDateTime(server.startedAt)}</Fact>
+                    <Fact label={t('operatingSystem')}>{server.operatingSystem}</Fact>
+                    <Fact label="Docker">{server.inDocker ? t('inDocker') : t('notInDocker')}</Fact>
+                    <Fact label={t('started')}>{formatDateTime(server.startedAt)}</Fact>
                   </dl>
                 </CardContent>
               </Card>
@@ -382,34 +380,34 @@ export function DashboardPanel({ onNavigate }: { onNavigate: (target: DashboardT
             {server && (
               <Card>
                 <CardHeader>
-                  <CardTitle className="flex items-center gap-2"><ShieldCheckIcon className="size-4 text-primary" /> Network & admin access</CardTitle>
+                  <CardTitle className="flex items-center gap-2"><ShieldCheckIcon className="size-4 text-primary" /> {t('network')}</CardTitle>
                   <CardDescription>
                     {server.inDocker
-                      ? 'Addresses and ports inside the container. The host ports come from your .env file.'
-                      : 'Addresses and ports of this KeePort instance.'}
+                      ? t('networkDocker')
+                      : t('networkPlain')}
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
                   <dl className="grid gap-2.5">
-                    <Fact label={server.inDocker ? 'Container IPs' : 'IP addresses'}>
-                      {server.addresses.length ? server.addresses.join(', ') : 'Not available'}
+                    <Fact label={server.inDocker ? t('containerIps') : t('ipAddresses')}>
+                      {server.addresses.length ? server.addresses.join(', ') : t('notAvailable')}
                     </Fact>
-                    <Fact label="Vault & WebDAV port">{server.vaultPorts.length ? server.vaultPorts.join(', ') : 'Not available'}</Fact>
-                    <Fact label="Admin port">{server.adminPorts.length ? server.adminPorts.join(', ') : 'Same as the vault'}</Fact>
-                    <Fact label="Admin HTTPS">
-                      {server.adminHttps ? 'On, with a self-signed certificate' : 'Off (KEEPORT_ADMIN_HTTPS=false or no separate admin port)'}
+                    <Fact label={t('vaultPort')}>{server.vaultPorts.length ? server.vaultPorts.join(', ') : t('notAvailable')}</Fact>
+                    <Fact label={t('adminPort')}>{server.adminPorts.length ? server.adminPorts.join(', ') : t('sameAsVault')}</Fact>
+                    <Fact label={t('adminHttps')}>
+                      {server.adminHttps ? t('httpsOn') : t('httpsOff')}
                     </Fact>
                     {server.adminCertificateNotAfter && (
-                      <Fact label="Certificate valid until">
+                      <Fact label={t('certificateValidUntil')}>
                         <span className={certificateDays !== null && certificateDays < CERTIFICATE_WARNING_DAYS ? 'font-medium text-destructive' : undefined}>
                           {formatDateTime(server.adminCertificateNotAfter)}
                         </span>
                       </Fact>
                     )}
                     {server.adminCertificateFingerprint && (
-                      <Fact label="SHA-256 fingerprint"><span className="font-mono text-xs break-all">{server.adminCertificateFingerprint}</span></Fact>
+                      <Fact label={t('fingerprint')}><span className="font-mono text-xs break-all">{server.adminCertificateFingerprint}</span></Fact>
                     )}
-                    <Fact label="Trusted proxies">{server.trustedProxies}</Fact>
+                    <Fact label={t('trustedProxies')}>{server.trustedProxies}</Fact>
                   </dl>
                 </CardContent>
               </Card>
@@ -417,24 +415,24 @@ export function DashboardPanel({ onNavigate }: { onNavigate: (target: DashboardT
 
             <Card className="xl:col-span-2">
               <CardHeader>
-                <CardTitle className="flex items-center gap-2"><HardDriveIcon className="size-4 text-primary" /> Data storage</CardTitle>
-                <CardDescription>Where KeePort keeps its database and vault files.</CardDescription>
+                <CardTitle className="flex items-center gap-2"><HardDriveIcon className="size-4 text-primary" /> {t('dataStorage')}</CardTitle>
+                <CardDescription>{t('dataStorageDescription')}</CardDescription>
                 <CardAction>
                   <Button variant="outline" size="sm" onClick={/** Opens the settings with the storage details. */ () => onNavigate('settings')}>
-                    Details <ArrowRightIcon />
+                    {t('details')} <ArrowRightIcon />
                   </Button>
                 </CardAction>
               </CardHeader>
               <CardContent>
                 <dl className="grid gap-2.5">
-                  <Fact label="Kind">
+                  <Fact label={t('kind')}>
                     <span className="inline-flex items-center gap-2">
-                      {STORAGE_LABELS[data.storage.kind]}
-                      {data.storage.needsAttention && <Badge variant="destructive">Check backups</Badge>}
+                      {t(STORAGE_LABELS[data.storage.kind])}
+                      {data.storage.needsAttention && <Badge variant="destructive">{t('checkBackups')}</Badge>}
                     </span>
                   </Fact>
-                  <Fact label="Data directory">{data.storage.dataDir}</Fact>
-                  {data.storage.source && <Fact label="Source on the host"><span className="break-all">{data.storage.source}</span></Fact>}
+                  <Fact label={t('dataDirectory')}>{data.storage.dataDir}</Fact>
+                  {data.storage.source && <Fact label={t('sourceOnHost')}><span className="break-all">{data.storage.source}</span></Fact>}
                 </dl>
               </CardContent>
             </Card>

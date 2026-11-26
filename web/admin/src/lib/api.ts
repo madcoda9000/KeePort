@@ -1,3 +1,4 @@
+import { translateServerMessage } from '@shared/i18n/messages/server-errors';
 export interface User {
   id: string;
   username: string;
@@ -6,6 +7,8 @@ export interface User {
   disabled: boolean;
   createdAt: string;
   lastLoginAt: string | null;
+  /** The interface language stored on the account, or null to follow the browser. */
+  language?: 'de' | 'en' | 'fr' | null;
 }
 
 export interface AuthResponse {
@@ -216,7 +219,7 @@ async function parseError(response: Response): Promise<ApiError> {
       message = text.slice(0, 200) || message;
     }
   }
-  return new ApiError(message, response.status);
+  return new ApiError(translateServerMessage(message), response.status);
 }
 
 /**
@@ -285,6 +288,9 @@ export const api = {
    * Saves the signed-in admin's contact email.
    * @param email - The new contact email for the signed-in account.
    */
+  async updateLanguage(language: 'de' | 'en' | 'fr' | null) {
+    return request<User>(`${AUTH_PATH}/language`, { method: 'PUT', body: JSON.stringify({ language }) });
+  },
   async updateEmail(email: string) {
     return request<User>(`${AUTH_PATH}/email`, { method: 'PUT', body: JSON.stringify({ email }) });
   },

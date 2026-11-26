@@ -1,4 +1,6 @@
 import { randomBelow } from './password.ts';
+import messages from '../i18n/lib-passphrase.ts';
+import { translate } from '../../../shared/i18n/core.ts';
 
 /** Separators the passphrase generator offers. */
 export const PASSPHRASE_SEPARATORS = { hyphen: '-', space: ' ', dot: '.', underscore: '_', none: '' } as const;
@@ -33,7 +35,7 @@ export function loadWordlist(): Promise<readonly string[]> {
  * @param words - The word list, usually the EFF Large Wordlist.
  */
 export function generatePassphrase(options: PassphraseOptions, words: readonly string[]): string {
-  if (words.length < 2) throw new Error('The word list is empty.');
+  if (words.length < 2) throw new Error(translate(messages, 'emptyWordlist'));
   const count = Math.min(MAX_PASSPHRASE_WORDS, Math.max(MIN_PASSPHRASE_WORDS, Math.round(options.words)));
   const chosen = Array.from({ length: count }, /** Picks one random word. */ () => words[randomBelow(words.length)]);
   const shaped = options.capitalize ? chosen.map(/**

@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { CheckIcon, CopyIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import messages from '@/i18n/copy-button';
+import { useT } from '@shared/i18n/react';
 
 /**
  * A small copy button with a tooltip. It resolves the value only when clicked (e.g. the current TOTP code), shows a
@@ -10,7 +12,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
  */
 export function CopyButton({
   label,
-  tooltip = 'Copy to clipboard',
+  tooltip,
   getValue,
   onCopy,
   disabled
@@ -22,6 +24,7 @@ export function CopyButton({
   disabled?: boolean;
 }) {
   const [copied, setCopied] = useState(false);
+  const t = useT(messages);
 
   /** Resets the check mark shortly after a successful copy. */
   useEffect(() => {
@@ -51,7 +54,7 @@ export function CopyButton({
           {copied ? <CheckIcon className="text-emerald-600 dark:text-emerald-400" /> : <CopyIcon />}
         </Button>
       </TooltipTrigger>
-      <TooltipContent>{copied ? 'Copied' : tooltip}</TooltipContent>
+      <TooltipContent>{copied ? t('copied') : tooltip ?? t('copyToClipboard')}</TooltipContent>
     </Tooltip>
   );
 }

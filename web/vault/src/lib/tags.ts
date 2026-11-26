@@ -1,5 +1,7 @@
 import type * as kdbxweb from 'kdbxweb';
 import { backupEntry, requireEntry } from './history.ts';
+import messages from '../i18n/lib-tags.ts';
+import { translate } from '../../../shared/i18n/core.ts';
 
 /** Longest tag KeePort accepts. */
 export const MAX_TAG_LENGTH = 64;
@@ -22,13 +24,13 @@ export function normalizeTag(tag: string): string {
  */
 export function tagError(tag: string, existing: readonly string[]): string | null {
   const value = normalizeTag(tag);
-  if (!value) return 'Enter a tag.';
-  if (value.length > MAX_TAG_LENGTH) return `Tags can have at most ${MAX_TAG_LENGTH} characters.`;
-  if (SEPARATORS.test(value)) return 'Tags cannot contain commas, semicolons or colons.';
+  if (!value) return translate(messages, 'required');
+  if (value.length > MAX_TAG_LENGTH) return translate(messages, 'tooLong', { max: MAX_TAG_LENGTH });
+  if (SEPARATORS.test(value)) return translate(messages, 'separators');
   if (existing.some(/**
    * Detects the same tag ignoring case.
    * @param other - One existing tag.
-   */ (other) => other.toLowerCase() === value.toLowerCase())) return `The tag “${value}” is already set.`;
+   */ (other) => other.toLowerCase() === value.toLowerCase())) return translate(messages, 'duplicate', { tag: value });
   return null;
 }
 

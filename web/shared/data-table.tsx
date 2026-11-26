@@ -6,6 +6,8 @@ import { Label } from '@/components/ui/label';
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { PAGE_SIZES, prepareTableRows, selectTablePage, type PageSize, type SortDirection, type SortValue } from './table-data';
+import messages from '@shared/i18n/messages/data-table';
+import { useT } from '@shared/i18n/react';
 
 export interface TableColumn<T> {
   id: string;
@@ -58,6 +60,7 @@ export function DataTable<T>({
   searchActions
 }: DataTableProps<T>) {
   const pageSizeId = useId();
+  const t = useT(messages);
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState<{ columnId: string; direction: SortDirection } | null>(null);
   const [pageIndex, setPageIndex] = useState(0);
@@ -148,7 +151,7 @@ export function DataTable<T>({
           {page.rows.length ? page.rows.map(renderRow) : (
             <TableRow>
               <TableCell colSpan={columns.length + (leadingHeader ? 1 : 0)} className="h-24 text-center text-muted-foreground">
-                {query.trim() ? 'No results match your search.' : emptyMessage}
+                {query.trim() ? t('noMatches') : emptyMessage}
               </TableCell>
             </TableRow>
           )}
@@ -156,11 +159,11 @@ export function DataTable<T>({
       </Table>
       <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 border-t px-4 py-3 text-sm sm:px-6">
         <span className="text-muted-foreground" aria-live="polite">
-          {page.total ? `Showing ${page.from}–${page.to} of ${page.total}` : '0 results'}
+          {page.total ? t('showing', { from: page.from, to: page.to, total: page.total }) : t('noResults')}
         </span>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
           <div className="flex items-center gap-2">
-            <Label htmlFor={pageSizeId}>Rows per page</Label>
+            <Label htmlFor={pageSizeId}>{t('rowsPerPage')}</Label>
             <NativeSelect
               id={pageSizeId}
               size="sm"
@@ -180,11 +183,11 @@ export function DataTable<T>({
             </NativeSelect>
           </div>
           <div className="flex items-center gap-2">
-            <span className="tabular-nums">Page {page.pageIndex + 1} of {page.pageCount}</span>
-            <Button type="button" size="icon-sm" variant="outline" aria-label="Previous page" disabled={page.pageIndex === 0} onClick={/** Moves back one result page. */ () => setPageIndex(page.pageIndex - 1)}>
+            <span className="tabular-nums">{t('pageOf', { page: page.pageIndex + 1, pages: page.pageCount })}</span>
+            <Button type="button" size="icon-sm" variant="outline" aria-label={t('previousPage')} disabled={page.pageIndex === 0} onClick={/** Moves back one result page. */ () => setPageIndex(page.pageIndex - 1)}>
               <ChevronLeftIcon aria-hidden="true" />
             </Button>
-            <Button type="button" size="icon-sm" variant="outline" aria-label="Next page" disabled={page.pageIndex + 1 === page.pageCount} onClick={/** Moves forward one result page. */ () => setPageIndex(page.pageIndex + 1)}>
+            <Button type="button" size="icon-sm" variant="outline" aria-label={t('nextPage')} disabled={page.pageIndex + 1 === page.pageCount} onClick={/** Moves forward one result page. */ () => setPageIndex(page.pageIndex + 1)}>
               <ChevronRightIcon aria-hidden="true" />
             </Button>
           </div>

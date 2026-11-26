@@ -1,3 +1,6 @@
+import messages from './i18n/messages/user-agent.ts';
+import { translate } from './i18n/core.ts';
+
 /** Browsers recognised in a user agent, checked in this order because e.g. Edge also names Chrome and Safari. */
 const BROWSERS: readonly [RegExp, string][] = [
   [/\bEdg(?:e|A|iOS)?\/(\d+)/, 'Edge'],
@@ -38,10 +41,10 @@ export function describeUserAgent(userAgent: string | null | undefined): string 
    */ ([pattern]) => pattern.test(text))?.[1];
   if (!browser) {
     // Browsers all start with "Mozilla/5.0"; that token says nothing, so name only the system.
-    const product = text.startsWith('Mozilla/') ? 'Browser' : text.split(/\s+/)[0];
-    return system ? `${product} on ${system}` : product;
+    const product = text.startsWith('Mozilla/') ? translate(messages, 'browser') : text.split(/\s+/)[0];
+    return system ? translate(messages, 'onSystem', { client: product, system }) : product;
   }
   const version = browser[0].exec(text)?.[1];
   const name = version ? `${browser[1]} ${version}` : browser[1];
-  return system ? `${name} on ${system}` : name;
+  return system ? translate(messages, 'onSystem', { client: name, system }) : name;
 }

@@ -60,6 +60,9 @@ import {
 } from '@/components/ui/sidebar';
 import { cn } from '@/lib/utils';
 import { accentFor } from '@shared/accent';
+import messages from '@/i18n/folder-tree';
+import { translate } from '@shared/i18n/core';
+import { useT } from '@shared/i18n/react';
 
 /** What the folder tree asks the page to do; the page owns the dialogs and the saving. */
 export interface FolderActions {
@@ -101,9 +104,9 @@ interface FolderTreeProps extends FolderActions {
  * @param folder - The folder to check.
  */
 function folderDeleteBlocker(folder: FolderNode): string | null {
-  if (folder.isRoot) return 'The root folder cannot be deleted.';
-  if (folder.isRecycleBin) return 'The recycle bin cannot be deleted.';
-  if (folder.entryCount || folder.children.length) return 'Only empty folders can be deleted.';
+  if (folder.isRoot) return translate(messages, 'rootUndeletable');
+  if (folder.isRecycleBin) return translate(messages, 'recycleBinUndeletable');
+  if (folder.entryCount || folder.children.length) return translate(messages, 'onlyEmpty');
   return null;
 }
 
@@ -141,6 +144,7 @@ export function FolderTree({
   ...actions
 }: FolderTreeProps) {
   const { setOpenMobile } = useSidebar();
+  const t = useT(messages);
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   const root = folders[0];
   const selected = selectedId ? findFolder(folders, selectedId) : null;
@@ -193,7 +197,7 @@ export function FolderTree({
               <button
                 type="button"
                 className="absolute start-1 top-1.5 z-10 grid size-5 place-items-center rounded-md text-sidebar-foreground/70 outline-hidden hover:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-sidebar-ring"
-                aria-label={open ? `Collapse ${folder.name}` : `Expand ${folder.name}`}
+                aria-label={open ? t('collapse', { name: folder.name }) : t('expand', { name: folder.name })}
               >
                 <ChevronRightIcon className={cn('size-3.5 transition-transform', open && 'rotate-90')} />
               </button>
@@ -211,13 +215,13 @@ export function FolderTree({
             <FolderGlyph folder={folder} open={open} />
             <span>{folder.name}</span>
           </SidebarMenuButton>
-          <SidebarMenuBadge className={canWrite ? 'right-7!' : undefined} aria-label={`${folder.entryCount} entries`}>
+          <SidebarMenuBadge className={canWrite ? 'right-7!' : undefined} aria-label={t('entries', { count: folder.entryCount })}>
             {folder.entryCount}
           </SidebarMenuBadge>
           {canWrite && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <SidebarMenuAction showOnHover disabled={disabled} aria-label={`Actions for ${folder.name}`}>
+                <SidebarMenuAction showOnHover disabled={disabled} aria-label={t('actionsFor', { name: folder.name })}>
                   <EllipsisIcon />
                 </SidebarMenuAction>
               </DropdownMenuTrigger>
@@ -226,13 +230,13 @@ export function FolderTree({
                   disabled={folder.inRecycleBin}
                   onSelect={/** Starts creating a subfolder in this folder. */ () => actions.onCreate(folder)}
                 >
-                  <FolderPlusIcon /> New subfolder
+                  <FolderPlusIcon /> {t('newSubfolder')}
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   disabled={folder.isRoot || folder.isRecycleBin}
                   onSelect={/** Starts renaming this folder. */ () => actions.onRename(folder)}
                 >
-                  <PencilIcon /> Rename
+                  <PencilIcon /> {t('rename')}
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
@@ -242,7 +246,7 @@ export function FolderTree({
                 >
                   <Trash2Icon />
                   <span className="grid">
-                    <span>Delete</span>
+                    <span>{t('delete')}</span>
                     {deleteBlocker && <span className="text-xs text-muted-foreground">{deleteBlocker}</span>}
                   </span>
                 </DropdownMenuItem>
@@ -263,15 +267,15 @@ export function FolderTree({
 
   return (
     <>
-    <SidebarGroup role="group" aria-label={`Folders of ${vaultName}`}>
+    <SidebarGroup role="group" aria-label={t('foldersOf', { vault: vaultName })}>
       <SidebarGroupLabel className="min-w-0 pe-8">
-        <span className="truncate" title={vaultName}>Folders · {vaultName}</span>
+        <span className="truncate" title={vaultName}>{t('foldersHeading', { vault: vaultName })}</span>
       </SidebarGroupLabel>
       {canWrite && root && newFolderParent && (
         <SidebarGroupAction
           type="button"
-          title={`New folder in ${newFolderParent.name}`}
-          aria-label={`New folder in ${newFolderParent.name}`}
+          title={t('newFolderIn', { name: newFolderParent.name })}
+          aria-label={t('newFolderIn', { name: newFolderParent.name })}
           disabled={disabled}
           onClick={/** Starts creating a folder in the selected folder. */ () => actions.onCreate(newFolderParent)}
         >
@@ -290,9 +294,9 @@ export function FolderTree({
               onClick={/** Shows the entries of all folders. */ () => select(null)}
             >
               <LibraryIcon />
-              <span>All entries</span>
+              <span>{t('allEntries')}</span>
             </SidebarMenuButton>
-            <SidebarMenuBadge aria-label={`${totalEntries} entries`}>{totalEntries}</SidebarMenuBadge>
+            <SidebarMenuBadge aria-label={t('entries', { count: totalEntries })}>{totalEntries}</SidebarMenuBadge>
           </SidebarMenuItem>
           {(expiredCount > 0 || expiredSelected) && (
             <SidebarMenuItem>
@@ -308,9 +312,9 @@ export function FolderTree({
                 }}
               >
                 <CalendarX2Icon className="text-destructive" />
-                <span>Expired</span>
+                <span>{t('expired')}</span>
               </SidebarMenuButton>
-              <SidebarMenuBadge className="text-destructive" aria-label={`${expiredCount} expired entries`}>{expiredCount}</SidebarMenuBadge>
+              <SidebarMenuBadge className="text-destructive" aria-label={t('expiredEntries', { count: expiredCount })}>{expiredCount}</SidebarMenuBadge>
             </SidebarMenuItem>
           )}
           <SidebarMenuItem>
@@ -326,17 +330,17 @@ export function FolderTree({
               }}
             >
               {securityCount > 0 ? <ShieldAlertIcon className="text-amber-600 dark:text-amber-400" /> : <ShieldCheckIcon className="text-emerald-600 dark:text-emerald-400" />}
-              <span>Security</span>
+              <span>{t('security')}</span>
             </SidebarMenuButton>
-            <SidebarMenuBadge aria-label={`${securityCount} entries with findings`}>{securityCount}</SidebarMenuBadge>
+            <SidebarMenuBadge aria-label={t('findings', { count: securityCount })}>{securityCount}</SidebarMenuBadge>
           </SidebarMenuItem>
           {folders.map(renderFolder)}
         </SidebarMenu>
       </SidebarGroupContent>
     </SidebarGroup>
     {tags.length > 0 && (
-      <SidebarGroup role="group" aria-label={`Tags of ${vaultName}`}>
-        <SidebarGroupLabel>Tags</SidebarGroupLabel>
+      <SidebarGroup role="group" aria-label={t('tagsOf', { vault: vaultName })}>
+        <SidebarGroupLabel>{t('tags')}</SidebarGroupLabel>
         <SidebarGroupContent>
           <SidebarMenu>
             {tags.map(/**
@@ -358,7 +362,7 @@ export function FolderTree({
                   <TagIcon className={accentFor(item.tag).text} />
                   <span>{item.tag}</span>
                 </SidebarMenuButton>
-                <SidebarMenuBadge aria-label={`${item.count} entries`}>{item.count}</SidebarMenuBadge>
+                <SidebarMenuBadge aria-label={t('entries', { count: item.count })}>{item.count}</SidebarMenuBadge>
               </SidebarMenuItem>
             ))}
           </SidebarMenu>
@@ -429,6 +433,7 @@ function FolderNameForm({
   // While saving, the vault already contains the new name, so validating it again would report a duplicate.
   const error = busy ? null : validate(request, name);
   const unchanged = request.mode === 'rename' && name.trim() === request.folder.name;
+  const t = useT(messages);
 
   /**
    * Submits a valid name.
@@ -444,15 +449,15 @@ function FolderNameForm({
     <DialogContent className="sm:max-w-md">
       <form className="grid gap-5" onSubmit={submit}>
         <DialogHeader>
-          <DialogTitle>{request.mode === 'create' ? 'New folder' : 'Rename folder'}</DialogTitle>
+          <DialogTitle>{request.mode === 'create' ? t('newFolder') : t('renameFolder')}</DialogTitle>
           <DialogDescription>
             {request.mode === 'create'
-              ? `The folder is created in “${request.parent.path}”.`
-              : `Renames “${request.folder.path}”. KeePass apps show the new name after their next sync.`}
+              ? t('createdIn', { path: request.parent.path })
+              : t('renames', { path: request.folder.path })}
           </DialogDescription>
         </DialogHeader>
         <Field data-invalid={touched && error ? true : undefined}>
-          <FieldLabel htmlFor="folder-name">Folder name</FieldLabel>
+          <FieldLabel htmlFor="folder-name">{t('folderName')}</FieldLabel>
           <Input
             id="folder-name"
             autoFocus
@@ -468,11 +473,11 @@ function FolderNameForm({
               setTouched(true);
             }}
           />
-          {touched && error ? <FieldError>{error}</FieldError> : <FieldDescription>Folder names must be unique within their parent folder.</FieldDescription>}
+          {touched && error ? <FieldError>{error}</FieldError> : <FieldDescription>{t('uniqueHint')}</FieldDescription>}
         </Field>
         <DialogFooter>
           <Button type="submit" disabled={busy || Boolean(error) || unchanged}>
-            {busy ? 'Saving…' : request.mode === 'create' ? 'Create folder' : 'Rename folder'}
+            {busy ? t('saving') : request.mode === 'create' ? t('createFolder') : t('renameFolder')}
           </Button>
         </DialogFooter>
       </form>
@@ -495,6 +500,7 @@ export function DeleteFolderDialog({
   onConfirm: (folder: FolderNode) => void;
   onClose: () => void;
 }) {
+  const t = useT(messages);
   return (
     <AlertDialog open={folder !== null} onOpenChange={/**
      * Closes the dialog unless a save is running.
@@ -505,13 +511,13 @@ export function DeleteFolderDialog({
       {folder && (
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete folder “{folder.name}”?</AlertDialogTitle>
+            <AlertDialogTitle>{t('deleteTitle', { name: folder.name })}</AlertDialogTitle>
             <AlertDialogDescription>
-              The empty folder {folder.path} is removed permanently. KeePass apps remove it too when they sync.
+              {t('deleteDescription', { path: folder.path })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={busy}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={busy}>{t('cancel')}</AlertDialogCancel>
             <AlertDialogAction
               variant="destructive"
               disabled={busy}
@@ -523,7 +529,7 @@ export function DeleteFolderDialog({
                 onConfirm(folder);
               }}
             >
-              {busy ? 'Deleting…' : 'Delete folder'}
+              {busy ? t('deleting') : t('deleteFolder')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

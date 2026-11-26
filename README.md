@@ -55,6 +55,7 @@ KeePass files are great: open format, strong encryption, dozens of apps. Keeping
 | 🧰 **Admin console** | A dashboard with status, storage, sign-ins and sync activity; manage vault files, users, permissions, WebDAV app passwords and rate limits; inspect WebDAV request logs. |
 | 📜 **Audit log** | Who signed in and who changed users, vaults, permissions and settings — with colour-coded action tags, filters, CSV export and configurable retention. Users see their own recent sign-ins. |
 | 💾 **Crash-safe storage** | Atomic writes (temp file → fsync → rename), soft delete with restore, plain files in a host folder or Docker volume. |
+| 🌍 **English, German, French** | The web vault and the admin console speak English, German and French; each user picks the language once and it follows them to every device. |
 | 🐳 **One container** | Single Docker image with a persistent `/data` folder and a separate admin port served over HTTPS. |
 
 ## 📸 Screenshots

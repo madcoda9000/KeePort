@@ -1,3 +1,4 @@
+import { translateServerMessage } from '@shared/i18n/messages/server-errors';
 /** One sign-in attempt on the user's own account. */
 export interface SignIn {
   occurredAt: string;
@@ -22,6 +23,8 @@ export interface User {
   clipboardClearSeconds: number | null;
   /** Whether the web vault checks passwords against "Have I Been Pwned" (opt-in). */
   checkBreaches: boolean;
+  /** The interface language stored on the account, or null to follow the browser. */
+  language: 'de' | 'en' | 'fr' | null;
 }
 
 export interface VaultFile {
@@ -106,7 +109,7 @@ async function parseError(response: Response): Promise<ApiError> {
       message = text.slice(0, 200) || message;
     }
   }
-  return new ApiError(message, response.status, currentETag);
+  return new ApiError(translateServerMessage(message), response.status, currentETag);
 }
 
 /**
@@ -176,6 +179,13 @@ export const api = {
    * Saves the signed-in account's email and returns the updated user.
    * @param email - The new contact email for the signed-in account.
    */
+  /**
+   * Stores the interface language on the account; null follows the browser.
+   * @param language - de, en or fr, or null.
+   */
+  async updateLanguage(language: 'de' | 'en' | 'fr' | null) {
+    return request<User>('/api/auth/language', { method: 'PUT', body: JSON.stringify({ language }) });
+  },
   async updateEmail(email: string) {
     return request<User>('/api/auth/email', { method: 'PUT', body: JSON.stringify({ email }) });
   },

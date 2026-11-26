@@ -1,4 +1,6 @@
 import * as kdbxweb from 'kdbxweb';
+import messages from '../i18n/lib-groups.ts';
+import { translate } from '../../../shared/i18n/core.ts';
 
 /** Longest folder name KeePort accepts; KDBX itself has no limit, but longer names break every client's layout. */
 export const MAX_FOLDER_NAME_LENGTH = 255;
@@ -111,7 +113,7 @@ export function findFolder(folders: readonly FolderNode[], folderId: string): Fo
  */
 export function requireGroup(db: kdbxweb.Kdbx, groupId: string): kdbxweb.KdbxGroup {
   const group = db.getGroup(groupId);
-  if (!group) throw new Error('The folder no longer exists. Reopen the vault to load the latest version.');
+  if (!group) throw new Error(translate(messages, 'folderMissing'));
   return group;
 }
 
@@ -145,15 +147,15 @@ function isInRecycleBin(db: kdbxweb.Kdbx, group: kdbxweb.KdbxGroup): boolean {
  */
 export function folderNameError(db: kdbxweb.Kdbx, parentId: string, name: string, exceptId?: string): string | null {
   const trimmed = name.trim();
-  if (!trimmed) return 'Enter a folder name.';
-  if (trimmed.length > MAX_FOLDER_NAME_LENGTH) return `Folder names can have at most ${MAX_FOLDER_NAME_LENGTH} characters.`;
+  if (!trimmed) return translate(messages, 'nameRequired');
+  if (trimmed.length > MAX_FOLDER_NAME_LENGTH) return translate(messages, 'nameTooLong', { max: MAX_FOLDER_NAME_LENGTH });
   const parent = db.getGroup(parentId);
-  if (!parent) return 'The parent folder no longer exists.';
+  if (!parent) return translate(messages, 'parentMissing');
   const duplicate = parent.groups.some(/**
    * Detects a sibling with the same name, ignoring case, other than the folder being renamed.
    * @param sibling - One existing subfolder of the parent.
    */ (sibling) => sibling.uuid.id !== exceptId && (sibling.name ?? '').trim().toLocaleLowerCase() === trimmed.toLocaleLowerCase());
-  return duplicate ? `A folder named “${trimmed}” already exists here.` : null;
+  return duplicate ? translate(messages, 'duplicate', { name: trimmed }) : null;
 }
 
 /**
@@ -176,7 +178,7 @@ function assertFolderName(db: kdbxweb.Kdbx, parentId: string, name: string, exce
  */
 export function createFolder(db: kdbxweb.Kdbx, parentId: string, name: string): kdbxweb.KdbxGroup {
   const parent = requireGroup(db, parentId);
-  if (isInRecycleBin(db, parent)) throw new Error('Folders cannot be created in the recycle bin.');
+  if (isInRecycleBin(db, parent)) throw new Error(translate(messages, 'createInRecycleBin'));
   assertFolderName(db, parentId, name);
   return db.createGroup(parent, name.trim());
 }
@@ -189,8 +191,8 @@ export function createFolder(db: kdbxweb.Kdbx, parentId: string, name: string): 
  */
 export function renameFolder(db: kdbxweb.Kdbx, groupId: string, name: string) {
   const group = requireGroup(db, groupId);
-  if (!group.parentGroup) throw new Error('The root folder cannot be renamed.');
-  if (isReferenced(group, db.meta.recycleBinUuid)) throw new Error('The recycle bin cannot be renamed.');
+  if (!group.parentGroup) throw new Error(translate(messages, 'renameRoot'));
+  if (isReferenced(group, db.meta.recycleBinUuid)) throw new Error(translate(messages, 'renameRecycleBin'));
   assertFolderName(db, group.parentGroup.uuid.id, name, groupId);
   group.name = name.trim();
   group.times.update();
@@ -204,9 +206,9 @@ export function renameFolder(db: kdbxweb.Kdbx, groupId: string, name: string) {
  */
 export function deleteFolder(db: kdbxweb.Kdbx, groupId: string) {
   const group = requireGroup(db, groupId);
-  if (!group.parentGroup) throw new Error('The root folder cannot be deleted.');
-  if (isReferenced(group, db.meta.recycleBinUuid)) throw new Error('The recycle bin cannot be deleted.');
-  if (group.entries.length || group.groups.length) throw new Error('Only empty folders can be deleted. Move or delete its entries and subfolders first.');
+  if (!group.parentGroup) throw new Error(translate(messages, 'deleteRoot'));
+  if (isReferenced(group, db.meta.recycleBinUuid)) throw new Error(translate(messages, 'deleteRecycleBin'));
+  if (group.entries.length || group.groups.length) throw new Error(translate(messages, 'deleteNotEmpty'));
   db.move(group, null);
 }
 
@@ -219,7 +221,7 @@ export function deleteFolder(db: kdbxweb.Kdbx, groupId: string) {
  */
 export function moveEntries(db: kdbxweb.Kdbx, entryIds: Iterable<string>, targetId: string): number {
   const target = requireGroup(db, targetId);
-  if (isInRecycleBin(db, target)) throw new Error('Entries cannot be moved into the recycle bin.');
+  if (isInRecycleBin(db, target)) throw new Error(translate(messages, 'moveToRecycleBin'));
   const wanted = new Set(entryIds);
   const all = db.groups.flatMap(/**
    * Collects the entries of one root group and all its subgroups.
@@ -229,7 +231,7 @@ export function moveEntries(db: kdbxweb.Kdbx, entryIds: Iterable<string>, target
    * Selects the requested entries; entries inside history are not part of any group and are never matched.
    * @param entry - One entry of the database.
    */ (entry) => wanted.has(entry.uuid.id));
-  if (entries.length !== wanted.size) throw new Error('Some entries no longer exist. Reopen the vault to load the latest version.');
+  if (entries.length !== wanted.size) throw new Error(translate(messages, 'entriesMissing'));
   let moved = 0;
   for (const entry of entries) {
     if (entry.parentGroup === target) continue;
@@ -250,7 +252,7 @@ export class VaultChangeError extends Error {
    * @param restored - The database reloaded from the last saved bytes, or null if reloading failed too.
    */
   constructor(cause: unknown, restored: kdbxweb.Kdbx | null) {
-    super(cause instanceof Error ? cause.message : 'Unable to save vault.', { cause });
+    super(cause instanceof Error ? cause.message : translate(messages, 'saveFailed'), { cause });
     this.name = 'VaultChangeError';
     this.restored = restored;
   }

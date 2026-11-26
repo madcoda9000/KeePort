@@ -5,12 +5,16 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Field, FieldDescription, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { api } from '@/lib/api';
+import messages from '@/i18n/audit-settings';
+import { formatNumber, translate } from '@shared/i18n/core';
+import { useT } from '@shared/i18n/react';
 
 /** Loads and edits how long the audit log keeps its entries. */
 export function AuditSettingsPanel() {
   const [days, setDays] = useState<string | null>(null);
   const [message, setMessage] = useState<{ text: string; error: boolean } | null>(null);
   const [saving, setSaving] = useState(false);
+  const t = useT(messages);
 
   /** Loads the current retention on mount, aborting an obsolete request. */
   useEffect(() => {
@@ -29,7 +33,7 @@ export function AuditSettingsPanel() {
        */
       (error: unknown) => {
         if (!controller.signal.aborted) {
-          setMessage({ text: error instanceof Error ? error.message : 'Could not load the audit log settings.', error: true });
+          setMessage({ text: error instanceof Error ? error.message : translate(messages, 'loadFailed'), error: true });
         }
       }
     );
@@ -45,7 +49,7 @@ export function AuditSettingsPanel() {
     if (days === null || saving) return;
     const value = Number(days);
     if (!Number.isInteger(value) || value < 1 || value > 3650) {
-      setMessage({ text: 'Enter a whole number of days between 1 and 3650.', error: true });
+      setMessage({ text: t('invalidDays'), error: true });
       return;
     }
     setSaving(true);
@@ -53,9 +57,9 @@ export function AuditSettingsPanel() {
     try {
       const settings = await api.updateAuditSettings(value);
       setDays(String(settings.retentionDays));
-      setMessage({ text: 'Audit log retention saved. Older entries were removed.', error: false });
+      setMessage({ text: t('saved'), error: false });
     } catch (error) {
-      setMessage({ text: error instanceof Error ? error.message : 'Could not save the audit log settings.', error: true });
+      setMessage({ text: error instanceof Error ? error.message : t('saveFailed'), error: true });
     } finally {
       setSaving(false);
     }
@@ -64,8 +68,8 @@ export function AuditSettingsPanel() {
   return (
     <Card className="w-full max-w-xl">
       <CardHeader>
-        <CardTitle>Audit log</CardTitle>
-        <CardDescription>How long sign-ins and changes are kept. At most 50,000 entries are kept in any case.</CardDescription>
+        <CardTitle>{t('title')}</CardTitle>
+        <CardDescription>{t('description', { max: formatNumber(50_000) })}</CardDescription>
       </CardHeader>
       <CardContent className="grid gap-4">
         {message && (
@@ -74,11 +78,11 @@ export function AuditSettingsPanel() {
           </Alert>
         )}
         {days === null ? (
-          !message && <p role="status" className="text-sm text-muted-foreground">Loading audit log settings…</p>
+          !message && <p role="status" className="text-sm text-muted-foreground">{t('loading')}</p>
         ) : (
           <form className="grid gap-5" onSubmit={save}>
             <Field>
-              <FieldLabel htmlFor="audit-retention">Keep entries for (days)</FieldLabel>
+              <FieldLabel htmlFor="audit-retention">{t('retention')}</FieldLabel>
               <Input
                 id="audit-retention"
                 aria-describedby="audit-retention-help"
@@ -94,9 +98,9 @@ export function AuditSettingsPanel() {
                  * @param event - The input change event.
                  */ (event) => setDays(event.target.value)}
               />
-              <FieldDescription id="audit-retention-help">Entries older than this are deleted. A shorter value removes older entries right away. Default: 365.</FieldDescription>
+              <FieldDescription id="audit-retention-help">{t('retentionHelp')}</FieldDescription>
             </Field>
-            <Button type="submit" className="w-fit" disabled={saving}>{saving ? 'Saving…' : 'Save retention'}</Button>
+            <Button type="submit" className="w-fit" disabled={saving}>{saving ? t('saving') : t('save')}</Button>
           </form>
         )}
       </CardContent>

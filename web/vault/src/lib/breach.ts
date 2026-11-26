@@ -1,3 +1,6 @@
+import messages from '../i18n/lib-breach.ts';
+import { translate } from '../../../shared/i18n/core.ts';
+
 /** The "Have I Been Pwned" range API; only the first five hex characters of a SHA-1 hash are sent to it. */
 export const PWNED_RANGE_URL = 'https://api.pwnedpasswords.com/range/';
 
@@ -14,7 +17,7 @@ export type RangeFetcher = (prefix: string) => Promise<string>;
  */
 export async function fetchRange(prefix: string): Promise<string> {
   const response = await fetch(`${PWNED_RANGE_URL}${prefix}`, { headers: { 'Add-Padding': 'true' }, credentials: 'omit', referrerPolicy: 'no-referrer' });
-  if (!response.ok) throw new Error(`Have I Been Pwned answered with status ${response.status}.`);
+  if (!response.ok) throw new Error(translate(messages, 'status', { status: String(response.status) }));
   return response.text();
 }
 

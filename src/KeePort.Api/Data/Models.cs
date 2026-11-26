@@ -38,6 +38,8 @@ public sealed class UserRecord
     public int? ClipboardClearSeconds { get; init; }
     /// <summary>Whether the web vault checks passwords against "Have I Been Pwned" (opt-in, k-anonymity).</summary>
     public bool CheckBreaches { get; init; }
+    /// <summary>The interface language (de, en, fr), or null to follow the browser.</summary>
+    public string? Language { get; init; }
 }
 
 public sealed record SessionRecord
@@ -106,6 +108,7 @@ public sealed class WebDavCredentialRecord
 /// <param name="ShowFavicons">Whether the web vault loads website icons directly from the sites (opt-in).</param>
 /// <param name="ClipboardClearSeconds">Seconds after which copied values are cleared, null for the default, 0 for off.</param>
 /// <param name="CheckBreaches">Whether the web vault checks passwords against "Have I Been Pwned" (opt-in).</param>
+/// <param name="Language">The interface language (de, en, fr), or null to follow the browser.</param>
 public sealed record UserDto(
     string Id,
     string Username,
@@ -117,7 +120,8 @@ public sealed record UserDto(
     string? Email = null,
     bool ShowFavicons = false,
     int? ClipboardClearSeconds = null,
-    bool CheckBreaches = false);
+    bool CheckBreaches = false,
+    string? Language = null);
 
 /// <summary>Represents vault file metadata without the encrypted file contents.</summary>
 /// <param name="Id">The stable identifier for this resource.</param>
@@ -170,6 +174,10 @@ public sealed record UpdateSettingsRequest(int? AutoLockMinutes, bool? ShowFavic
 /// <summary>Carries a replacement email address for the signed-in account.</summary>
 /// <param name="Email">The account's contact email address.</param>
 public sealed record UpdateEmailRequest(string? Email);
+
+/// <summary>Changes the interface language of the signed-in account.</summary>
+/// <param name="Language">de, en or fr, or null to follow the browser.</param>
+public sealed record UpdateLanguageRequest(string? Language);
 
 /// <summary>Carries the setup token and credentials for creating the first administrator.</summary>
 /// <param name="SetupToken">The one-time token authorizing first administrator setup.</param>

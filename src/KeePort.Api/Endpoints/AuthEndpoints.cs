@@ -247,6 +247,32 @@ public static class AuthEndpoints
 
         group.MapPut("/email", UpdateEmail);
 
+        // Changes the interface language of the signed-in account; null follows the browser.
+        // <param name="request">The new language.</param>
+        // <param name="context">The current HTTP request and response context.</param>
+        // <param name="db">The SQLite store for KeePort metadata.</param>
+        // <param name="audit">The audit log that records the change.</param>
+        group.MapPut("/language", (UpdateLanguageRequest request, HttpContext context, KeePortDb db, AuditLog audit) =>
+        {
+            if (ApiAuth.RequireAuthenticated(context) is { } unauthorized)
+            {
+                return unauthorized;
+            }
+            var language = string.IsNullOrWhiteSpace(request.Language) ? null : request.Language.Trim().ToLowerInvariant();
+            if (language is not null and not ("de" or "en" or "fr"))
+            {
+                return Results.Json(new ErrorResponse("invalid_language", "Language must be de, en or fr, or empty to follow the browser."), statusCode: StatusCodes.Status400BadRequest);
+            }
+            var user = ApiAuth.GetUser(context)!;
+            db.UpdateUserLanguage(user.Id, language);
+            if (!string.Equals(user.Language, language, StringComparison.Ordinal))
+            {
+                audit.Record(context, AuditActions.SettingsChanged, targetType: "user", targetId: user.Id, targetName: user.Username,
+                    details: $"Language {user.Language ?? "automatic"} → {language ?? "automatic"}");
+            }
+            return Results.Ok(ToDto(db.GetUserById(user.Id)!));
+        });
+
         // Lists the latest sign-in attempts on the signed-in account, so its owner can spot sign-ins that were not theirs.
         // <param name="context">The current HTTP request and response context.</param>
         // <param name="db">The SQLite store for KeePort metadata.</param>
@@ -318,7 +344,7 @@ public static class AuthEndpoints
     /// <param name="user">The user account associated with the operation.</param>
     internal static UserDto ToDto(UserRecord user)
     {
-        return new UserDto(user.Id, user.Username, user.Role.ToString().ToLowerInvariant(), user.Disabled, user.CreatedAt, user.LastLoginAt, user.AutoLockMinutes, user.Email, user.ShowFavicons, user.ClipboardClearSeconds, user.CheckBreaches);
+        return new UserDto(user.Id, user.Username, user.Role.ToString().ToLowerInvariant(), user.Disabled, user.CreatedAt, user.LastLoginAt, user.AutoLockMinutes, user.Email, user.ShowFavicons, user.ClipboardClearSeconds, user.CheckBreaches, user.Language);
     }
 
     /// <summary>

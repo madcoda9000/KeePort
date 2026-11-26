@@ -4,14 +4,18 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import type { DataStorage } from '@/lib/api';
+import messages from '@/i18n/data-storage';
+import { translate } from '@shared/i18n/core';
+import { useT } from '@shared/i18n/react';
 
 const MOVE_GUIDE = 'https://github.com/madcoda9000/KeePort/blob/main/docs/DEPLOYMENT.md#move-data-from-the-docker-volume-to-a-folder';
 
-const KIND_LABELS: Record<DataStorage['kind'], string> = {
-  hostFolder: 'Host folder',
-  dockerVolume: 'Docker volume',
-  notMounted: 'Not mounted',
-  unknown: 'Unknown'
+/** Catalog keys of the storage kinds. */
+const KIND_LABELS: Record<DataStorage['kind'], keyof typeof messages.en> = {
+  hostFolder: 'kindHostFolder',
+  dockerVolume: 'kindDockerVolume',
+  notMounted: 'kindNotMounted',
+  unknown: 'kindUnknown'
 };
 
 /**
@@ -20,10 +24,10 @@ const KIND_LABELS: Record<DataStorage['kind'], string> = {
  */
 function warningText(storage: DataStorage) {
   if (storage.kind === 'dockerVolume') {
-    return `Your data is stored in the Docker volume ${storage.volumeName ?? ''}. NAS backup tools such as Hyper Backup or Hybrid Backup Sync don't include it. Set KEEPORT_DATA to a folder to back it up with them.`;
+    return translate(messages, 'dockerVolumeWarning', { volume: storage.volumeName ?? '' });
   }
   if (storage.kind === 'notMounted') {
-    return `${storage.dataDir} is not mounted: all data is lost when the container is recreated. Mount a folder via KEEPORT_DATA.`;
+    return translate(messages, 'notMountedWarning', { dataDir: storage.dataDir });
   }
   return null;
 }
@@ -33,20 +37,21 @@ function warningText(storage: DataStorage) {
  * @param props - The detected storage and a callback that opens the settings page.
  */
 export function DataStorageBanner({ storage, onOpenSettings }: { storage: DataStorage; onOpenSettings: () => void }) {
+  const t = useT(messages);
   const text = warningText(storage);
   if (!text) return null;
   return (
     <Alert variant="destructive">
       <TriangleAlertIcon />
-      <AlertTitle>Your data may not be backed up</AlertTitle>
+      <AlertTitle>{t('bannerTitle')}</AlertTitle>
       <AlertDescription>
         <p>{text}</p>
         <p className="flex flex-wrap gap-x-4 gap-y-1">
           <Button type="button" variant="link" className="h-auto p-0 text-inherit underline" onClick={onOpenSettings}>
-            Show storage details
+            {t('showDetails')}
           </Button>
           <a className="underline underline-offset-4" href={MOVE_GUIDE} target="_blank" rel="noreferrer">
-            How to move the data to a folder
+            {t('moveGuide')}
           </a>
         </p>
       </AlertDescription>
@@ -59,43 +64,43 @@ export function DataStorageBanner({ storage, onOpenSettings }: { storage: DataSt
  * @param props - The detected storage, or null while it is loading or unavailable.
  */
 export function DataStoragePanel({ storage }: { storage: DataStorage | null }) {
+  const t = useT(messages);
   const text = storage ? warningText(storage) : null;
   return (
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <HardDriveIcon className="size-4" /> Data storage
+          <HardDriveIcon className="size-4" /> {t('title')}
         </CardTitle>
-        <CardDescription>Where KeePort keeps its database, vault files and admin certificate.</CardDescription>
+        <CardDescription>{t('description')}</CardDescription>
       </CardHeader>
       <CardContent className="grid gap-4">
         {!storage ? (
-          <p className="text-sm text-muted-foreground">Loading…</p>
+          <p className="text-sm text-muted-foreground">{t('loading')}</p>
         ) : (
           <>
             <dl className="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-[max-content_1fr]">
-              <dt className="text-muted-foreground">Storage</dt>
+              <dt className="text-muted-foreground">{t('storage')}</dt>
               <dd>
-                <Badge variant={storage.needsAttention ? 'destructive' : 'secondary'}>{KIND_LABELS[storage.kind]}</Badge>
+                <Badge variant={storage.needsAttention ? 'destructive' : 'secondary'}>{t(KIND_LABELS[storage.kind])}</Badge>
               </dd>
-              <dt className="text-muted-foreground">Inside the container</dt>
+              <dt className="text-muted-foreground">{t('insideContainer')}</dt>
               <dd className="font-mono text-xs">{storage.dataDir}</dd>
               {storage.source && (
                 <>
-                  <dt className="text-muted-foreground">On the host</dt>
+                  <dt className="text-muted-foreground">{t('onHost')}</dt>
                   <dd className="font-mono text-xs break-all">{storage.source}</dd>
                 </>
               )}
             </dl>
             {storage.kind === 'hostFolder' && (
               <p className="text-sm text-muted-foreground">
-                Include this folder in your backups. On a NAS the path is shown as the storage system sees it, e.g.{' '}
-                <code>/@syno/docker/keeport-data</code> on Synology for <code>/volume1/docker/keeport-data</code>.
+                {t.rich('hostFolderHint', { syno: <code>/@syno/docker/keeport-data</code>, volume: <code>/volume1/docker/keeport-data</code> })}
               </p>
             )}
             {storage.kind === 'unknown' && (
               <p className="text-sm text-muted-foreground">
-                KeePort is not running in Docker, or the mount table is unavailable. Back up {storage.dataDir}.
+                {t('unknownHint', { dataDir: storage.dataDir })}
               </p>
             )}
             {text && (
@@ -104,7 +109,7 @@ export function DataStoragePanel({ storage }: { storage: DataStorage | null }) {
                 <AlertDescription>
                   <p>{text}</p>
                   <a className="underline underline-offset-4" href={MOVE_GUIDE} target="_blank" rel="noreferrer">
-                    How to move the data to a folder
+                    {t('moveGuide')}
                   </a>
                 </AlertDescription>
               </Alert>

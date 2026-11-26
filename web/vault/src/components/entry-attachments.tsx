@@ -15,6 +15,8 @@ import { Button } from '@/components/ui/button';
 import { Field, FieldDescription, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { addAttachment, attachmentSize, downloadAttachment, type AttachmentDraft } from '@/lib/attachments';
+import messages from '@/i18n/entry-attachments';
+import { useT } from '@shared/i18n/react';
 
 type EntryAttachmentsProps = {
   draft: AttachmentDraft;
@@ -29,6 +31,8 @@ type EntryAttachmentsProps = {
  * @param props - The attachment draft, edit permissions, save state, and callbacks for changes or errors.
  */
 export function EntryAttachments({ draft, canWrite, disabled, onChange, onError }: EntryAttachmentsProps) {
+  const t = useT(messages);
+
   /**
    * Stages the selected attachment and clears the picker so it can be reused.
    * @param event - The file picker change event containing the selected attachment.
@@ -40,14 +44,14 @@ export function EntryAttachments({ draft, canWrite, disabled, onChange, onError 
     try {
       onChange(addAttachment(draft, file));
     } catch (error) {
-      onError(error instanceof Error ? error.message : 'Unable to add attachment.');
+      onError(error instanceof Error ? error.message : t('addFailed'));
     }
   }
 
   return (
     <section aria-labelledby="entry-attachments-heading" className="grid gap-3 rounded-lg border p-3">
-      <h3 id="entry-attachments-heading" className="text-sm font-medium">Attachments</h3>
-      {!draft.size && <p className="text-sm text-muted-foreground">No attachments.</p>}
+      <h3 id="entry-attachments-heading" className="text-sm font-medium">{t('title')}</h3>
+      {!draft.size && <p className="text-sm text-muted-foreground">{t('empty')}</p>}
       {draft.size > 0 && (
         <ul className="divide-y">
           {Array.from(draft, /**
@@ -57,14 +61,14 @@ export function EntryAttachments({ draft, canWrite, disabled, onChange, onError 
             <li key={name} className="flex min-w-0 items-center gap-2 py-2">
               <div className="min-w-0 flex-1">
                 <p className="wrap-break-word text-sm font-medium">{name}</p>
-                <p className="text-xs text-muted-foreground">{attachmentSize(attachment).toLocaleString()} bytes</p>
+                <p className="text-xs text-muted-foreground">{t('bytes', { count: attachmentSize(attachment) })}</p>
               </div>
               <Button
                 type="button"
                 variant="outline"
                 size="icon-sm"
-                aria-label={`Download ${name}`}
-                title="Download attachment"
+                aria-label={t('downloadNamed', { name })}
+                title={t('download')}
                 onClick={/** Starts the browser download for this attachment. */ () => downloadAttachment(name, attachment)}
               >
                 <DownloadIcon />
@@ -72,19 +76,19 @@ export function EntryAttachments({ draft, canWrite, disabled, onChange, onError 
               {canWrite && (
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
-                    <Button type="button" variant="ghost" size="icon-sm" disabled={disabled} aria-label={`Remove ${name}`} title="Remove attachment">
+                    <Button type="button" variant="ghost" size="icon-sm" disabled={disabled} aria-label={t('removeNamed', { name })} title={t('remove')}>
                       <Trash2Icon />
                     </Button>
                   </AlertDialogTrigger>
                   <AlertDialogContent>
                     <AlertDialogHeader>
-                      <AlertDialogTitle>Remove attachment?</AlertDialogTitle>
+                      <AlertDialogTitle>{t('removeTitle')}</AlertDialogTitle>
                       <AlertDialogDescription className="break-all">
-                        Saving will remove “{name}” from the current entry. Saved attachments may remain in entry history.
+                        {t('removeDescription', { name })}
                       </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
-                      <AlertDialogCancel type="button">Cancel</AlertDialogCancel>
+                      <AlertDialogCancel type="button">{t('cancel')}</AlertDialogCancel>
                       <AlertDialogAction
                         type="button"
                         variant="destructive"
@@ -95,7 +99,7 @@ export function EntryAttachments({ draft, canWrite, disabled, onChange, onError 
                           onChange(updated);
                         }}
                       >
-                        Remove
+                        {t('removeConfirm')}
                       </AlertDialogAction>
                     </AlertDialogFooter>
                   </AlertDialogContent>
@@ -107,10 +111,10 @@ export function EntryAttachments({ draft, canWrite, disabled, onChange, onError 
       )}
       {canWrite && (
         <Field>
-          <FieldLabel htmlFor="entry-attachment-file">Add attachment</FieldLabel>
+          <FieldLabel htmlFor="entry-attachment-file">{t('add')}</FieldLabel>
           <Input id="entry-attachment-file" type="file" disabled={disabled} onChange={handleAdd} aria-describedby="entry-attachments-help" />
           <FieldDescription id="entry-attachments-help">
-            Up to 10 MiB per file. Attachments increase the encrypted vault size. Save the entry to apply changes.
+            {t('help')}
           </FieldDescription>
         </Field>
       )}

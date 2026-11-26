@@ -1,5 +1,7 @@
 import * as kdbxweb from 'kdbxweb';
 import { readCustomFields, readExpiry } from './fields.ts';
+import messages from '../i18n/lib-history.ts';
+import { translate } from '../../../shared/i18n/core.ts';
 
 /** One state of an entry in its history: the current state or a saved earlier version. */
 export interface HistoryItem {
@@ -22,13 +24,14 @@ function text(value: kdbxweb.KdbxEntryField | undefined): string {
   return value instanceof kdbxweb.ProtectedValue ? value.getText() : String(value);
 }
 
-const STANDARD_LABELS: readonly [string, string][] = [
-  ['Title', 'Title'],
-  ['UserName', 'Username'],
-  ['Password', 'Password'],
-  ['URL', 'Website'],
-  ['Notes', 'Notes'],
-  ['otp', 'TOTP']
+/** The standard fields of an entry with the catalog key of their on-screen name; TOTP keeps its name in every language. */
+const STANDARD_LABELS: readonly [string, keyof typeof messages.en | null][] = [
+  ['Title', 'title'],
+  ['UserName', 'username'],
+  ['Password', 'password'],
+  ['URL', 'website'],
+  ['Notes', 'notes'],
+  ['otp', null]
 ];
 
 /**
@@ -39,7 +42,7 @@ const STANDARD_LABELS: readonly [string, string][] = [
 export function describeChanges(older: kdbxweb.KdbxEntry, newer: kdbxweb.KdbxEntry): string[] {
   const changes: string[] = [];
   for (const [field, label] of STANDARD_LABELS) {
-    if (text(older.fields.get(field)) !== text(newer.fields.get(field))) changes.push(label);
+    if (text(older.fields.get(field)) !== text(newer.fields.get(field))) changes.push(label ? translate(messages, label) : 'TOTP');
   }
   const before = new Map(readCustomFields(older).map(/**
    * Maps a custom field to its value.
@@ -56,10 +59,10 @@ export function describeChanges(older: kdbxweb.KdbxEntry, newer: kdbxweb.KdbxEnt
    * Summarizes the attachment names of a state.
    * @param entry - One state.
    */ (entry: kdbxweb.KdbxEntry) => [...entry.binaries.keys()].sort().join('\n');
-  if (binaryKey(older) !== binaryKey(newer)) changes.push('Attachments');
-  if ([...older.tags].sort().join('\n') !== [...newer.tags].sort().join('\n')) changes.push('Tags');
-  if (readExpiry(older) !== readExpiry(newer)) changes.push('Expiry');
-  if (older.icon !== newer.icon || older.customIcon?.id !== newer.customIcon?.id) changes.push('Icon');
+  if (binaryKey(older) !== binaryKey(newer)) changes.push(translate(messages, 'attachments'));
+  if ([...older.tags].sort().join('\n') !== [...newer.tags].sort().join('\n')) changes.push(translate(messages, 'tags'));
+  if (readExpiry(older) !== readExpiry(newer)) changes.push(translate(messages, 'expiry'));
+  if (older.icon !== newer.icon || older.customIcon?.id !== newer.customIcon?.id) changes.push(translate(messages, 'icon'));
   return changes;
 }
 
@@ -76,7 +79,7 @@ export function listHistory(entry: kdbxweb.KdbxEntry): HistoryItem[] {
    */ (version, position) => ({
     index: position < entry.history.length ? position : null,
     modified: version.times.lastModTime,
-    title: text(version.fields.get('Title')) || 'Untitled',
+    title: text(version.fields.get('Title')) || translate(messages, 'untitled'),
     changes: position === 0 ? null : describeChanges(states[position - 1], version),
     version
   }));
@@ -151,7 +154,7 @@ export function backupEntry(db: kdbxweb.Kdbx, entry: kdbxweb.KdbxEntry) {
  */
 export function restoreVersion(db: kdbxweb.Kdbx, entry: kdbxweb.KdbxEntry, index: number) {
   const version = entry.history[index];
-  if (!version) throw new Error('This version no longer exists. Reload the vault and try again.');
+  if (!version) throw new Error(translate(messages, 'versionMissing'));
   const uuid = entry.uuid;
   const created = entry.times.creationTime;
   entry.pushHistory();
@@ -170,7 +173,7 @@ export function restoreVersion(db: kdbxweb.Kdbx, entry: kdbxweb.KdbxEntry, index
  * @param index - The index of the version in `entry.history`.
  */
 export function deleteVersion(entry: kdbxweb.KdbxEntry, index: number) {
-  if (!entry.history[index]) throw new Error('This version no longer exists. Reload the vault and try again.');
+  if (!entry.history[index]) throw new Error(translate(messages, 'versionMissing'));
   entry.removeHistory(index);
 }
 
@@ -185,5 +188,5 @@ export function requireEntry(db: kdbxweb.Kdbx, entryId: string): kdbxweb.KdbxEnt
       if (entry.uuid.id === entryId) return entry;
     }
   }
-  throw new Error('The entry no longer exists. Reload the vault and try again.');
+  throw new Error(translate(messages, 'entryMissing'));
 }

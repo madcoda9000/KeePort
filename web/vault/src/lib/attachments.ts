@@ -1,4 +1,6 @@
 import { KdbxBinaries, ProtectedValue, type Kdbx, type KdbxEntry } from 'kdbxweb';
+import messages from '../i18n/lib-attachments.ts';
+import { translate } from '../../../shared/i18n/core.ts';
 
 type SavedAttachment = KdbxEntry['binaries'] extends Map<string, infer Binary> ? Binary : never;
 export type Attachment = SavedAttachment | File;
@@ -21,8 +23,8 @@ export function attachmentSize(attachment: Attachment): number {
  * @param file - The file the user selected for addition.
  */
 export function addAttachment(draft: AttachmentDraft, file: File): AttachmentDraft {
-  if (file.size > MAX_ATTACHMENT_BYTES) throw new Error('Each new attachment must be 10 MiB or smaller.');
-  if (draft.has(file.name)) throw new Error('An attachment with that name already exists. Remove it or rename the new file first.');
+  if (file.size > MAX_ATTACHMENT_BYTES) throw new Error(translate(messages, 'tooLarge'));
+  if (draft.has(file.name)) throw new Error(translate(messages, 'duplicate'));
   const updated = new Map(draft);
   updated.set(file.name, file);
   return updated;

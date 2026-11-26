@@ -1,4 +1,6 @@
 import { COMMON_PASSWORDS } from './wordlists/common-passwords.ts';
+import messages from '../i18n/lib-strength.ts';
+import { translate } from '../../../shared/i18n/core.ts';
 
 /** Passwords below this estimate count as weak in the security report. */
 export const WEAK_PASSWORD_BITS = 60;
@@ -72,7 +74,7 @@ function isBasedOnCommon(password: string): boolean {
  * @param password - The password to rate.
  */
 export function estimateStrength(password: string): StrengthEstimate {
-  if (!password) return { bits: 0, weak: true, hints: ['Empty'] };
+  if (!password) return { bits: 0, weak: true, hints: [translate(messages, 'empty')] };
   const hints = new Set<string>();
   const perChar = Math.log2(poolSize(password));
   const lower = password.toLowerCase();
@@ -80,19 +82,19 @@ export function estimateStrength(password: string): StrengthEstimate {
   for (let i = 0; i < lower.length; i += 1) {
     const pattern = i > 0 ? continuesPattern(lower[i - 1], lower[i]) : null;
     if (pattern) {
-      hints.add(pattern === 'repeat' ? 'Repeated characters' : pattern === 'sequence' ? 'Sequence' : 'Keyboard pattern');
+      hints.add(translate(messages, pattern === 'repeat' ? 'repeated' : pattern === 'sequence' ? 'sequence' : 'keyboard'));
       bits += 1;
     } else {
       bits += perChar;
     }
   }
   for (const year of password.match(/(?:19|20)\d{2}/g) ?? []) {
-    hints.add('Contains a year');
+    hints.add(translate(messages, 'year'));
     bits -= Math.max(0, year.length * perChar - 7);
   }
-  if (password.length < 12) hints.add('Shorter than 12 characters');
+  if (password.length < 12) hints.add(translate(messages, 'short'));
   const common = isBasedOnCommon(password);
-  if (common) hints.add('Common password');
+  if (common) hints.add(translate(messages, 'common'));
   const rounded = Math.max(0, Math.floor(common ? Math.min(bits, 20) : bits));
   return { bits: rounded, weak: common || rounded < WEAK_PASSWORD_BITS, hints: [...hints] };
 }

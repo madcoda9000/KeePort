@@ -20,6 +20,8 @@ import { backupEntry } from './history.ts';
 import { passwordChangedAt } from './security-report.ts';
 import { customIconUrl } from './icons.ts';
 import { storedOtpValue } from './totp.ts';
+import messages from '../i18n/lib-kdbx.ts';
+import { translate } from '../../../shared/i18n/core.ts';
 
 let argon2Ready: Promise<void> | null = null;
 
@@ -248,7 +250,7 @@ export async function reopenVault(bytes: ArrayBuffer, credentials: kdbxweb.KdbxC
     return await kdbxweb.Kdbx.load(bytes, credentials);
   } catch (error) {
     if (error instanceof kdbxweb.KdbxError && error.code === kdbxweb.Consts.ErrorCodes.InvalidKey) {
-      throw new Error('The vault on the server now uses a different master password or key file. Lock the vault and unlock it again.', { cause: error });
+      throw new Error(translate(messages, 'credentialsChanged'), { cause: error });
     }
     throw error;
   }
@@ -313,7 +315,7 @@ export function createEntry(db: kdbxweb.Kdbx, edits: EntryEdits, groupId?: strin
        * @param item - One template of the database.
        */ (item) => item.id === edits.templateId)
     : undefined;
-  if (edits.templateId && !template) throw new Error('The template no longer exists. Reload the vault and try again.');
+  if (edits.templateId && !template) throw new Error(translate(messages, 'templateMissing'));
   const entry = db.createEntry(group);
   if (template) linkTemplate(entry, template);
   entry.fields.set('Title', edits.title);
@@ -420,7 +422,7 @@ export async function createKdbxBytes(name: string, password: string): Promise<U
   const db = kdbxweb.Kdbx.create(credentials, name);
   db.setKdf(kdbxweb.Consts.KdfId.Argon2id);
   const kdf = db.header.kdfParameters;
-  if (!kdf) throw new Error('Missing KDBX key derivation parameters.');
+  if (!kdf) throw new Error(translate(messages, 'missingKdf'));
   kdf.set('M', kdbxweb.VarDictionary.ValueType.UInt64, new kdbxweb.Int64(64 * 1024 * 1024));
   kdf.set('I', kdbxweb.VarDictionary.ValueType.UInt64, new kdbxweb.Int64(3));
   kdf.set('P', kdbxweb.VarDictionary.ValueType.UInt32, 4);

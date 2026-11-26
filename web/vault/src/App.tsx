@@ -79,6 +79,16 @@ import type { BreachCheckState } from '@/components/security-report';
 import { SecurityReportTiles } from '@/components/security-report';
 import { PasswordGenerator } from '@/components/password-generator';
 import { RecentSignIns } from '@/components/recent-sign-ins';
+import { applyAccountLanguage, LanguageSetting } from '@shared/i18n/language-select';
+import { applyPreference, formatDateTime, formatNumber, formatRelative as describeRelative, translate, type LanguagePreference } from '@shared/i18n/core';
+import languageMessages from '@shared/i18n/messages/language';
+import { useT } from '@shared/i18n/react';
+import entriesText from '@/i18n/app-entries';
+import entryDialogText from '@/i18n/app-entry-dialog';
+import messagesText from '@/i18n/app-messages';
+import profileText from '@/i18n/app-profile';
+import sidebarText from '@/i18n/app-sidebar';
+import unlockText from '@/i18n/app-unlock';
 import { openableUrl } from './lib/icons';
 import { deleteEntries, emptyRecycleBin } from './lib/entry-actions';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -170,17 +180,17 @@ const ENTRY_COLUMNS: readonly TableColumn<EntryView>[] = [
    * Sorts by entry title.
    * @param entry - The unlocked entry supplying this column's sort value.
    */
-  { id: 'title', label: 'Title', sortValue: (entry) => entry.title },
+  { id: 'title', /** The column label in the current language. */ get label() { return translate(entriesText, 'colTitle'); }, sortValue: (entry) => entry.title },
   /**
    * Sorts by username, treating a blank username as missing.
    * @param entry - The unlocked entry supplying this column's sort value.
    */
-  { id: 'username', label: 'Username', sortValue: (entry) => entry.username || null },
+  { id: 'username', /** The column label in the current language. */ get label() { return translate(entriesText, 'colUsername'); }, sortValue: (entry) => entry.username || null },
   /**
    * Sorts by whether a password is set, without comparing password contents.
    * @param entry - The unlocked entry supplying this column's sort value.
    */
-  { id: 'password', label: 'Password', sortValue: (entry) => Number(Boolean(entry.password)), className: 'hidden sm:table-cell' },
+  { id: 'password', /** The column label in the current language. */ get label() { return translate(entriesText, 'colPassword'); }, sortValue: (entry) => Number(Boolean(entry.password)), className: 'hidden sm:table-cell' },
   /**
    * Sorts by whether TOTP is configured.
    * @param entry - The unlocked entry supplying this column's sort value.
@@ -190,12 +200,12 @@ const ENTRY_COLUMNS: readonly TableColumn<EntryView>[] = [
    * Sorts by the time of the last change, not by the displayed text.
    * @param entry - The unlocked entry supplying this column's sort value.
    */
-  { id: 'modified', label: 'Modified', sortValue: (entry) => entry.modified?.getTime() ?? null, className: 'hidden lg:table-cell' },
+  { id: 'modified', /** The column label in the current language. */ get label() { return translate(entriesText, 'colModified'); }, sortValue: (entry) => entry.modified?.getTime() ?? null, className: 'hidden lg:table-cell' },
   /**
    * Sorts by website URL, treating a blank URL as missing.
    * @param entry - The unlocked entry supplying this column's sort value.
    */
-  { id: 'website', label: 'Website', sortValue: (entry) => entry.url || null, className: 'hidden md:table-cell' }
+  { id: 'website', /** The column label in the current language. */ get label() { return translate(entriesText, 'colWebsite'); }, sortValue: (entry) => entry.url || null, className: 'hidden md:table-cell' }
 ];
 
 /**
@@ -216,21 +226,11 @@ function StatLabel({ icon, accent, children }: { icon: ReactNode; accent: Accent
  * @param size - The file size in bytes.
  */
 function formatBytes(size: number) {
-  if (size < 1024) return `${size} B`;
-  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
-  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+  const oneDecimal = { minimumFractionDigits: 1, maximumFractionDigits: 1 };
+  if (size < 1024) return translate(entriesText, 'sizeBytes', { size });
+  if (size < 1024 * 1024) return translate(entriesText, 'sizeKb', { size: formatNumber(size / 1024, oneDecimal) });
+  return translate(entriesText, 'sizeMb', { size: formatNumber(size / (1024 * 1024), oneDecimal) });
 }
-
-/**
- * Formats a vault timestamp or retains the original text if invalid.
- * @param value - The timestamp string to format for the current locale.
- */
-function formatDate(value: string) {
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
-}
-
-const relativeTime = new Intl.RelativeTimeFormat('en', { numeric: 'auto' });
 
 /**
  * Checks whether a click hit a control inside a table row, which handles the click itself.
@@ -247,12 +247,7 @@ function isInteractive(target: EventTarget | null) {
  */
 function formatRelative(date: Date | undefined, now: number) {
   if (!date || Number.isNaN(date.getTime())) return '—';
-  const seconds = (date.getTime() - now) / 1000;
-  const units: [Intl.RelativeTimeFormatUnit, number][] = [['year', 31536000], ['month', 2592000], ['week', 604800], ['day', 86400], ['hour', 3600], ['minute', 60]];
-  for (const [unit, size] of units) {
-    if (Math.abs(seconds) >= size) return relativeTime.format(Math.round(seconds / size), unit);
-  }
-  return 'just now';
+  return describeRelative(date, new Date(now));
 }
 
 /**
@@ -355,6 +350,12 @@ export default function App() {
   const [password, setPassword] = useState('');
   const [keyFile, setKeyFile] = useState<File | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const tLanguage = useT(languageMessages);
+  const t = useT(entriesText);
+  const tEntry = useT(entryDialogText);
+  const tMsg = useT(messagesText);
+  const tProfile = useT(profileText);
+  const tUnlock = useT(unlockText);
   const [message, setMessage] = useState<Message>(null);
   const [theme, setTheme] = useState(getTheme);
   const [autoLockMinutes, setAutoLockMinutes] = useState(DEFAULT_AUTO_LOCK_MINUTES);
@@ -406,9 +407,9 @@ export default function App() {
    */
   const passwordWarning = (entry: EntryView) => {
     const parts = [
-      report.issues.weak.has(entry.id) ? 'Weak password' : '',
-      report.reuseCounts.has(entry.id) ? `Used in ${report.reuseCounts.get(entry.id)} entries` : '',
-      report.breachCounts.has(entry.id) ? `Found in data breaches (${report.breachCounts.get(entry.id)?.toLocaleString()} times)` : ''
+      report.issues.weak.has(entry.id) ? t('weakPassword') : '',
+      report.reuseCounts.has(entry.id) ? t('reusedPassword', { count: report.reuseCounts.get(entry.id) ?? 0 }) : '',
+      report.breachCounts.has(entry.id) ? t('breachedPassword', { count: report.breachCounts.get(entry.id) ?? 0 }) : ''
     ].filter(Boolean);
     return parts.length ? parts.join(' · ') : null;
   };
@@ -514,7 +515,7 @@ export default function App() {
     setTotp(null);
     setPassword('');
     setKeyFile(null);
-    if (notify) setMessage({ kind: 'notice', text: 'Vault locked. Secrets were discarded from this browser tab.' });
+    if (notify) setMessage({ kind: 'notice', text: tUnlock('lockedNotice') });
   }
 
   /**
@@ -537,7 +538,7 @@ export default function App() {
     event.preventDefault();
     if (!selectedFile || busy) return;
     if (!password && !keyFile) {
-      setMessage({ kind: 'error', text: 'Enter the master password or select a key file.' });
+      setMessage({ kind: 'error', text: tUnlock('missingCredentials') });
       return;
     }
     setBusy('unlock');
@@ -558,9 +559,9 @@ export default function App() {
       setEdits(null);
       setPassword('');
       setKeyFile(null);
-      setMessage({ kind: 'notice', text: `Unlocked ${selectedFile.name}. Data stays in this browser only.` });
+      setMessage({ kind: 'notice', text: tUnlock('unlocked', { name: selectedFile.name }) });
     } catch (error) {
-      setMessage({ kind: 'error', text: errorText(error, 'Unable to unlock vault. Check the password and key file.') });
+      setMessage({ kind: 'error', text: errorText(error, tUnlock('unlockFailed')) });
     } finally {
       setBusy(null);
     }
@@ -579,7 +580,7 @@ export default function App() {
       const content = await api.getFileBytes(selectedFile.id);
       if (generation !== vaultGeneration.current) return;
       if (content.etag && content.etag === etag) {
-        setMessage({ kind: 'notice', text: 'The vault is already up to date.' });
+        setMessage({ kind: 'notice', text: tMsg('upToDate') });
         return;
       }
       const loaded = new Uint8Array(content.bytes.slice(0));
@@ -601,7 +602,7 @@ export default function App() {
        * Checks whether a selected entry still exists.
        * @param id - One selected entry ID.
        */ (id) => ids.has(id))));
-      setMessage({ kind: 'notice', text: 'Vault reloaded. You now see the latest saved version.' });
+      setMessage({ kind: 'notice', text: tMsg('reloaded') });
       try {
         await refreshFiles();
       } catch {
@@ -609,7 +610,7 @@ export default function App() {
       }
     } catch (error) {
       if (generation !== vaultGeneration.current) return;
-      setMessage({ kind: 'error', text: errorText(error, 'Unable to reload the vault.') });
+      setMessage({ kind: 'error', text: errorText(error, tMsg('reloadFailed')) });
     } finally {
       setBusy(null);
     }
@@ -650,7 +651,7 @@ export default function App() {
     event.preventDefault();
     if (!db || !selectedFile || !edits || busy) return;
     if (!canWrite) {
-      setMessage({ kind: 'error', text: 'This vault is read-only for your account.' });
+      setMessage({ kind: 'error', text: tMsg('readOnly') });
       return;
     }
     const generation = vaultGeneration.current;
@@ -661,7 +662,7 @@ export default function App() {
        * Writes the encrypted revision only while this vault is still unlocked.
        * @param bytes - The serialized, encrypted KDBX database.
        */ async (bytes) => {
-        if (generation !== vaultGeneration.current) throw new Error('The vault locked before saving.');
+        if (generation !== vaultGeneration.current) throw new Error(tMsg('lockedBeforeSave'));
         const result = await api.putFileBytes(selectedFile.id, bytes, etag);
         savedBytes.current = bytes;
         return result;
@@ -684,18 +685,18 @@ export default function App() {
       refreshView(db);
       setSelectedEntry(refreshed);
       setEdits(refreshed ? entryDraft(refreshed) : null);
-      setMessage({ kind: 'notice', text: 'Vault saved.' });
+      setMessage({ kind: 'notice', text: tMsg('saved') });
     } catch (error) {
       if (generation !== vaultGeneration.current) return;
       if (error instanceof ApiError && error.status === 409) {
-        setMessage({ kind: 'error', text: `${error.message} Close and reopen the vault to load the latest version.` });
+        setMessage({ kind: 'error', text: tMsg('saveConflict', { error: error.message }) });
         try {
           await refreshFiles();
         } catch {
           /* keep the original conflict message visible */
         }
       } else {
-        setMessage({ kind: 'error', text: errorText(error, 'Unable to save vault.') });
+        setMessage({ kind: 'error', text: errorText(error, tMsg('saveFailed')) });
       }
     } finally {
       setBusy(null);
@@ -712,7 +713,7 @@ export default function App() {
     const saved = savedBytes.current;
     if (!db || !selectedFile || !saved || busy) return false;
     if (!canWrite) {
-      setMessage({ kind: 'error', text: 'This vault is read-only for your account.' });
+      setMessage({ kind: 'error', text: tMsg('readOnly') });
       return false;
     }
     const generation = vaultGeneration.current;
@@ -723,7 +724,7 @@ export default function App() {
        * Writes the encrypted revision only while this vault is still unlocked.
        * @param encrypted - The serialized, encrypted KDBX database.
        */ (encrypted) => {
-        if (generation !== vaultGeneration.current) throw new Error('The vault locked before saving.');
+        if (generation !== vaultGeneration.current) throw new Error(tMsg('lockedBeforeSave'));
         return api.putFileBytes(selectedFile.id, encrypted, etag);
       });
       if (generation !== vaultGeneration.current) return false;
@@ -752,14 +753,14 @@ export default function App() {
         }
       }
       if (cause instanceof ApiError && cause.status === 409) {
-        setMessage({ kind: 'error', text: `${cause.message} Your change was not saved. Close and reopen the vault to load the latest version.` });
+        setMessage({ kind: 'error', text: tMsg('changeConflict', { error: cause.message }) });
         try {
           await refreshFiles();
         } catch {
           /* keep the original conflict message visible */
         }
       } else {
-        setMessage({ kind: 'error', text: `${errorText(cause, 'Unable to save vault.')} Your change was not saved.` });
+        setMessage({ kind: 'error', text: tMsg('changeFailed', { error: errorText(cause, tMsg('saveFailed')) }) });
       }
       return false;
     } finally {
@@ -773,7 +774,7 @@ export default function App() {
    * @param name - The name typed by the user.
    */
   function validateFolderName(request: FolderNameRequest, name: string): string | null {
-    if (!db) return 'The vault is locked.';
+    if (!db) return tMsg('vaultLocked');
     return request.mode === 'create'
       ? folderNameError(db, request.parent.id, name)
       : folderNameError(db, request.folder.parentId ?? '', name, request.folder.id);
@@ -797,7 +798,7 @@ export default function App() {
           setFolderRequest(null);
           setFolderId(id);
           setSelection(new Set());
-          return `Folder “${name}” created.`;
+          return tMsg('folderCreated', { name });
         });
     } else {
       await runVaultChange(/**
@@ -805,7 +806,7 @@ export default function App() {
          * @param vault - The vault to change.
          */ (vault) => renameFolder(vault, request.folder.id, name), /** Closes the dialog and describes the rename. */ () => {
           setFolderRequest(null);
-          return `Folder renamed to “${name}”.`;
+          return tMsg('folderRenamed', { name });
         });
     }
   }
@@ -818,7 +819,7 @@ export default function App() {
     const ok = await runVaultChange(/**
      * Deletes the folder permanently.
      * @param vault - The vault to change.
-     */ (vault) => deleteFolder(vault, folder.id), /** Describes the deletion. */ () => `Folder “${folder.name}” deleted.`);
+     */ (vault) => deleteFolder(vault, folder.id), /** Describes the deletion. */ () => tMsg('folderDeleted', { name: folder.name }));
     setFolderToDelete(null);
     if (ok && folderId === folder.id) setFolderId(folder.parentId);
   }
@@ -860,11 +861,8 @@ export default function App() {
         setSelectedEntry(null);
         setEdits(null);
       }
-      const parts = [
-        result.recycled ? `${result.recycled} moved to the recycle bin` : '',
-        result.removed ? `${result.removed} deleted permanently` : ''
-      ].filter(Boolean);
-      return `${result.recycled + result.removed === 1 ? 'Entry' : 'Entries'}: ${parts.join(', ')}.`;
+      if (result.recycled && result.removed) return tMsg('entriesRecycledAndRemoved', { recycled: result.recycled, removed: result.removed });
+      return result.recycled ? tMsg('entriesRecycled', { count: result.recycled }) : tMsg('entriesRemoved', { count: result.removed });
     });
     if (!ok) setDeleteRequest(null);
   }
@@ -877,7 +875,7 @@ export default function App() {
      */ (count) => {
       setConfirmEmptyBin(false);
       setSelection(new Set());
-      return `Recycle bin emptied: ${count} ${count === 1 ? 'entry' : 'entries'} deleted permanently.`;
+      return tMsg('binEmptied', { count });
     });
     if (!ok) setConfirmEmptyBin(false);
   }
@@ -925,7 +923,7 @@ export default function App() {
       setBreach({ status: 'done', done: 0, total: 0, error: null });
     } catch (error) {
       if (generation !== vaultGeneration.current) return;
-      setBreach({ status: 'error', done: 0, total: 0, error: errorText(error, 'Have I Been Pwned could not be reached.') });
+      setBreach({ status: 'error', done: 0, total: 0, error: errorText(error, tMsg('breachUnreachable')) });
     }
   }
 
@@ -944,7 +942,7 @@ export default function App() {
     try {
       png = await iconToPng(await api.getFavicon(host));
     } catch (error) {
-      setMessage({ kind: 'error', text: errorText(error, 'The website icon could not be downloaded.') });
+      setMessage({ kind: 'error', text: errorText(error, tMsg('iconFailed')) });
       setBusy(null);
       return;
     }
@@ -959,7 +957,7 @@ export default function App() {
        */ (entry) => entry.id === id) ?? null : null;
       setSelectedEntry(refreshed);
       if (refreshed && edits) setEdits({ ...edits });
-      return `Website icon of ${host} saved in the vault. KeePass apps show it after their next sync.`;
+      return tMsg('iconSaved', { host });
     });
     if (!ok) {
       setSelectedEntry(null);
@@ -1003,7 +1001,7 @@ export default function App() {
       setSelectedEntry(refreshed);
       setEdits(refreshed ? entryDraft(refreshed) : null);
       if (kind === 'restore') setSheetTab('details');
-      return kind === 'restore' ? 'Version restored. The previous state is kept in the history.' : 'Version deleted from the history.';
+      return kind === 'restore' ? tMsg('versionRestored') : tMsg('versionDeleted');
     });
     if (!ok) {
       setSelectedEntry(null);
@@ -1027,7 +1025,7 @@ export default function App() {
      * @param changed - The number of entries that changed.
      */ (changed) => {
       setTagging(false);
-      return `Tags updated on ${changed} ${changed === 1 ? 'entry' : 'entries'}.`;
+      return tMsg('tagsUpdated', { count: changed });
     });
     if (!ok) setTagging(false);
   }
@@ -1048,7 +1046,7 @@ export default function App() {
      */ (moved) => {
       setMoving(false);
       setSelection(new Set());
-      return `Moved ${moved} ${moved === 1 ? 'entry' : 'entries'} to “${target?.name ?? 'folder'}”.`;
+      return tMsg('moved', { count: moved, folder: target?.name ?? tMsg('folderFallback') });
     });
     if (!ok) setMoving(false);
   }
@@ -1117,7 +1115,7 @@ export default function App() {
      */ (id) => selection.has(id)).length;
     return (
       <Checkbox
-        aria-label="Select all entries on this page"
+        aria-label={t('selectAllOnPage')}
         checked={ids.length > 0 && chosen === ids.length ? true : chosen > 0 ? 'indeterminate' : false}
         disabled={!ids.length || busy !== null}
         onCheckedChange={/**
@@ -1143,16 +1141,16 @@ export default function App() {
      * @param entry - One matching entry.
      */ (entry) => selection.has(entry.id));
     return (
-      <div role="region" aria-label="Selected entries" className="flex flex-wrap items-center gap-x-3 gap-y-2 border-y bg-muted/40 px-4 py-2 text-sm sm:px-6">
-        <span className="font-medium tabular-nums" aria-live="polite">{selection.size} selected</span>
+      <div role="region" aria-label={t('selectedRegion')} className="flex flex-wrap items-center gap-x-3 gap-y-2 border-y bg-muted/40 px-4 py-2 text-sm sm:px-6">
+        <span className="font-medium tabular-nums" aria-live="polite">{t('selectedCount', { count: selection.size })}</span>
         <Button size="sm" disabled={busy !== null} onClick={/** Opens the destination folder picker. */ () => setMoving(true)}>
-          <FolderInputIcon /> Move to…
+          <FolderInputIcon /> {t('moveTo')}
         </Button>
         <Button size="sm" variant="outline" disabled={busy !== null} onClick={/** Opens the tags dialog for the selection. */ () => setTagging(true)}>
-          <TagIcon /> Tags…
+          <TagIcon /> {t('tags')}
         </Button>
         <Button size="sm" variant="destructive" disabled={busy !== null} onClick={/** Asks to delete the selected entries. */ () => requestDelete([...selection], false)}>
-          <Trash2Icon /> Delete
+          <Trash2Icon /> {t('delete')}
         </Button>
         {pageSelected && !allSelected && (
           <Button
@@ -1164,11 +1162,11 @@ export default function App() {
              * @param entry - One matching entry.
              */ (entry) => entry.id), true)}
           >
-            Select all {results.length} results
+            {t('selectAllResults', { count: results.length })}
           </Button>
         )}
         <Button size="sm" variant="ghost" className="ms-auto" onClick={/** Clears the selection. */ () => setSelection(new Set())}>
-          <XIcon /> Clear selection
+          <XIcon /> {t('clearSelection')}
         </Button>
       </div>
     );
@@ -1189,12 +1187,13 @@ export default function App() {
     try {
       const result = await api.login({ username, password: passwordValue });
       setUser(result.user);
+      applyAccountLanguage(result.user.language);
       setAutoLockMinutes(result.user.autoLockMinutes ?? DEFAULT_AUTO_LOCK_MINUTES);
       await api.csrf();
       await refreshFiles();
       form.reset();
     } catch (error) {
-      setMessage({ kind: 'error', text: errorText(error, 'Login failed.') });
+      setMessage({ kind: 'error', text: errorText(error, tUnlock('loginFailed')) });
     } finally {
       setBusy(null);
     }
@@ -1226,7 +1225,7 @@ export default function App() {
     const newPassword = String(data.get('newPassword') ?? '');
     const confirmPassword = String(data.get('confirmPassword') ?? '');
     if (newPassword !== confirmPassword) {
-      setProfileMessage({ kind: 'error', text: 'New passwords do not match.' });
+      setProfileMessage({ kind: 'error', text: tProfile('passwordsDiffer') });
       return;
     }
     setBusy('password');
@@ -1234,9 +1233,27 @@ export default function App() {
     try {
       await api.changePassword({ currentPassword, newPassword });
       form.reset();
-      setProfileMessage({ kind: 'notice', text: 'Password changed.' });
+      setProfileMessage({ kind: 'notice', text: tProfile('passwordChanged') });
     } catch (error) {
-      setProfileMessage({ kind: 'error', text: errorText(error, 'Unable to change password.') });
+      setProfileMessage({ kind: 'error', text: errorText(error, tProfile('passwordFailed')) });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  /**
+   * Stores the chosen interface language on the account and shows it right away.
+   * @param language - de, en or fr, or null to follow the browser.
+   */
+  async function handleSaveLanguage(language: LanguagePreference) {
+    setBusy('language');
+    setProfileMessage(null);
+    try {
+      setUser(await api.updateLanguage(language));
+      applyPreference(language);
+      setProfileMessage({ kind: 'notice', text: tLanguage('saved') });
+    } catch (error) {
+      setProfileMessage({ kind: 'error', text: errorText(error, tProfile('languageFailed')) });
     } finally {
       setBusy(null);
     }
@@ -1253,9 +1270,9 @@ export default function App() {
     setProfileMessage(null);
     try {
       setUser(await api.updateEmail(email));
-      setProfileMessage({ kind: 'notice', text: 'Email address saved.' });
+      setProfileMessage({ kind: 'notice', text: tProfile('emailSaved') });
     } catch (error) {
-      setProfileMessage({ kind: 'error', text: errorText(error, 'Unable to save email address.') });
+      setProfileMessage({ kind: 'error', text: errorText(error, tProfile('emailFailed')) });
     } finally {
       setBusy(null);
     }
@@ -1271,11 +1288,11 @@ export default function App() {
     const minutes = Number(data.get('autoLockMinutes'));
     const clipboardSeconds = Number(data.get('clipboardClearSeconds'));
     if (!Number.isFinite(minutes) || minutes < 1 || minutes > 1440) {
-      setProfileMessage({ kind: 'error', text: 'Auto-lock must be between 1 and 1440 minutes.' });
+      setProfileMessage({ kind: 'error', text: tProfile('autoLockRange') });
       return;
     }
     if (!Number.isFinite(clipboardSeconds) || clipboardSeconds < 0 || clipboardSeconds > 600) {
-      setProfileMessage({ kind: 'error', text: 'Clipboard clearing must be between 0 (off) and 600 seconds.' });
+      setProfileMessage({ kind: 'error', text: tProfile('clipboardRange') });
       return;
     }
     setBusy('settings');
@@ -1289,9 +1306,9 @@ export default function App() {
       });
       setUser(updated);
       setAutoLockMinutes(updated.autoLockMinutes ?? DEFAULT_AUTO_LOCK_MINUTES);
-      setProfileMessage({ kind: 'notice', text: 'Settings saved.' });
+      setProfileMessage({ kind: 'notice', text: tProfile('settingsSaved') });
     } catch (error) {
-      setProfileMessage({ kind: 'error', text: errorText(error, 'Unable to save settings.') });
+      setProfileMessage({ kind: 'error', text: errorText(error, tProfile('settingsFailed')) });
     } finally {
       setBusy(null);
     }
@@ -1306,11 +1323,12 @@ export default function App() {
         await api.csrf();
         if (cancelled) return;
         setUser(me);
+        applyAccountLanguage(me.language);
         setAutoLockMinutes(me.autoLockMinutes ?? DEFAULT_AUTO_LOCK_MINUTES);
         await refreshFiles();
       } catch (error) {
         if (!cancelled && !(error instanceof ApiError && error.status === 401)) {
-          setMessage({ kind: 'error', text: errorText(error, 'Unable to restore session.') });
+          setMessage({ kind: 'error', text: errorText(error, translate(unlockText, 'restoreFailed')) });
         }
       } finally {
         if (!cancelled) setAuthChecked(true);
@@ -1372,13 +1390,13 @@ export default function App() {
     try {
       await navigator.clipboard.writeText(value);
     } catch {
-      setMessage({ kind: 'error', text: 'Clipboard unavailable. Use HTTPS or localhost and allow clipboard access.' });
+      setMessage({ kind: 'error', text: tMsg('clipboardUnavailable') });
       return false;
     }
     const seconds = user?.clipboardClearSeconds ?? DEFAULT_CLIPBOARD_CLEAR_SECONDS;
     window.clearTimeout(clipboardTimer.current);
     clipboardTimer.current = seconds > 0 ? window.setTimeout(clearClipboard, seconds * 1000) : undefined;
-    setMessage({ kind: 'notice', text: seconds > 0 ? `${label} copied. The clipboard is cleared in ${seconds} seconds.` : `${label} copied.` });
+    setMessage({ kind: 'notice', text: seconds > 0 ? tMsg('copiedClearing', { label, count: seconds }) : tMsg('copied', { label }) });
     return true;
   }
 
@@ -1387,8 +1405,8 @@ export default function App() {
       type="button"
       variant="outline"
       size="icon"
-      aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-      title={theme === 'dark' ? 'Light mode' : 'Dark mode'}
+      aria-label={theme === 'dark' ? tUnlock('switchToLight') : tUnlock('switchToDark')}
+      title={theme === 'dark' ? tUnlock('lightMode') : tUnlock('darkMode')}
       onClick={/** Switches and stores the preferred color theme. */ () => setTheme(toggleTheme())}
     >
       {theme === 'dark' ? <SunIcon /> : <MoonIcon />}
@@ -1400,17 +1418,17 @@ export default function App() {
       <AuthLayout area="Vault" themeAction={themeAction}>
         {!authChecked ? (
           <p role="status" className="text-sm text-muted-foreground">
-            Restoring secure session…
+            {tUnlock('restoring')}
           </p>
         ) : (
           <form className="grid gap-5" onSubmit={handleLogin}>
             <div className="space-y-2">
-              <h1 className="text-3xl font-semibold tracking-tight">Welcome back</h1>
+              <h1 className="text-3xl font-semibold tracking-tight">{tUnlock('welcome')}</h1>
               <p className="text-sm leading-relaxed text-muted-foreground">
-                Sign in to access the KeePass vaults shared with you.
+                {tUnlock('signInIntro')}
               </p>
             </div>
-            {!hasBrowserCrypto() && <InsecureContextAlert action="Unlocking vaults" />}
+            {!hasBrowserCrypto() && <InsecureContextAlert action={tUnlock('insecureSignIn')} />}
             {message?.kind === 'error' && (
               <Alert variant="destructive">
                 <AlertDescription>{message.text}</AlertDescription>
@@ -1418,19 +1436,19 @@ export default function App() {
             )}
             <FieldGroup className="gap-4">
               <Field>
-                <FieldLabel htmlFor="username">Username</FieldLabel>
+                <FieldLabel htmlFor="username">{tUnlock('username')}</FieldLabel>
                 <Input id="username" name="username" autoComplete="username" required />
               </Field>
               <Field>
-                <FieldLabel htmlFor="password">Password</FieldLabel>
+                <FieldLabel htmlFor="password">{tUnlock('password')}</FieldLabel>
                 <Input id="password" name="password" type="password" autoComplete="current-password" required />
               </Field>
             </FieldGroup>
             <Button type="submit" disabled={busy === 'login'}>
-              {busy === 'login' ? 'Signing in…' : 'Sign in'}
+              {busy === 'login' ? tUnlock('signingIn') : tUnlock('signIn')}
             </Button>
             <p className="text-xs leading-relaxed text-muted-foreground">
-              First run? Ask your administrator to set up KeePort and create your account.
+              {tUnlock('firstRun')}
             </p>
           </form>
         )}
@@ -1496,14 +1514,14 @@ export default function App() {
             <DialogTrigger asChild>
               <SidebarMenuButton type="button" variant="outline">
                 <UserRoundIcon />
-                <span>Profile</span>
+                <span>{tProfile('profile')}</span>
               </SidebarMenuButton>
             </DialogTrigger>
             <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-lg">
               <DialogHeader>
-                <DialogTitle>Account settings</DialogTitle>
+                <DialogTitle>{tProfile('title')}</DialogTitle>
                 <DialogDescription>
-                  Manage contact, vault and sign-in settings for {user.username}.
+                  {tProfile('description', { username: user.username })}
                 </DialogDescription>
               </DialogHeader>
               {profileMessage && (
@@ -1512,9 +1530,9 @@ export default function App() {
                 </Alert>
               )}
               <form className="grid gap-4" onSubmit={handleSaveEmail}>
-                <h3 className="text-sm font-semibold">Contact information</h3>
+                <h3 className="text-sm font-semibold">{tProfile('contact')}</h3>
                 <Field>
-                  <FieldLabel htmlFor="profile-email">Email address</FieldLabel>
+                  <FieldLabel htmlFor="profile-email">{tProfile('email')}</FieldLabel>
                   <Input
                     key={user.email}
                     id="profile-email"
@@ -1527,14 +1545,23 @@ export default function App() {
                   />
                 </Field>
                 <Button type="submit" size="sm" className="justify-self-start" disabled={busy !== null}>
-                  {busy === 'email' ? 'Saving…' : 'Save email address'}
+                  {busy === 'email' ? tProfile('saving') : tProfile('saveEmail')}
                 </Button>
               </form>
               <Separator />
+              <Field>
+                <FieldLabel htmlFor="account-language">{tLanguage('label')}</FieldLabel>
+                <LanguageSetting value={user.language} disabled={busy !== null} onSave={/**
+                 * Saves the chosen language.
+                 * @param language - The new preference.
+                 */ (language) => void handleSaveLanguage(language)} />
+                <FieldDescription id="account-language-help">{tLanguage('help')}</FieldDescription>
+              </Field>
+              <Separator />
               <form className="grid gap-4" onSubmit={handleSaveAutoLock}>
-                <h3 className="text-sm font-semibold">Vault preferences</h3>
+                <h3 className="text-sm font-semibold">{tProfile('preferences')}</h3>
                 <Field>
-                  <FieldLabel htmlFor="auto-lock">Auto-lock delay (minutes)</FieldLabel>
+                  <FieldLabel htmlFor="auto-lock">{tProfile('autoLock')}</FieldLabel>
                   <Input
                     id="auto-lock"
                     name="autoLockMinutes"
@@ -1547,11 +1574,11 @@ export default function App() {
                     aria-describedby="auto-lock-help"
                   />
                   <FieldDescription id="auto-lock-help">
-                    How long to keep the vault unlocked after you leave this tab.
+                    {tProfile('autoLockHelp')}
                   </FieldDescription>
                 </Field>
                 <Field>
-                  <FieldLabel htmlFor="clipboard-clear">Clear clipboard after (seconds)</FieldLabel>
+                  <FieldLabel htmlFor="clipboard-clear">{tProfile('clipboardClear')}</FieldLabel>
                   <Input
                     id="clipboard-clear"
                     name="clipboardClearSeconds"
@@ -1564,45 +1591,40 @@ export default function App() {
                     aria-describedby="clipboard-clear-help"
                   />
                   <FieldDescription id="clipboard-clear-help">
-                    Copied passwords and codes are removed from the clipboard after this time; 0 turns it off. Browsers
-                    only allow this while the KeePort tab is in front, so clear it yourself if you switch away.
+                    {tProfile('clipboardHelp')}
                   </FieldDescription>
                 </Field>
                 <Field orientation="horizontal">
                   <Checkbox id="show-favicons" name="showFavicons" defaultChecked={user.showFavicons} aria-describedby="show-favicons-help" />
                   <div className="grid gap-1">
-                    <FieldLabel htmlFor="show-favicons" className="font-normal">Load website icons</FieldLabel>
+                    <FieldLabel htmlFor="show-favicons" className="font-normal">{tProfile('favicons')}</FieldLabel>
                     <FieldDescription id="show-favicons-help">
-                      Shows the favicon of each entry's website. Your browser requests it directly from that site, so
-                      the site sees your IP address and may conclude that you have an account there. Icons stored in
-                      the vault (e.g. by KeePassXC) are always shown.
+                      {tProfile('faviconsHelp')}
                     </FieldDescription>
                   </div>
                 </Field>
                 <Field orientation="horizontal">
                   <Checkbox id="check-breaches" name="checkBreaches" defaultChecked={user.checkBreaches} aria-describedby="check-breaches-help" />
                   <div className="grid gap-1">
-                    <FieldLabel htmlFor="check-breaches" className="font-normal">Check passwords against Have I Been Pwned</FieldLabel>
+                    <FieldLabel htmlFor="check-breaches" className="font-normal">{tProfile('breaches')}</FieldLabel>
                     <FieldDescription id="check-breaches-help">
-                      The security report then shows passwords that appear in known data breaches. Your browser sends
-                      only the first 5 characters of each password's SHA-1 hash to api.pwnedpasswords.com and compares
-                      the rest locally; the password itself never leaves this browser. The service sees your IP address.
+                      {tProfile('breachesHelp')}
                     </FieldDescription>
                   </div>
                 </Field>
                 <Button type="submit" size="sm" className="justify-self-start" disabled={busy !== null}>
-                  {busy === 'settings' ? 'Saving…' : 'Save preferences'}
+                  {busy === 'settings' ? tProfile('saving') : tProfile('savePreferences')}
                 </Button>
               </form>
               <Separator />
               <form className="grid gap-4" onSubmit={handleChangePassword}>
                 <div className="space-y-1">
-                  <h3 className="text-sm font-semibold">Change account password</h3>
-                  <p className="text-sm text-muted-foreground">This does not change your vault master password.</p>
+                  <h3 className="text-sm font-semibold">{tProfile('changePasswordTitle')}</h3>
+                  <p className="text-sm text-muted-foreground">{tProfile('changePasswordHint')}</p>
                 </div>
                 <FieldGroup className="gap-3">
                   <Field>
-                    <FieldLabel htmlFor="current-password">Current password</FieldLabel>
+                    <FieldLabel htmlFor="current-password">{tProfile('currentPassword')}</FieldLabel>
                     <Input
                       id="current-password"
                       name="currentPassword"
@@ -1612,11 +1634,11 @@ export default function App() {
                     />
                   </Field>
                   <Field>
-                    <FieldLabel htmlFor="new-password">New password</FieldLabel>
+                    <FieldLabel htmlFor="new-password">{tProfile('newPassword')}</FieldLabel>
                     <Input id="new-password" name="newPassword" type="password" autoComplete="new-password" required />
                   </Field>
                   <Field>
-                    <FieldLabel htmlFor="confirm-password">Confirm new password</FieldLabel>
+                    <FieldLabel htmlFor="confirm-password">{tProfile('confirmPassword')}</FieldLabel>
                     <Input
                       id="confirm-password"
                       name="confirmPassword"
@@ -1633,7 +1655,7 @@ export default function App() {
                   className="justify-self-start"
                   disabled={busy !== null}
                 >
-                  {busy === 'password' ? 'Changing…' : 'Change password'}
+                  {busy === 'password' ? tProfile('changing') : tProfile('changePassword')}
                 </Button>
               </form>
               <Separator />
@@ -1646,14 +1668,14 @@ export default function App() {
         <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center gap-3 border-b bg-background/95 px-4 backdrop-blur sm:px-6">
           <SidebarTrigger />
           <Separator orientation="vertical" className="data-vertical:h-4 data-vertical:self-center" />
-          <span className="min-w-0 flex-1 truncate text-sm font-medium">Vault workspace</span>
+          <span className="min-w-0 flex-1 truncate text-sm font-medium">{tUnlock('workspaceHeader')}</span>
           {themeAction}
           <Button
             type="button"
             variant="ghost"
             size="icon"
-            aria-label="Sign out"
-            title="Sign out"
+            aria-label={tUnlock('signOut')}
+            title={tUnlock('signOut')}
             disabled={busy !== null}
             onClick={handleLogout}
           >
@@ -1665,26 +1687,26 @@ export default function App() {
           <div className="flex flex-wrap items-end justify-between gap-4">
             <div className="min-w-0 space-y-1">
               <div className="text-xs font-medium tracking-widest text-muted-foreground uppercase">
-                {selectedFile ? 'Vault file' : 'Workspace'}
+                {selectedFile ? tUnlock('vaultFile') : tUnlock('workspace')}
               </div>
               <h1 className="text-2xl font-semibold tracking-tight wrap-break-word sm:text-3xl">
-                {selectedFile?.name ?? 'Your vaults'}
+                {selectedFile?.name ?? tUnlock('yourVaults')}
               </h1>
               <p className="text-sm text-muted-foreground">
                 {selectedFile
-                  ? 'Manage the entries in this KeePass file.'
-                  : 'Open a shared KeePass file to view its entries.'}
+                  ? tUnlock('fileIntro')
+                  : tUnlock('noFileIntro')}
               </p>
             </div>
             {selectedFile && (
               <Badge variant="outline" className={unlocked ? (canWrite ? ACCENTS.emerald.badge : ACCENTS.amber.badge) : undefined}>
                 {unlocked ? (
                   <>
-                    <ShieldCheckIcon /> {canWrite ? 'Read-write' : 'Read-only'}
+                    <ShieldCheckIcon /> {canWrite ? tUnlock('readWrite') : tUnlock('readOnly')}
                   </>
                 ) : (
                   <>
-                    <LockKeyholeIcon /> Locked
+                    <LockKeyholeIcon /> {tUnlock('locked')}
                   </>
                 )}
               </Badge>
@@ -1706,32 +1728,32 @@ export default function App() {
                 <div className="mb-2 grid size-11 place-items-center rounded-lg border bg-muted">
                   <DatabaseIcon className="size-5 text-muted-foreground" />
                 </div>
-                <CardTitle>{files.length ? 'Select a vault file' : 'No shared vaults yet'}</CardTitle>
+                <CardTitle>{files.length ? tUnlock('selectFile') : tUnlock('noVaults')}</CardTitle>
                 <CardDescription>
                   {files.length
-                    ? 'Choose a vault from the sidebar to unlock it.'
-                    : 'Vaults appear here after an administrator grants you access.'}
+                    ? tUnlock('selectFileHint')
+                    : tUnlock('noVaultsHint')}
                 </CardDescription>
               </CardHeader>
             </Card>
           ) : !unlocked ? (
             <Card key={selectedFile.id} className="w-full max-w-lg">
               <CardHeader>
-                <CardTitle>Unlock vault</CardTitle>
+                <CardTitle>{tUnlock('unlockTitle')}</CardTitle>
                 <CardDescription>
-                  Use the master password, a key file or both. They stay in this browser.
+                  {tUnlock('unlockIntro')}
                 </CardDescription>
               </CardHeader>
               <CardContent>
                 {!hasBrowserCrypto() && (
                   <div className="mb-5">
-                    <InsecureContextAlert action="Unlocking a vault" />
+                    <InsecureContextAlert action={tUnlock('insecureUnlock')} />
                   </div>
                 )}
                 <form className="grid gap-5" onSubmit={handleUnlock}>
                   <FieldGroup className="gap-4">
                     <Field>
-                      <FieldLabel htmlFor="master-password">Master password</FieldLabel>
+                      <FieldLabel htmlFor="master-password">{tUnlock('masterPassword')}</FieldLabel>
                       <Input
                         id="master-password"
                         type="password"
@@ -1744,7 +1766,7 @@ export default function App() {
                       />
                     </Field>
                     <Field>
-                      <FieldLabel htmlFor="key-file">Key file</FieldLabel>
+                      <FieldLabel htmlFor="key-file">{tUnlock('keyFile')}</FieldLabel>
                       <Input
                         id="key-file"
                         type="file"
@@ -1757,7 +1779,7 @@ export default function App() {
                   </FieldGroup>
                   <Button type="submit" className="justify-self-start" disabled={busy !== null || !hasBrowserCrypto()}>
                     <LockKeyholeOpenIcon />
-                    {busy === 'unlock' ? 'Unlocking…' : 'Unlock vault'}
+                    {busy === 'unlock' ? tUnlock('unlocking') : tUnlock('unlock')}
                   </Button>
                 </form>
               </CardContent>
@@ -1767,21 +1789,21 @@ export default function App() {
               <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
                 <Card size="sm">
                   <CardHeader>
-                    <StatLabel icon={<KeyRoundIcon />} accent={ACCENTS.sky}>Entries</StatLabel>
+                    <StatLabel icon={<KeyRoundIcon />} accent={ACCENTS.sky}>{t('statEntries')}</StatLabel>
                     <CardTitle className="mt-1 text-2xl font-semibold tracking-tight tabular-nums">{visibleCount}</CardTitle>
                   </CardHeader>
                 </Card>
                 <Card size="sm">
                   <CardHeader>
-                    <StatLabel icon={<HardDriveIcon />} accent={ACCENTS.violet}>Vault size</StatLabel>
+                    <StatLabel icon={<HardDriveIcon />} accent={ACCENTS.violet}>{t('vaultSize')}</StatLabel>
                     <CardTitle className="mt-1 text-2xl font-semibold tracking-tight tabular-nums">{formatBytes(selectedFile.size)}</CardTitle>
                   </CardHeader>
                 </Card>
                 <Card size="sm" className="col-span-2 lg:col-span-1">
                   <CardHeader>
-                    <StatLabel icon={<ClockIcon />} accent={ACCENTS.amber}>Last updated</StatLabel>
-                    <CardTitle className="mt-1 text-base font-semibold">{formatDate(selectedFile.updatedAt)}</CardTitle>
-                    <CardDescription>Revision {selectedFile.revision}</CardDescription>
+                    <StatLabel icon={<ClockIcon />} accent={ACCENTS.amber}>{t('lastUpdated')}</StatLabel>
+                    <CardTitle className="mt-1 text-base font-semibold">{formatDateTime(selectedFile.updatedAt)}</CardTitle>
+                    <CardDescription>{t('revision', { revision: selectedFile.revision })}</CardDescription>
                   </CardHeader>
                 </Card>
               </div>
@@ -1789,17 +1811,17 @@ export default function App() {
                 <CardHeader className="gap-4 border-b py-5">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0 space-y-1">
-                      <CardTitle className="wrap-break-word">{securityView ? 'Security report' : tagView ? `Tag: ${tagView}` : expiredView ? 'Expired entries' : currentFolder ? currentFolder.name : 'All entries'}</CardTitle>
+                      <CardTitle className="wrap-break-word">{securityView ? t('securityReport') : tagView ? t('tagTitle', { tag: tagView }) : expiredView ? t('expiredEntries') : currentFolder ? currentFolder.name : t('allEntries')}</CardTitle>
                       <CardDescription className="wrap-break-word">
                         {securityView
-                          ? 'Checked in this browser only; nothing is sent or stored. Select a check to see its entries.'
+                          ? t('securityIntro')
                           : tagView
-                          ? 'Entries with this tag in all folders'
+                          ? t('tagIntro')
                           : expiredView
-                          ? `${expiredCount} ${expiredCount === 1 ? 'entry has' : 'entries have'} passed their expiry date`
+                          ? t('expiredIntro', { count: expiredCount })
                           : currentFolder
-                          ? `${currentFolder.path} · ${currentFolder.entryCount} ${currentFolder.entryCount === 1 ? 'entry' : 'entries'}`
-                          : `${visibleCount} ${visibleCount === 1 ? 'entry' : 'entries'} in all folders, without templates and recycle bin`}
+                          ? t('folderIntro', { path: currentFolder.path, count: currentFolder.entryCount })
+                          : t('allIntro', { count: visibleCount })}
                       </CardDescription>
                     </div>
                     <div className="flex flex-wrap gap-2">
@@ -1807,19 +1829,19 @@ export default function App() {
                         variant="outline"
                         size="sm"
                         disabled={busy !== null}
-                        title="Load the latest version from the server, e.g. after a KeePass app synced"
+                        title={t('reloadHint')}
                         onClick={/** Reloads the open vault from the server. */ () => void handleReload()}
                       >
                         <RefreshCwIcon className={busy === 'reload' ? 'animate-spin' : undefined} />
-                        {busy === 'reload' ? 'Reloading…' : 'Reload'}
+                        {busy === 'reload' ? t('reloading') : t('reload')}
                       </Button>
                       {canWrite && currentFolder?.isRecycleBin && currentFolder.totalEntryCount > 0 && (
                         <Button variant="outline" size="sm" disabled={busy !== null} onClick={/** Asks to empty the recycle bin. */ () => setConfirmEmptyBin(true)}>
-                          <Trash2Icon /> Empty recycle bin
+                          <Trash2Icon /> {t('emptyBin')}
                         </Button>
                       )}
                       <Button variant="outline" size="sm" disabled={busy === 'save' || busy === 'reload'} onClick={/** Locks the vault and notifies the user. */ () => lockVault(true)}>
-                        <LockKeyholeIcon /> Lock vault
+                        <LockKeyholeIcon /> {t('lockVault')}
                       </Button>
                       {canWrite && (
                         <div className="flex">
@@ -1829,7 +1851,7 @@ export default function App() {
                             disabled={busy === 'save' || busy === 'reload'}
                             onClick={/** Opens an empty entry draft. */ () => startNewEntry()}
                           >
-                            <PlusIcon /> Add entry
+                            <PlusIcon /> {t('addEntry')}
                           </Button>
                           {templates.length > 0 && (
                             <DropdownMenu>
@@ -1837,14 +1859,14 @@ export default function App() {
                                 <Button
                                   size="sm"
                                   className="rounded-s-none border-s border-s-primary-foreground/25 px-2"
-                                  aria-label="Add entry from a template"
+                                  aria-label={t('addFromTemplate')}
                                   disabled={busy === 'save' || busy === 'reload'}
                                 >
                                   <ChevronDownIcon />
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end" className="w-56">
-                                <DropdownMenuLabel>New entry from template</DropdownMenuLabel>
+                                <DropdownMenuLabel>{t('newFromTemplate')}</DropdownMenuLabel>
                                 <DropdownMenuSeparator />
                                 {templates.map(/**
                                  * Renders one template as a menu item.
@@ -1880,18 +1902,18 @@ export default function App() {
                 )}
                 <DataTable
                   key={`${selectedFile.id}:${securityView ? `security:${securityIssue ?? 'all'}` : tagView ? `tag:${tagView}` : expiredView ? 'expired' : folderId ?? 'all'}`}
-                  label={securityView ? 'Entries with security findings' : tagView ? `Entries tagged ${tagView}` : expiredView ? 'Expired entries' : currentFolder ? `Entries in ${currentFolder.name}` : 'Vault entries'}
+                  label={securityView ? t('tableSecurity') : tagView ? t('tableTag', { tag: tagView }) : expiredView ? t('expiredEntries') : currentFolder ? t('tableFolder', { folder: currentFolder.name }) : t('tableAll')}
                   rows={tableEntries}
                   columns={visibleColumns}
                   searchActions={
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button type="button" variant="outline" size="sm">
-                          <Columns3Icon /> Columns
+                          <Columns3Icon /> {t('columns')}
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end" className="w-44">
-                        <DropdownMenuLabel>Show columns</DropdownMenuLabel>
+                        <DropdownMenuLabel>{t('showColumns')}</DropdownMenuLabel>
                         <DropdownMenuSeparator />
                         {OPTIONAL_COLUMNS.map(/**
                          * Renders the toggle of one column.
@@ -1918,9 +1940,9 @@ export default function App() {
                       </DropdownMenuContent>
                     </DropdownMenu>
                   }
-                  searchLabel="Search all folders"
+                  searchLabel={t('search')}
                   matches={entryMatches}
-                  emptyMessage={securityView ? 'No findings. Well done!' : tagView ? 'No entry has this tag.' : expiredView ? 'No entry has expired.' : currentFolder ? 'This folder has no entries.' : 'This vault has no entries yet.'}
+                  emptyMessage={securityView ? t('emptySecurity') : tagView ? t('emptyTag') : expiredView ? t('emptyExpired') : currentFolder ? t('emptyFolder') : t('emptyVault')}
                   browseFilter={browseFilter}
                   leadingHeader={canWrite ? renderSelectAll : undefined}
                   toolbar={canWrite ? renderSelectionBar : undefined}
@@ -1932,7 +1954,7 @@ export default function App() {
                       key={entry.id}
                       data-state={selection.has(entry.id) ? 'selected' : undefined}
                       aria-current={focusedId === entry.id ? 'true' : undefined}
-                      title="Double-click to open"
+                      title={t('doubleClick')}
                       className={cn('cursor-default', focusedId === entry.id && 'bg-accent/60 hover:bg-accent/60')}
                       onClick={/**
                        * Marks the row, unless a button, link or checkbox in it was clicked.
@@ -1950,7 +1972,7 @@ export default function App() {
                       {canWrite && (
                         <TableCell className="w-10 ps-6 pe-0">
                           <Checkbox
-                            aria-label={`Select ${entry.title}`}
+                            aria-label={t('selectEntry', { title: entry.title })}
                             checked={selection.has(entry.id)}
                             disabled={busy !== null}
                             onCheckedChange={/**
@@ -1964,7 +1986,7 @@ export default function App() {
                         <Button
                           variant="ghost"
                           className="group/title h-auto max-w-44 items-start gap-2 px-3 py-1.5 text-start sm:max-w-72"
-                          title={`Open ${entry.title}`}
+                          title={t('openEntry', { title: entry.title })}
                           onClick={/** Opens the entry. */ () => openEntry(entry)}
                         >
                           <EntryIcon iconUrl={entry.iconUrl} url={entry.url} showFavicons={showFavicons} title={entry.title} />
@@ -1972,11 +1994,11 @@ export default function App() {
                             <span className="block truncate font-medium text-primary underline-offset-4 group-hover/title:underline group-focus-visible/title:underline">{entry.title}</span>
                             <span className="flex min-w-0 items-center gap-1.5 text-xs font-normal text-muted-foreground">
                               {entry.expired && (
-                                <Badge variant="destructive" className="h-4 shrink-0 px-1.5 text-[0.65rem]">Expired</Badge>
+                                <Badge variant="destructive" className="h-4 shrink-0 px-1.5 text-[0.65rem]">{t('expired')}</Badge>
                               )}
                               {(entry.template || entry.isTemplate) && (
                                 <Badge variant="outline" className="h-4 shrink-0 px-1.5 text-[0.65rem]">
-                                  {entry.isTemplate ? 'Template' : entry.template?.title}
+                                  {entry.isTemplate ? t('template') : entry.template?.title}
                                 </Badge>
                               )}
                               <span className="truncate">{entry.groupPath}</span>
@@ -1990,7 +2012,7 @@ export default function App() {
                              * @param tag - One tag of the entry.
                              */ (tag) => (
                               <Badge key={tag} asChild variant="outline" className={cn('h-4 px-1.5 text-[0.65rem]', accentFor(tag).badge)}>
-                                <button type="button" title={`Show entries tagged ${tag}`} onClick={/** Filters the list by this tag. */ () => showTag(tag)}>
+                                <button type="button" title={t('showTagged', { tag })} onClick={/** Filters the list by this tag. */ () => showTag(tag)}>
                                   {tag}
                                 </button>
                               </Badge>
@@ -2006,13 +2028,13 @@ export default function App() {
                           <span className="flex max-w-36 min-w-0 items-center gap-1 sm:max-w-56">
                             {entry.username && (
                               <CopyButton
-                                label={`Copy username of ${entry.title}`}
-                                tooltip="Copy username"
+                                label={t('copyUsernameOf', { title: entry.title })}
+                                tooltip={t('copyUsername')}
                                 getValue={/** Returns the username. */ () => entry.username}
                                 onCopy={/**
                                  * Copies the username.
                                  * @param value - The username.
-                                 */ (value) => copyValue(value, 'Username')}
+                                 */ (value) => copyValue(value, tMsg('labelUsername'))}
                               />
                             )}
                             <span className="truncate">{entry.username || '—'}</span>
@@ -2024,13 +2046,13 @@ export default function App() {
                           <span className="flex items-center gap-1">
                             {entry.password && (
                               <CopyButton
-                                label={`Copy password of ${entry.title}`}
-                                tooltip="Copy password"
+                                label={t('copyPasswordOf', { title: entry.title })}
+                                tooltip={t('copyPassword')}
                                 getValue={/** Returns the password. */ () => entry.password}
                                 onCopy={/**
                                  * Copies the password.
                                  * @param value - The password.
-                                 */ (value) => copyValue(value, 'Password')}
+                                 */ (value) => copyValue(value, tMsg('labelPassword'))}
                               />
                             )}
                             <span className="font-mono tracking-wider">{entry.password ? '••••••••' : '—'}</span>
@@ -2052,30 +2074,30 @@ export default function App() {
                           <span className="flex items-center gap-1">
                             {entry.otp && parseOtpSecret(entry.otp) && (
                               <CopyButton
-                                label={`Copy TOTP code of ${entry.title}`}
-                                tooltip="Copy TOTP code"
+                                label={t('copyTotpOf', { title: entry.title })}
+                                tooltip={t('copyTotp')}
                                 getValue={/** Calculates the current TOTP code at the moment of copying. */ async () => {
                                   const config = parseOtpSecret(entry.otp);
-                                  if (!config) throw new Error('The TOTP setting of this entry is not valid.');
+                                  if (!config) throw new Error(t('invalidTotp'));
                                   return (await totpCode(config)).code;
                                 }}
                                 onCopy={/**
                                  * Copies the TOTP code.
                                  * @param value - The current code.
-                                 */ (value) => copyValue(value, 'TOTP code')}
+                                 */ (value) => copyValue(value, tMsg('labelTotpCode'))}
                               />
                             )}
                             {entry.otp ? (
-                              <CircleCheckIcon aria-label="TOTP configured" className="size-4 text-emerald-600 dark:text-emerald-400" />
+                              <CircleCheckIcon aria-label={t('totpConfigured')} className="size-4 text-emerald-600 dark:text-emerald-400" />
                             ) : (
-                              <CircleXIcon aria-label="No TOTP" className="size-4 text-muted-foreground/60" />
+                              <CircleXIcon aria-label={t('noTotp')} className="size-4 text-muted-foreground/60" />
                             )}
                           </span>
                         </TableCell>
                       )}
                       {showColumn('modified') && (
                         <TableCell className="hidden whitespace-nowrap text-muted-foreground lg:table-cell">
-                          <span title={entry.modified ? entry.modified.toLocaleString() : undefined}>{formatRelative(entry.modified, renderedAt)}</span>
+                          <span title={entry.modified ? formatDateTime(entry.modified) : undefined}>{formatRelative(entry.modified, renderedAt)}</span>
                         </TableCell>
                       )}
                       {showColumn('website') && (
@@ -2089,13 +2111,13 @@ export default function App() {
                                       href={openableUrl(entry.url) ?? undefined}
                                       target="_blank"
                                       rel="noopener noreferrer"
-                                      aria-label={`Open website of ${entry.title}`}
+                                      aria-label={t('openWebsiteOf', { title: entry.title })}
                                     >
                                       <ExternalLinkIcon />
                                     </a>
                                   </Button>
                                 </TooltipTrigger>
-                                <TooltipContent>Open website</TooltipContent>
+                                <TooltipContent>{t('openWebsite')}</TooltipContent>
                               </Tooltip>
                             )}
                             <span className="truncate">{entry.url || '—'}</span>
@@ -2124,19 +2146,21 @@ export default function App() {
                     <SheetHeader className="border-b p-6 pe-12">
                       <SheetTitle className="flex items-center gap-2 wrap-break-word">
                         {selectedEntry && <EntryIcon iconUrl={selectedEntry.iconUrl} url={selectedEntry.url} showFavicons={showFavicons} className="size-5" />}
-                        {selectedEntry ? selectedEntry.title : draftTemplate ? `New ${draftTemplate.title}` : 'New entry'}
+                        {selectedEntry ? selectedEntry.title : draftTemplate ? tEntry('newFromTemplate', { template: draftTemplate.title }) : tEntry('newEntry')}
                       </SheetTitle>
                       <SheetDescription>
                         {editingTemplate
-                          ? 'This is a template for new entries. Edit templates in KeePass2Android.'
+                          ? tEntry('templateHint')
                           : canWrite
-                            ? 'Changes are encrypted in your browser before saving.'
-                            : 'You can view and copy this entry, but you cannot edit it.'}
+                            ? tEntry('encryptHint')
+                            : tEntry('readOnlyHint')}
                       </SheetDescription>
                       {selectedEntry && (
                         <p className="text-xs text-muted-foreground">
-                          Created {selectedEntry.created ? selectedEntry.created.toLocaleString() : 'unknown'} · Modified{' '}
-                          {selectedEntry.modified ? selectedEntry.modified.toLocaleString() : 'unknown'}
+                          {tEntry('createdModified', {
+                            created: selectedEntry.created ? formatDateTime(selectedEntry.created) : tEntry('unknown'),
+                            modified: selectedEntry.modified ? formatDateTime(selectedEntry.modified) : tEntry('unknown')
+                          })}
                         </p>
                       )}
                     </SheetHeader>
@@ -2155,15 +2179,15 @@ export default function App() {
                     )}
                     {selectedEntry && (
                       <TabsList className="mx-6 mt-4">
-                        <TabsTrigger value="details">Details</TabsTrigger>
-                        <TabsTrigger value="history">History ({selectedEntry.entry.history.length})</TabsTrigger>
+                        <TabsTrigger value="details">{tEntry('details')}</TabsTrigger>
+                        <TabsTrigger value="history">{tEntry('history', { count: selectedEntry.entry.history.length })}</TabsTrigger>
                       </TabsList>
                     )}
                     <TabsContent value="details">
                     <form className="grid gap-5 p-6" onSubmit={handleSave}>
                       <FieldGroup className="gap-4">
                         <Field>
-                          <FieldLabel htmlFor="entry-title">Title</FieldLabel>
+                          <FieldLabel htmlFor="entry-title">{tEntry('title')}</FieldLabel>
                           <Input
                             id="entry-title"
                             value={edits.title}
@@ -2176,7 +2200,7 @@ export default function App() {
                         </Field>
                         {showStandard('UserName', edits.username) && (
                           <Field>
-                            <FieldLabel htmlFor="entry-username">Username</FieldLabel>
+                            <FieldLabel htmlFor="entry-username">{tEntry('username')}</FieldLabel>
                             <Input
                               id="entry-username"
                               value={edits.username}
@@ -2190,7 +2214,7 @@ export default function App() {
                         )}
                         {showStandard('Password', edits.password) && (
                           <Field>
-                            <FieldLabel htmlFor="entry-password">Password</FieldLabel>
+                            <FieldLabel htmlFor="entry-password">{tEntry('password')}</FieldLabel>
                             <div className="flex gap-2">
                               <Input
                                 id="entry-password"
@@ -2208,8 +2232,8 @@ export default function App() {
                                 type="button"
                                 variant="outline"
                                 size="icon"
-                                aria-label={showPassword ? 'Hide password' : 'Show password'}
-                                title={showPassword ? 'Hide password' : 'Show password'}
+                                aria-label={showPassword ? tEntry('hidePassword') : tEntry('showPassword')}
+                                title={showPassword ? tEntry('hidePassword') : tEntry('showPassword')}
                                 onClick={/** Shows or hides the password. */ () => setShowPassword(!showPassword)}
                               >
                                 {showPassword ? <EyeOffIcon /> : <EyeIcon />}
@@ -2231,7 +2255,7 @@ export default function App() {
                         )}
                         {showStandard('URL', edits.url) && (
                           <Field>
-                            <FieldLabel htmlFor="entry-url">Website</FieldLabel>
+                            <FieldLabel htmlFor="entry-url">{tEntry('website')}</FieldLabel>
                             <div className="flex gap-2">
                               <Input
                                 id="entry-url"
@@ -2249,7 +2273,7 @@ export default function App() {
                                       type="button"
                                       variant="outline"
                                       size="icon"
-                                      aria-label="Save website icon"
+                                      aria-label={tEntry('saveIcon')}
                                       disabled={busy !== null}
                                       onClick={/** Downloads the website icon and stores it in the vault. */ () => void saveWebsiteIcon()}
                                     >
@@ -2257,13 +2281,13 @@ export default function App() {
                                     </Button>
                                   </TooltipTrigger>
                                   <TooltipContent className="max-w-64">
-                                    Save website icon: KeePort fetches it from {new URL(faviconUrl(edits.url) ?? 'https://example.com').hostname} once and stores it in the vault. The KeePort server sees the host name for this.
+                                    {tEntry('saveIconHint', { host: new URL(faviconUrl(edits.url) ?? 'https://example.com').hostname })}
                                   </TooltipContent>
                                 </Tooltip>
                               )}
                               {openableUrl(edits.url) && (
                                 <Button asChild variant="outline" size="icon">
-                                  <a href={openableUrl(edits.url) ?? undefined} target="_blank" rel="noopener noreferrer" aria-label="Open website" title="Open website">
+                                  <a href={openableUrl(edits.url) ?? undefined} target="_blank" rel="noopener noreferrer" aria-label={tEntry('openWebsite')} title={tEntry('openWebsite')}>
                                     <ExternalLinkIcon />
                                   </a>
                                 </Button>
@@ -2273,7 +2297,7 @@ export default function App() {
                         )}
                         {showStandard('Notes', edits.notes) && (
                           <Field>
-                            <FieldLabel htmlFor="entry-notes">Notes</FieldLabel>
+                            <FieldLabel htmlFor="entry-notes">{tEntry('notes')}</FieldLabel>
                             <Textarea
                               id="entry-notes"
                               value={edits.notes}
@@ -2286,7 +2310,7 @@ export default function App() {
                           </Field>
                         )}
                         <Field>
-                          <FieldLabel htmlFor="entry-tags">Tags</FieldLabel>
+                          <FieldLabel htmlFor="entry-tags">{tEntry('tags')}</FieldLabel>
                           <TagInput
                             id="entry-tags"
                             tags={edits.tags ?? []}
@@ -2303,7 +2327,7 @@ export default function App() {
                         </Field>
                         {showStandard('otp', edits.otp) && (
                           <Field>
-                            <FieldLabel htmlFor="entry-otp">TOTP secret</FieldLabel>
+                            <FieldLabel htmlFor="entry-otp">{tEntry('totpSecret')}</FieldLabel>
                             <Input
                               id="entry-otp"
                               type="password"
@@ -2316,7 +2340,7 @@ export default function App() {
                                */ (event) => setEdits({ ...edits, otp: event.target.value })}
                               aria-describedby="otp-help"
                             />
-                            <FieldDescription id="otp-help">Use an otpauth URI or a Base32 secret. A Base32 secret is saved as an otpauth URI so KeePass apps such as KeePass2Android and KeePassXC show it as TOTP.</FieldDescription>
+                            <FieldDescription id="otp-help">{tEntry('totpHelp')}</FieldDescription>
                           </Field>
                         )}
                       </FieldGroup>
@@ -2329,19 +2353,19 @@ export default function App() {
                             size="sm"
                             className="ms-auto"
                             type="button"
-                            onClick={/** Copies the current TOTP code to the clipboard. */ () => void copyValue(totp.code, 'TOTP code')}
+                            onClick={/** Copies the current TOTP code to the clipboard. */ () => void copyValue(totp.code, tMsg('labelTotpCode'))}
                           >
-                            <CopyIcon /> Copy code
+                            <CopyIcon /> {tEntry('copyCode')}
                           </Button>
                           {otpUri && (
                             <Button
                               variant="outline"
                               size="sm"
                               type="button"
-                              title="Copy the provisioning URI, including the secret"
-                              onClick={/** Copies the provisioning URI without displaying its secret. */ () => void copyValue(otpUri, 'TOTP URI')}
+                              title={tEntry('copyUriHint')}
+                              onClick={/** Copies the provisioning URI without displaying its secret. */ () => void copyValue(otpUri, tMsg('labelTotpUri'))}
                             >
-                              <CopyIcon /> Copy TOTP URI
+                              <CopyIcon /> {tEntry('copyUri')}
                             </Button>
                           )}
                         </div>
@@ -2351,7 +2375,7 @@ export default function App() {
                        * @param item - One standard input.
                        */ (item) => !showStandard(item.key, edits[item.draft])) && (
                         <Button type="button" variant="link" size="sm" className="justify-self-start px-0" onClick={/** Shows the standard fields the template hides. */ () => setShowAllFields(true)}>
-                          Show all fields
+                          {tEntry('showAllFields')}
                         </Button>
                       )}
                       <EntryFields
@@ -2371,7 +2395,7 @@ export default function App() {
                          */ (value, label) => void copyValue(value, label)}
                       />
                       <Field>
-                        <FieldLabel htmlFor="entry-expires">Expires</FieldLabel>
+                        <FieldLabel htmlFor="entry-expires">{tEntry('expires')}</FieldLabel>
                         <Input
                           id="entry-expires"
                           type="date"
@@ -2384,7 +2408,7 @@ export default function App() {
                            */ (event) => setEdits({ ...edits, expires: event.target.value })}
                           aria-describedby="expires-help"
                         />
-                        <FieldDescription id="expires-help">Optional. KeePass apps show the entry as expired after this date.</FieldDescription>
+                        <FieldDescription id="expires-help">{tEntry('expiresHelp')}</FieldDescription>
                       </Field>
                       <EntryAttachments
                         draft={edits.attachments}
@@ -2406,7 +2430,7 @@ export default function App() {
                       <div className="flex flex-wrap gap-2">
                         {canEditEntry && (
                           <Button type="submit" disabled={busy === 'save'}>
-                            {busy === 'save' ? 'Saving…' : selectedEntry ? 'Save entry' : 'Create entry'}
+                            {busy === 'save' ? tEntry('saving') : selectedEntry ? tEntry('saveEntry') : tEntry('createEntry')}
                           </Button>
                         )}
                         {canEditEntry && selectedEntry && (
@@ -2416,7 +2440,7 @@ export default function App() {
                             disabled={busy === 'save'}
                             onClick={/** Asks to delete the open entry. */ () => requestDelete([selectedEntry.id], true)}
                           >
-                            <Trash2Icon /> Delete
+                            <Trash2Icon /> {tEntry('delete')}
                           </Button>
                         )}
                         <Button
@@ -2424,18 +2448,18 @@ export default function App() {
                           size="sm"
                           type="button"
                           disabled={!edits.username}
-                          onClick={/** Copies the draft username to the clipboard. */ () => void copyValue(edits.username, 'Username')}
+                          onClick={/** Copies the draft username to the clipboard. */ () => void copyValue(edits.username, tMsg('labelUsername'))}
                         >
-                          <CopyIcon /> Copy username
+                          <CopyIcon /> {tEntry('copyUsername')}
                         </Button>
                         <Button
                           variant="outline"
                           size="sm"
                           type="button"
                           disabled={!edits.password}
-                          onClick={/** Copies the draft password to the clipboard. */ () => void copyValue(edits.password, 'Password')}
+                          onClick={/** Copies the draft password to the clipboard. */ () => void copyValue(edits.password, tMsg('labelPassword'))}
                         >
-                          <CopyIcon /> Copy password
+                          <CopyIcon /> {tEntry('copyPassword')}
                         </Button>
                       </div>
                     </form>
@@ -2529,16 +2553,16 @@ export default function App() {
                   <AlertDialogContent>
                     <AlertDialogHeader>
                       <AlertDialogTitle>
-                        {deleteRequest.permanent ? 'Delete permanently' : 'Move to recycle bin'}: {deleteRequest.ids.length} {deleteRequest.ids.length === 1 ? 'entry' : 'entries'}?
+                        {t(deleteRequest.permanent ? 'deletePermanentTitle' : 'recycleTitle', { count: deleteRequest.ids.length })}
                       </AlertDialogTitle>
                       <AlertDialogDescription>
                         {deleteRequest.permanent
-                          ? 'The entries are removed for good. KeePass apps remove them too when they sync.'
-                          : 'The entries move to the recycle bin, where you can restore them with “Move to…” or delete them permanently. Entries already in the recycle bin are deleted permanently.'}
+                          ? t('deletePermanentText')
+                          : t('recycleText')}
                       </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
-                      <AlertDialogCancel disabled={busy === 'save'}>Cancel</AlertDialogCancel>
+                      <AlertDialogCancel disabled={busy === 'save'}>{t('cancel')}</AlertDialogCancel>
                       <AlertDialogAction
                         variant="destructive"
                         disabled={busy === 'save'}
@@ -2550,7 +2574,7 @@ export default function App() {
                           void confirmDelete();
                         }}
                       >
-                        {busy === 'save' ? 'Deleting…' : deleteRequest.permanent ? 'Delete permanently' : 'Move to recycle bin'}
+                        {busy === 'save' ? t('deleting') : deleteRequest.permanent ? t('deletePermanent') : t('moveToBin')}
                       </AlertDialogAction>
                     </AlertDialogFooter>
                   </AlertDialogContent>
@@ -2564,13 +2588,13 @@ export default function App() {
               }}>
                 <AlertDialogContent>
                   <AlertDialogHeader>
-                    <AlertDialogTitle>Empty the recycle bin?</AlertDialogTitle>
+                    <AlertDialogTitle>{t('emptyBinTitle')}</AlertDialogTitle>
                     <AlertDialogDescription>
-                      All entries and folders in the recycle bin are deleted permanently. KeePass apps remove them too when they sync.
+                      {t('emptyBinText')}
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>
-                    <AlertDialogCancel disabled={busy === 'save'}>Cancel</AlertDialogCancel>
+                    <AlertDialogCancel disabled={busy === 'save'}>{t('cancel')}</AlertDialogCancel>
                     <AlertDialogAction
                       variant="destructive"
                       disabled={busy === 'save'}
@@ -2582,7 +2606,7 @@ export default function App() {
                         void confirmEmptyRecycleBin();
                       }}
                     >
-                      {busy === 'save' ? 'Deleting…' : 'Empty recycle bin'}
+                      {busy === 'save' ? t('deleting') : t('emptyBin')}
                     </AlertDialogAction>
                   </AlertDialogFooter>
                 </AlertDialogContent>
@@ -2620,6 +2644,7 @@ function VaultNavigation({
   profile: ReactNode;
 }) {
   const { setOpenMobile } = useSidebar();
+  const tSidebar = useT(sidebarText);
   return (
     <Sidebar variant="inset">
       <SidebarHeader className="h-14 shrink-0 justify-center border-b px-5 py-0">
@@ -2631,14 +2656,14 @@ function VaultNavigation({
             <p className="flex items-center gap-1.5 text-sm font-semibold">
               KeePort <VersionBadge />
             </p>
-            <p className="text-xs text-muted-foreground">Personal vault</p>
+            <p className="text-xs text-muted-foreground">{tSidebar('personalVault')}</p>
           </div>
         </div>
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel>Shared vaults</SidebarGroupLabel>
-          {!files.length && <p className="px-2 py-1 text-sm text-muted-foreground">No files available.</p>}
+          <SidebarGroupLabel>{tSidebar('sharedVaults')}</SidebarGroupLabel>
+          {!files.length && <p className="px-2 py-1 text-sm text-muted-foreground">{tSidebar('noFiles')}</p>}
           <SidebarMenu>
             {files.map(/**
              * Renders a sidebar item for each accessible vault file.
@@ -2650,7 +2675,7 @@ function VaultNavigation({
                   isActive={file.id === selectedId}
                   aria-current={file.id === selectedId ? 'true' : undefined}
                   disabled={disabled}
-                  title={file.id === openId ? `${file.name} (unlocked)` : file.name}
+                  title={file.id === openId ? tSidebar('unlockedTitle', { name: file.name }) : file.name}
                   className={file.id === openId
                     ? 'bg-emerald-500/10 font-medium text-emerald-700 ring-1 ring-emerald-500/40 hover:bg-emerald-500/15 hover:text-emerald-800 data-active:bg-emerald-500/10 data-active:text-emerald-700 dark:text-emerald-300 dark:hover:text-emerald-200 dark:data-active:text-emerald-300'
                     : undefined}
@@ -2662,7 +2687,7 @@ function VaultNavigation({
                   {file.id === openId ? <LockKeyholeOpenIcon /> : <DatabaseIcon />}
                   <span>
                     {file.name}
-                    {file.id === openId && <span className="sr-only"> (unlocked)</span>}
+                    {file.id === openId && <span className="sr-only"> {tSidebar('unlockedSuffix')}</span>}
                   </span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
@@ -2678,7 +2703,7 @@ function VaultNavigation({
       </SidebarContent>
       <SidebarFooter className="gap-3 border-t px-4 py-4">
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <ShieldCheckIcon className="size-4 shrink-0" /> Decryption stays in this browser
+          <ShieldCheckIcon className="size-4 shrink-0" /> {tSidebar('decryptionLocal')}
         </div>
         <div className="flex min-w-0 items-center gap-2.5">
           <Avatar aria-hidden="true">

@@ -7,6 +7,8 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Field, FieldError, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import messages from '@/i18n/entry-fields';
+import { useT } from '@shared/i18n/react';
 
 interface EntryFieldsProps {
   fields: readonly CustomField[];
@@ -48,6 +50,7 @@ export function EntryFields({ fields, template, canWrite, disabled, onChange, on
   const [adding, setAdding] = useState(false);
   const ordered = orderFields(fields, template);
   const editable = canWrite && !disabled;
+  const t = useT(messages);
 
   /**
    * Replaces the value of one field.
@@ -80,9 +83,9 @@ export function EntryFields({ fields, template, canWrite, disabled, onChange, on
 
   if (!ordered.length && !canWrite) return null;
   return (
-    <section className="grid gap-4" aria-label="Additional fields">
-      <h3 className="text-sm font-semibold">{template ? `${template.title} fields` : 'Additional fields'}</h3>
-      {!ordered.length && <p className="text-sm text-muted-foreground">No additional fields.</p>}
+    <section className="grid gap-4" aria-label={t('additionalFields')}>
+      <h3 className="text-sm font-semibold">{template ? t('templateFields', { template: template.title }) : t('additionalFields')}</h3>
+      {!ordered.length && <p className="text-sm text-muted-foreground">{t('empty')}</p>}
       {ordered.map(/**
        * Renders one custom field with copy, reveal and remove actions.
        * @param field - The field to render.
@@ -118,8 +121,8 @@ export function EntryFields({ fields, template, canWrite, disabled, onChange, on
                   type="button"
                   variant="outline"
                   size="icon"
-                  aria-label={shown ? `Hide ${label}` : `Show ${label}`}
-                  title={shown ? 'Hide' : 'Show'}
+                  aria-label={shown ? t('hideNamed', { label }) : t('showNamed', { label })}
+                  title={shown ? t('hide') : t('show')}
                   onClick={/** Toggles the visibility of the protected value. */ () => toggleReveal(field.name)}
                 >
                   {shown ? <EyeOffIcon /> : <EyeIcon />}
@@ -129,8 +132,8 @@ export function EntryFields({ fields, template, canWrite, disabled, onChange, on
                 type="button"
                 variant="outline"
                 size="icon"
-                aria-label={`Copy ${label}`}
-                title="Copy"
+                aria-label={t('copyNamed', { label })}
+                title={t('copy')}
                 disabled={!field.value}
                 onClick={/** Copies the field value. */ () => onCopy(field.value, label)}
               >
@@ -141,8 +144,8 @@ export function EntryFields({ fields, template, canWrite, disabled, onChange, on
                   type="button"
                   variant="outline"
                   size="icon"
-                  aria-label={`Remove ${label}`}
-                  title="Remove field"
+                  aria-label={t('removeNamed', { label })}
+                  title={t('removeField')}
                   onClick={/** Removes the field from the draft. */ () => onChange(fields.filter(/**
                    * Keeps all other fields.
                    * @param item - One custom field.
@@ -172,7 +175,7 @@ export function EntryFields({ fields, template, canWrite, disabled, onChange, on
         />
       ) : (
         <Button type="button" variant="outline" size="sm" className="justify-self-start" onClick={/** Opens the form for a new field. */ () => setAdding(true)}>
-          <PlusIcon /> Add field
+          <PlusIcon /> {t('addField')}
         </Button>
       ))}
     </section>
@@ -198,6 +201,7 @@ function AddFieldForm({
   const [isProtected, setIsProtected] = useState(false);
   const [touched, setTouched] = useState(false);
   const error = customFieldNameError(name, existing);
+  const t = useT(messages);
 
   /**
    * Adds the field when the name is valid. The entry form is a separate form, so this one only handles the click.
@@ -210,9 +214,9 @@ function AddFieldForm({
   }
 
   return (
-    <div className="grid gap-3 rounded-lg border p-3" role="group" aria-label="New field">
+    <div className="grid gap-3 rounded-lg border p-3" role="group" aria-label={t('newField')}>
       <Field data-invalid={touched && error ? true : undefined}>
-        <FieldLabel htmlFor={`${baseId}-name`}>Field name</FieldLabel>
+        <FieldLabel htmlFor={`${baseId}-name`}>{t('fieldName')}</FieldLabel>
         <Input
           id={`${baseId}-name`}
           autoFocus
@@ -236,7 +240,7 @@ function AddFieldForm({
         {touched && error && <FieldError>{error}</FieldError>}
       </Field>
       <Field>
-        <FieldLabel htmlFor={`${baseId}-value`}>Value</FieldLabel>
+        <FieldLabel htmlFor={`${baseId}-value`}>{t('value')}</FieldLabel>
         <Input
           id={`${baseId}-value`}
           type={isProtected ? 'password' : 'text'}
@@ -263,11 +267,11 @@ function AddFieldForm({
            * @param checked - The new checkbox state.
            */ (checked) => setIsProtected(checked === true)}
         />
-        <Label htmlFor={`${baseId}-protected`} className="font-normal">Protected (masked like a password)</Label>
+        <Label htmlFor={`${baseId}-protected`} className="font-normal">{t('protected')}</Label>
       </div>
       <div className="flex gap-2">
-        <Button type="button" size="sm" onClick={add}>Add field</Button>
-        <Button type="button" size="sm" variant="ghost" onClick={onCancel}>Cancel</Button>
+        <Button type="button" size="sm" onClick={add}>{t('addField')}</Button>
+        <Button type="button" size="sm" variant="ghost" onClick={onCancel}>{t('cancel')}</Button>
       </div>
     </div>
   );

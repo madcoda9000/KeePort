@@ -1,3 +1,6 @@
+import messages from '../i18n/lib-icon-image.ts';
+import { translate } from '../../../shared/i18n/core.ts';
+
 /** The size icons are stored with, like KeePassXC does. */
 export const ICON_SIZE = 32;
 
@@ -13,7 +16,7 @@ function readAsDataUrl(blob: Blob): Promise<string> {
    */ (resolve, reject) => {
     const reader = new FileReader();
     reader.onload = /** Returns the result. */ () => resolve(String(reader.result));
-    reader.onerror = /** Reports the read error. */ () => reject(reader.error ?? new Error('The icon could not be read.'));
+    reader.onerror = /** Reports the read error. */ () => reject(reader.error ?? new Error(translate(messages, 'readFailed')));
     reader.readAsDataURL(blob);
   });
 }
@@ -31,13 +34,13 @@ export async function iconToPng(blob: Blob): Promise<Uint8Array> {
   try {
     await image.decode();
   } catch {
-    throw new Error('The website icon is not an image your browser can read.');
+    throw new Error(translate(messages, 'notAnImage'));
   }
   const canvas = document.createElement('canvas');
   canvas.width = ICON_SIZE;
   canvas.height = ICON_SIZE;
   const context = canvas.getContext('2d');
-  if (!context) throw new Error('Your browser cannot convert images.');
+  if (!context) throw new Error(translate(messages, 'noCanvas'));
   const scale = Math.min(ICON_SIZE / (image.naturalWidth || ICON_SIZE), ICON_SIZE / (image.naturalHeight || ICON_SIZE));
   const width = (image.naturalWidth || ICON_SIZE) * scale;
   const height = (image.naturalHeight || ICON_SIZE) * scale;
@@ -47,6 +50,6 @@ export async function iconToPng(blob: Blob): Promise<Uint8Array> {
    * Encodes the canvas as PNG.
    * @param resolve - Receives the PNG blob.
    */ (resolve) => canvas.toBlob(resolve, 'image/png'));
-  if (!png) throw new Error('The icon could not be converted.');
+  if (!png) throw new Error(translate(messages, 'convertFailed'));
   return new Uint8Array(await png.arrayBuffer());
 }

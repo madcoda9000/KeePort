@@ -13,6 +13,8 @@ import {
   DialogTitle
 } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
+import messages from '@/i18n/move-entries-dialog';
+import { useT } from '@shared/i18n/react';
 
 /**
  * Lets the user pick the destination folder for the selected entries.
@@ -74,15 +76,15 @@ function MoveEntriesForm({
    * @param folder - One folder of the vault.
    */ (folder) => !folder.inRecycleBin);
   const allInSameFolder = sourceFolderIds.size === 1;
-  const noun = count === 1 ? 'entry' : 'entries';
+  const t = useT(messages);
 
   return (
     <DialogContent className="max-h-[calc(100dvh-2rem)] sm:max-w-md">
       <DialogHeader>
-        <DialogTitle>Move {count} {noun}</DialogTitle>
-        <DialogDescription>Choose the folder the selected {noun} should be moved to.</DialogDescription>
+        <DialogTitle>{t('title', { count })}</DialogTitle>
+        <DialogDescription>{t('description', { count })}</DialogDescription>
       </DialogHeader>
-      <div role="radiogroup" aria-label="Destination folder" className="-mx-2 grid max-h-80 gap-0.5 overflow-y-auto px-2 py-1">
+      <div role="radiogroup" aria-label={t('destination')} className="-mx-2 grid max-h-80 gap-0.5 overflow-y-auto px-2 py-1">
         {targets.map(/**
          * Renders one destination folder, indented by its depth.
          * @param folder - The folder that can receive the entries.
@@ -104,14 +106,14 @@ function MoveEntriesForm({
             >
               {folder.isTemplates ? <LayoutTemplateIcon /> : <FolderIcon />}
               <span className="truncate">{folder.name}</span>
-              {current && <Badge variant="outline" className="ms-auto">current folder</Badge>}
+              {current && <Badge variant="outline" className="ms-auto">{t('currentFolder')}</Badge>}
             </Button>
           );
         })}
       </div>
       <DialogFooter>
         <Button type="button" disabled={busy || targetId === null} onClick={/** Moves the entries to the chosen folder. */ () => targetId && onMove(targetId)}>
-          <FolderInputIcon /> {busy ? 'Moving…' : 'Move here'}
+          <FolderInputIcon /> {busy ? t('moving') : t('moveHere')}
         </Button>
       </DialogFooter>
     </DialogContent>

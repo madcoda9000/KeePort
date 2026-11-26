@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.17.0] - 2026-11-26
+
+### Added
+
+- **German and French** for the web vault and the admin console, next to English. Every text, message and tooltip is translated; dates, times and numbers follow the chosen language, and so do "2 minutes ago" and similar times. Texts without a translation fall back to English.
+- **Language choice:** a language menu on the sign-in pages, and **Language** in the account settings of the web vault and the admin console ("Automatic" follows the browser). The choice is stored on the account, so it applies on every device; before sign-in the browser remembers it.
+- Error messages from the server are shown in the chosen language.
+- `PUT /api/auth/language` and `PUT /api/admin/auth/language`; `language` in the account returned by `/me`. Changing it is logged in the audit log as `SettingsChanged`.
+
 ## [0.16.0] - 2026-11-26
 
 ### Added
@@ -394,6 +403,7 @@ First beta release.
 - Login and setup share a configurable per-IP rate limit; session checks and sign-out are exempt. WebDAV has a separate configurable limit applied before authentication.
 - Admin accounts can only sign in to the Admin console; Vault and WebDAV require a separate user account. Admin sessions are scoped to the Admin API, so existing admins need to sign in again after updating.
 
+[0.17.0]: https://github.com/madcoda9000/KeePort/compare/v0.16.0...v0.17.0
 [0.16.0]: https://github.com/madcoda9000/KeePort/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/madcoda9000/KeePort/compare/v0.14.3...v0.15.0
 [0.14.3]: https://github.com/madcoda9000/KeePort/compare/v0.14.2...v0.14.3

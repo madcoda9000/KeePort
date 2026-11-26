@@ -893,6 +893,39 @@ public class KeePortApiTests : IDisposable
         Assert.Equal("365 → 30 days", changed.GetProperty("items")[0].GetProperty("details").GetString());
     }
 
+    /// <summary>Checks that both account types can store an interface language, that it is validated and logged, and that null follows the browser again.</summary>
+    [Fact]
+    public async Task Language_Is_Stored_Per_Account_And_Validated()
+    {
+        var adminCsrf = await SetupAdminAsync(_admin);
+        await CreateUserAsync(_admin, adminCsrf, "alice", "user");
+        var (userCsrf, _) = await LoginAsync(_user, "alice", "User passphrase 123");
+        Assert.Equal(JsonValueKind.Null, (await GetJsonAsync(_user, "/api/auth/me")).GetProperty("language").ValueKind);
+
+        using (var german = await SendAsync(_user, HttpMethod.Put, "/api/auth/language", json: new { language = "de" }, csrf: userCsrf))
+        {
+            german.EnsureSuccessStatusCode();
+        }
+        Assert.Equal("de", (await GetJsonAsync(_user, "/api/auth/me")).GetProperty("language").GetString());
+        using (var invalid = await SendAsync(_user, HttpMethod.Put, "/api/auth/language", json: new { language = "es" }, csrf: userCsrf))
+        {
+            Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+        }
+        using (var automatic = await SendAsync(_user, HttpMethod.Put, "/api/auth/language", json: new { language = (string?)null }, csrf: userCsrf))
+        {
+            automatic.EnsureSuccessStatusCode();
+        }
+        Assert.Equal(JsonValueKind.Null, (await GetJsonAsync(_user, "/api/auth/me")).GetProperty("language").ValueKind);
+
+        using (var french = await SendAsync(_admin, HttpMethod.Put, $"{AdminAuthPath}/language", json: new { language = "fr" }, csrf: adminCsrf))
+        {
+            french.EnsureSuccessStatusCode();
+        }
+        Assert.Equal("fr", (await GetJsonAsync(_admin, $"{AdminAuthPath}/me")).GetProperty("language").GetString());
+        var logged = await GetJsonAsync(_admin, "/api/admin/logs/audit?search=Language");
+        Assert.Equal(3, logged.GetProperty("total").GetInt64());
+    }
+
     /// <summary>Completes first-run setup and returns the administrator's CSRF token.</summary>
     /// <param name="client">The test client connected to the Admin API.</param>
     private async Task<string> SetupAdminAsync(HttpClient client)

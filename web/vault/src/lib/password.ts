@@ -1,3 +1,6 @@
+import messages from '../i18n/lib-password.ts';
+import { translate } from '../../../shared/i18n/core.ts';
+
 /** Character groups the password generator can use. */
 export const CHARACTER_SETS = {
   lower: 'abcdefghijklmnopqrstuvwxyz',
@@ -59,7 +62,7 @@ export function generatePassword(options: PasswordOptions): string {
    * Drops empty groups.
    * @param chars - The characters of one group.
    */ (chars) => chars.length > 0);
-  if (!groups.length) throw new Error('Choose at least one character group.');
+  if (!groups.length) throw new Error(translate(messages, 'noGroup'));
   const length = Math.min(MAX_PASSWORD_LENGTH, Math.max(MIN_PASSWORD_LENGTH, Math.round(options.length), groups.length));
   const all = groups.flat();
   // One character from every group guarantees that each chosen group appears; the rest is drawn from all characters.

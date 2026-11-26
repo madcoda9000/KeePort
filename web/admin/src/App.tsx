@@ -28,6 +28,16 @@ import { RateLimitSettingsPanel } from '@/components/rate-limit-settings';
 import { WebDavLogsPanel } from '@/components/webdav-logs';
 import { AuditLogPanel } from '@/components/audit-log';
 import { AuditSettingsPanel } from '@/components/audit-settings';
+import { applyAccountLanguage } from '@shared/i18n/language-select';
+import { formatDateTime, formatNumber, translate } from '@shared/i18n/core';
+import { useT } from '@shared/i18n/react';
+import authText from '@/i18n/app-auth';
+import commonText from '@/i18n/app-common';
+import permissionsText from '@/i18n/app-permissions';
+import sidebarText from '@/i18n/app-sidebar';
+import usersText from '@/i18n/app-users';
+import vaultsText from '@/i18n/app-vaults';
+import webdavText from '@/i18n/app-webdav';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
   AlertDialog,
@@ -84,38 +94,15 @@ type Message = { kind: 'notice' | 'error'; text: string } | null;
 type Tab = 'dashboard' | 'vaults' | 'users' | 'webdav' | 'settings' | 'audit-log' | 'webdav-logs';
 type PermissionValue = 'none' | 'read' | 'read-write';
 
+/** Each section's icon and the catalog keys (app-sidebar) of its title and description, translated at render time. */
 const ADMIN_SECTIONS = {
-  dashboard: {
-    title: 'Dashboard',
-    description: 'Status, version, storage and activity of this KeePort instance at a glance.',
-    icon: LayoutDashboardIcon
-  },
-  vaults: {
-    title: 'Vault files',
-    description: 'Create or upload KDBX files and manage who can access them.',
-    icon: DatabaseIcon
-  },
-  users: { title: 'Users', description: 'Manage account roles, status and passwords.', icon: UsersIcon },
-  webdav: {
-    title: 'WebDAV credentials',
-    description: 'Manage app passwords for external KeePass clients.',
-    icon: NetworkIcon
-  },
-  settings: {
-    title: 'Settings',
-    description: 'Manage server-wide settings for KeePort.',
-    icon: SettingsIcon
-  },
-  'audit-log': {
-    title: 'Audit log',
-    description: 'Who signed in and who changed users, vaults, permissions and settings, and when.',
-    icon: ShieldCheckIcon
-  },
-  'webdav-logs': {
-    title: 'WebDAV logs',
-    description: 'Review requests from KeePass clients to diagnose sync problems.',
-    icon: NetworkIcon
-  }
+  dashboard: { title: 'dashboard', description: 'dashboardDescription', icon: LayoutDashboardIcon },
+  vaults: { title: 'vaults', description: 'vaultsDescription', icon: DatabaseIcon },
+  users: { title: 'users', description: 'usersDescription', icon: UsersIcon },
+  webdav: { title: 'webdav', description: 'webdavDescription', icon: NetworkIcon },
+  settings: { title: 'settings', description: 'settingsDescription', icon: SettingsIcon },
+  'audit-log': { title: 'auditLog', description: 'auditLogDescription', icon: ShieldCheckIcon },
+  'webdav-logs': { title: 'webdavLogs', description: 'webdavLogsDescription', icon: NetworkIcon }
 } as const;
 
 /** Sections listed directly under "Manage" in the navigation. */
@@ -123,59 +110,73 @@ const MANAGE_TABS: readonly Tab[] = ['dashboard', 'vaults', 'users', 'webdav', '
 /** Sections listed below the "Logs" navigation entry; the first one opens when "Logs" is selected. */
 const LOG_TABS: readonly Tab[] = ['audit-log', 'webdav-logs'];
 
-const VAULT_COLUMNS: readonly TableColumn<AdminFile>[] = [
-  /**
-   * Sorts by vault filename.
-   * @param file - The vault file metadata supplying this column's sort value.
-   */
-  { id: 'name', label: 'Name', sortValue: (file) => file.name },
-  /**
-   * Sorts by file size in bytes.
-   * @param file - The vault file metadata supplying this column's sort value.
-   */
-  { id: 'size', label: 'Size', sortValue: (file) => file.size },
-  /**
-   * Sorts by content revision number.
-   * @param file - The vault file metadata supplying this column's sort value.
-   */
-  { id: 'revision', label: 'Rev', sortValue: (file) => file.revision },
-  /**
-   * Sorts by modification time, not the formatted date.
-   * @param file - The vault file metadata supplying this column's sort value.
-   */
-  { id: 'updated', label: 'Updated', sortValue: (file) => timestampSortValue(file.updatedAt) },
-  /**
-   * Sorts by the visible deletion status.
-   * @param file - The vault file metadata supplying this column's sort value.
-   */
-  { id: 'status', label: 'Status', sortValue: (file) => file.deletedAt ? 'Deleted' : 'Active' },
-  { id: 'actions', label: 'Actions' }
-];
+/**
+ * Returns the visible deletion status of a vault in the current language.
+ * @param file - The vault file metadata whose deletion status is shown.
+ */
+function fileStatus(file: AdminFile) {
+  return file.deletedAt ? translate(vaultsText, 'deleted') : translate(commonText, 'active');
+}
 
-const ACCOUNT_COLUMNS: readonly TableColumn<User>[] = [
-  /**
-   * Sorts by account username.
-   * @param account - The account row supplying the displayed fields.
-   */
-  { id: 'user', label: 'User', sortValue: (account) => account.username },
-  /**
-   * Sorts by role name.
-   * @param account - The account row supplying the displayed fields.
-   */
-  { id: 'role', label: 'Role', sortValue: (account) => account.role },
-  /**
-   * Sorts enabled accounts before disabled accounts in ascending order.
-   * @param account - The account row supplying the displayed fields.
-   */
-  { id: 'disabled', label: 'Disabled', sortValue: (account) => Number(account.disabled) },
-  { id: 'newPassword', label: 'New password' },
-  /**
-   * Sorts by the last sign-in time, leaving missing dates distinct.
-   * @param account - The account row supplying the displayed fields.
-   */
-  { id: 'lastLogin', label: 'Last login', sortValue: (account) => timestampSortValue(account.lastLoginAt) },
-  { id: 'actions', label: 'Actions' }
-];
+/** Builds the vault table's columns with headers in the current language. */
+function vaultColumns(): readonly TableColumn<AdminFile>[] {
+  return [
+    /**
+     * Sorts by vault filename.
+     * @param file - The vault file metadata supplying this column's sort value.
+     */
+    { id: 'name', label: translate(vaultsText, 'name'), sortValue: (file) => file.name },
+    /**
+     * Sorts by file size in bytes.
+     * @param file - The vault file metadata supplying this column's sort value.
+     */
+    { id: 'size', label: translate(vaultsText, 'size'), sortValue: (file) => file.size },
+    /**
+     * Sorts by content revision number.
+     * @param file - The vault file metadata supplying this column's sort value.
+     */
+    { id: 'revision', label: translate(vaultsText, 'revision'), sortValue: (file) => file.revision },
+    /**
+     * Sorts by modification time, not the formatted date.
+     * @param file - The vault file metadata supplying this column's sort value.
+     */
+    { id: 'updated', label: translate(vaultsText, 'updated'), sortValue: (file) => timestampSortValue(file.updatedAt) },
+    /**
+     * Sorts by the visible deletion status.
+     * @param file - The vault file metadata supplying this column's sort value.
+     */
+    { id: 'status', label: translate(commonText, 'status'), sortValue: (file) => fileStatus(file) },
+    { id: 'actions', label: translate(commonText, 'actions') }
+  ];
+}
+
+/** Builds the account table's columns with headers in the current language. */
+function accountColumns(): readonly TableColumn<User>[] {
+  return [
+    /**
+     * Sorts by account username.
+     * @param account - The account row supplying the displayed fields.
+     */
+    { id: 'user', label: translate(usersText, 'user'), sortValue: (account) => account.username },
+    /**
+     * Sorts by role name.
+     * @param account - The account row supplying the displayed fields.
+     */
+    { id: 'role', label: translate(usersText, 'role'), sortValue: (account) => account.role },
+    /**
+     * Sorts enabled accounts before disabled accounts in ascending order.
+     * @param account - The account row supplying the displayed fields.
+     */
+    { id: 'disabled', label: translate(usersText, 'disabled'), sortValue: (account) => Number(account.disabled) },
+    { id: 'newPassword', label: translate(usersText, 'newPassword') },
+    /**
+     * Sorts by the last sign-in time, leaving missing dates distinct.
+     * @param account - The account row supplying the displayed fields.
+     */
+    { id: 'lastLogin', label: translate(usersText, 'lastLogin'), sortValue: (account) => timestampSortValue(account.lastLoginAt) },
+    { id: 'actions', label: translate(commonText, 'actions') }
+  ];
+}
 
 /**
  * Prompts for confirmation before running a destructive admin action.
@@ -194,6 +195,7 @@ function ConfirmAction({
   disabled?: boolean;
   onConfirm: () => void;
 }) {
+  const t = useT(commonText);
   return (
     <AlertDialog>
       <AlertDialogTrigger asChild>
@@ -207,7 +209,7 @@ function ConfirmAction({
           <AlertDialogDescription>{description}</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogCancel>{t('cancel')}</AlertDialogCancel>
           <AlertDialogAction variant="destructive" onClick={onConfirm}>
             {label}
           </AlertDialogAction>
@@ -222,9 +224,10 @@ function ConfirmAction({
  * @param size - The file size in bytes.
  */
 function formatBytes(size: number) {
-  if (size < 1024) return `${size} B`;
-  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
-  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+  const oneDecimal = { minimumFractionDigits: 1, maximumFractionDigits: 1 };
+  if (size < 1024) return translate(commonText, 'bytes', { size: formatNumber(size) });
+  if (size < 1024 * 1024) return translate(commonText, 'kilobytes', { size: formatNumber(size / 1024, oneDecimal) });
+  return translate(commonText, 'megabytes', { size: formatNumber(size / (1024 * 1024), oneDecimal) });
 }
 
 /**
@@ -233,8 +236,7 @@ function formatBytes(size: number) {
  */
 function formatDate(value: string | null) {
   if (!value) return '—';
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+  return formatDateTime(value, { dateStyle: 'short', timeStyle: 'medium' });
 }
 
 /**
@@ -275,6 +277,8 @@ function UserRow({
   const [disabled, setDisabled] = useState(user.disabled);
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
+  const t = useT(usersText);
+  const tc = useT(commonText);
 
   /** Resets account edits when the server-provided account changes. */
   useEffect(() => {
@@ -292,10 +296,10 @@ function UserRow({
     try {
       await api.updateUser(user.id, { role, disabled, ...(password ? { password } : {}) });
       setPassword('');
-      setMessage({ kind: 'notice', text: `Updated ${user.username}.` });
+      setMessage({ kind: 'notice', text: t('updated', { name: user.username }) });
       await onChanged();
     } catch (error) {
-      setMessage({ kind: 'error', text: errorText(error, 'Unable to update user.') });
+      setMessage({ kind: 'error', text: errorText(error, t('updateFailed')) });
     } finally {
       setBusy(false);
     }
@@ -307,10 +311,10 @@ function UserRow({
     setMessage(null);
     try {
       await api.deleteUser(user.id);
-      setMessage({ kind: 'notice', text: `Deleted ${user.username}.` });
+      setMessage({ kind: 'notice', text: t('deleted', { name: user.username }) });
       await onChanged();
     } catch (error) {
-      setMessage({ kind: 'error', text: errorText(error, 'Unable to delete user.') });
+      setMessage({ kind: 'error', text: errorText(error, t('deleteFailed')) });
     } finally {
       setBusy(false);
     }
@@ -328,20 +332,20 @@ function UserRow({
       </TableCell>
       <TableCell>
         <NativeSelect
-          aria-label={`Role for ${user.username}`}
+          aria-label={t('roleFor', { name: user.username })}
           value={role}
           onChange={/**
            * Updates the draft account role.
            * @param event - The account role selector change event.
            */ (event) => setRole(event.target.value as 'admin' | 'user')}
         >
-          <NativeSelectOption value="admin">Admin</NativeSelectOption>
-          <NativeSelectOption value="user">User</NativeSelectOption>
+          <NativeSelectOption value="admin">{t('roleAdmin')}</NativeSelectOption>
+          <NativeSelectOption value="user">{t('roleUser')}</NativeSelectOption>
         </NativeSelect>
       </TableCell>
       <TableCell>
         <Checkbox
-          aria-label={`Disable ${user.username}`}
+          aria-label={t('disableUser', { name: user.username })}
           checked={disabled}
           onCheckedChange={/**
            * Updates whether the draft account is disabled.
@@ -352,10 +356,10 @@ function UserRow({
       <TableCell>
         <Input
           className="min-w-32"
-          aria-label={`New password for ${user.username}`}
+          aria-label={t('newPasswordFor', { name: user.username })}
           type="password"
           autoComplete="new-password"
-          placeholder="Unchanged"
+          placeholder={t('unchanged')}
           value={password}
           onChange={/**
            * Stores the draft replacement password until save.
@@ -367,12 +371,12 @@ function UserRow({
       <TableCell>
         <div className="flex items-center gap-2">
           <Button size="sm" variant="outline" disabled={!changed || busy} onClick={save}>
-            Save
+            {tc('save')}
           </Button>
           <ConfirmAction
-            label="Delete"
-            title={`Delete ${user.username}?`}
-            description="This permanently removes the account and its access to vaults."
+            label={tc('delete')}
+            title={t('deleteTitle', { name: user.username })}
+            description={t('deleteDescription')}
             disabled={user.id === currentUserId || busy}
             onConfirm={/** Deletes the account after confirmation. */ () => {
               void remove();
@@ -400,6 +404,8 @@ function FileRow({
   onOpenPermissions: (file: AdminFile) => void;
 }) {
   const [busy, setBusy] = useState(false);
+  const t = useT(vaultsText);
+  const tc = useT(commonText);
 
   /**
    * Runs a vault mutation with shared busy, notification, and refresh handling.
@@ -414,7 +420,7 @@ function FileRow({
       setMessage({ kind: 'notice', text: success });
       await onChanged();
     } catch (error) {
-      setMessage({ kind: 'error', text: errorText(error, 'Vault action failed.') });
+      setMessage({ kind: 'error', text: errorText(error, t('actionFailed')) });
     } finally {
       setBusy(false);
     }
@@ -431,7 +437,7 @@ function FileRow({
     const name = String(new FormData(event.currentTarget).get('name') ?? '').trim();
     if (!name) return;
     setRenameOpen(false);
-    if (name !== file.name) await run(/** Submits the new name for the selected vault. */ () => api.renameFile(file.id, name), 'Vault renamed.');
+    if (name !== file.name) await run(/** Submits the new name for the selected vault. */ () => api.renameFile(file.id, name), t('renamed'));
   }
 
   /** Downloads the encrypted vault through a temporary browser object URL. */
@@ -446,9 +452,9 @@ function FileRow({
       anchor.download = file.name;
       anchor.click();
       URL.revokeObjectURL(url);
-      setMessage({ kind: 'notice', text: 'Vault download started.' });
+      setMessage({ kind: 'notice', text: t('downloadStarted') });
     } catch (error) {
-      setMessage({ kind: 'error', text: errorText(error, 'Unable to download vault.') });
+      setMessage({ kind: 'error', text: errorText(error, t('downloadFailed')) });
     } finally {
       setBusy(false);
     }
@@ -456,12 +462,12 @@ function FileRow({
 
   /** Moves the selected vault to the deleted files list. */
   async function remove() {
-    await run(/** Requests a soft deletion of the selected vault. */ () => api.deleteFile(file.id), 'Vault moved to deleted vaults.');
+    await run(/** Requests a soft deletion of the selected vault. */ () => api.deleteFile(file.id), t('movedToDeleted'));
   }
 
   /** Restores the selected vault to the active files list. */
   async function restore() {
-    await run(/** Requests restoration of the selected vault. */ () => api.restoreFile(file.id), 'Vault restored.');
+    await run(/** Requests restoration of the selected vault. */ () => api.restoreFile(file.id), t('restored'));
   }
 
   return (
@@ -473,34 +479,34 @@ function FileRow({
       <TableCell>{file.revision}</TableCell>
       <TableCell className="text-muted-foreground">{formatDate(file.updatedAt)}</TableCell>
       <TableCell>
-        <Badge variant={file.deletedAt ? 'outline' : 'secondary'}>{file.deletedAt ? 'Deleted' : 'Active'}</Badge>
+        <Badge variant={file.deletedAt ? 'outline' : 'secondary'}>{fileStatus(file)}</Badge>
       </TableCell>
       <TableCell>
         <div className="flex items-center gap-2">
           {!file.deletedAt && (
             <Button variant="outline" size="sm" disabled={busy} onClick={/** Opens the permissions editor for this vault. */ () => onOpenPermissions(file)}>
-              Permissions
+              {t('permissions')}
             </Button>
           )}
           {!file.deletedAt && (
             <Dialog open={renameOpen} onOpenChange={setRenameOpen}>
               <DialogTrigger asChild>
                 <Button variant="outline" size="sm" disabled={busy}>
-                  Rename
+                  {t('rename')}
                 </Button>
               </DialogTrigger>
               <DialogContent>
                 <DialogHeader>
-                  <DialogTitle>Rename vault</DialogTitle>
-                  <DialogDescription>Changing the filename does not change the encrypted contents.</DialogDescription>
+                  <DialogTitle>{t('renameTitle')}</DialogTitle>
+                  <DialogDescription>{t('renameDescription')}</DialogDescription>
                 </DialogHeader>
                 <form className="grid gap-4" onSubmit={rename}>
                   <Field>
-                    <FieldLabel htmlFor={`rename-${file.id}`}>File name</FieldLabel>
+                    <FieldLabel htmlFor={`rename-${file.id}`}>{t('fileName')}</FieldLabel>
                     <Input id={`rename-${file.id}`} name="name" defaultValue={file.name} required />
                   </Field>
                   <Button type="submit" className="justify-self-end">
-                    Save name
+                    {t('saveName')}
                   </Button>
                 </form>
               </DialogContent>
@@ -509,8 +515,8 @@ function FileRow({
           <Button
             variant="ghost"
             size="icon-sm"
-            aria-label={`Download ${file.name}`}
-            title="Download"
+            aria-label={t('downloadFile', { name: file.name })}
+            title={t('download')}
             disabled={busy}
             onClick={download}
           >
@@ -518,13 +524,13 @@ function FileRow({
           </Button>
           {file.deletedAt ? (
             <Button variant="outline" size="sm" disabled={busy} onClick={restore}>
-              <RotateCcwIcon /> Restore
+              <RotateCcwIcon /> {t('restore')}
             </Button>
           ) : (
             <ConfirmAction
-              label="Delete"
-              title="Move this vault to deleted files?"
-              description={`You can restore ${file.name} from the deleted files list.`}
+              label={tc('delete')}
+              title={t('deleteTitle')}
+              description={t('deleteDescription', { name: file.name })}
               disabled={busy}
               onConfirm={/** Soft-deletes the vault after confirmation. */ () => {
                 void remove();
@@ -556,6 +562,8 @@ function PermissionPanel({
   const [busy, setBusy] = useState(true);
   const [loaded, setLoaded] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const t = useT(permissionsText);
+  const tc = useT(commonText);
   const eligibleUsers = useMemo(/** Derives the accounts that can receive vault grants. */ () => users.filter(/**
    * Includes only enabled non-admin user accounts.
    * @param user - The candidate account whose role and disabled state are checked.
@@ -580,7 +588,7 @@ function PermissionPanel({
         setRows(next);
         setLoaded(true);
       } catch (error) {
-        if (!cancelled) setErrorMessage(errorText(error, 'Unable to load permissions.'));
+        if (!cancelled) setErrorMessage(errorText(error, translate(permissionsText, 'loadFailed')));
       } finally {
         if (!cancelled) setBusy(false);
       }
@@ -602,10 +610,10 @@ function PermissionPanel({
          * @param entry - The draft pair containing a user ID and its selected access level.
          */ ([userId, permission]) => ({ userId, permission }))
       );
-      setMessage({ kind: 'notice', text: `Permissions updated for ${file.name}.` });
+      setMessage({ kind: 'notice', text: t('updated', { name: file.name }) });
       onClose();
     } catch (error) {
-      setErrorMessage(errorText(error, 'Unable to save permissions.'));
+      setErrorMessage(errorText(error, t('saveFailed')));
     } finally {
       setBusy(false);
     }
@@ -623,8 +631,8 @@ function PermissionPanel({
     >
       <SheetContent className="w-full gap-0 overflow-y-auto sm:max-w-lg">
         <SheetHeader className="border-b p-6 pe-12">
-          <SheetTitle>Vault permissions</SheetTitle>
-          <SheetDescription>{file.name} · Administrators always have read-write access.</SheetDescription>
+          <SheetTitle>{t('title')}</SheetTitle>
+          <SheetDescription>{t('description', { name: file.name })}</SheetDescription>
         </SheetHeader>
         <div className="grid gap-4 p-6">
           {errorMessage && (
@@ -634,12 +642,12 @@ function PermissionPanel({
           )}
           {busy && !loaded && (
             <p role="status" className="text-sm text-muted-foreground">
-              Loading permissions…
+              {t('loading')}
             </p>
           )}
           {loaded && !eligibleUsers.length && (
             <Alert>
-              <AlertDescription>No active non-admin accounts exist yet.</AlertDescription>
+              <AlertDescription>{t('noAccounts')}</AlertDescription>
             </Alert>
           )}
           {loaded &&
@@ -663,15 +671,15 @@ function PermissionPanel({
                      */ (current) => ({ ...current, [user.id]: event.target.value as PermissionValue }))
                   }
                 >
-                  <NativeSelectOption value="none">No access</NativeSelectOption>
-                  <NativeSelectOption value="read">Read only</NativeSelectOption>
-                  <NativeSelectOption value="read-write">Read and write</NativeSelectOption>
+                  <NativeSelectOption value="none">{t('none')}</NativeSelectOption>
+                  <NativeSelectOption value="read">{t('read')}</NativeSelectOption>
+                  <NativeSelectOption value="read-write">{t('readWrite')}</NativeSelectOption>
                 </NativeSelect>
               </Field>
             ))}
           {loaded && eligibleUsers.length > 0 && (
             <Button className="justify-self-start" disabled={busy} onClick={save}>
-              {busy ? 'Saving…' : 'Save permissions'}
+              {busy ? tc('saving') : t('save')}
             </Button>
           )}
         </div>
@@ -699,6 +707,12 @@ export default function App() {
   const [message, setMessage] = useState<Message>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [theme, setTheme] = useState(getTheme);
+  const t = useT(sidebarText);
+  const ta = useT(authText);
+  const tc = useT(commonText);
+  const tv = useT(vaultsText);
+  const tu = useT(usersText);
+  const tw = useT(webdavText);
 
   const [newUsername, setNewUsername] = useState('');
   const [newEmail, setNewEmail] = useState('');
@@ -752,10 +766,11 @@ export default function App() {
         if (cancelled) return;
         await api.csrf();
         setUser(me);
+        applyAccountLanguage(me.language);
         await refreshAll();
       } catch (error) {
         if (!cancelled && !(error instanceof ApiError && error.status === 401)) {
-          setMessage({ kind: 'error', text: errorText(error, 'Unable to load admin console.') });
+          setMessage({ kind: 'error', text: errorText(error, translate(sidebarText, 'loadFailed')) });
         }
       } finally {
         if (!cancelled) setReady(true);
@@ -783,7 +798,7 @@ export default function App() {
         if (!cancelled) setFiles(result);
       })
       .catch((error) => {
-        if (!cancelled) setMessage({ kind: 'error', text: errorText(error, 'Unable to load vault files.') });
+        if (!cancelled) setMessage({ kind: 'error', text: errorText(error, translate(vaultsText, 'loadFailed')) });
       });
     return /** Invalidates a pending file query when its dependencies change. */ () => {
       cancelled = true;
@@ -797,6 +812,7 @@ export default function App() {
   async function afterAuth(result: { user: User }) {
     setTab('dashboard');
     setUser(result.user);
+    applyAccountLanguage(result.user.language);
     setSetupRequired(false);
     await refreshAll();
   }
@@ -819,7 +835,7 @@ export default function App() {
       await afterAuth(result);
       form.reset();
     } catch (error) {
-      setMessage({ kind: 'error', text: errorText(error, 'Login failed.') });
+      setMessage({ kind: 'error', text: errorText(error, ta('loginFailed')) });
     } finally {
       setBusy(null);
     }
@@ -845,7 +861,7 @@ export default function App() {
       await afterAuth(result);
       form.reset();
     } catch (error) {
-      setMessage({ kind: 'error', text: errorText(error, 'Setup failed.') });
+      setMessage({ kind: 'error', text: errorText(error, ta('setupFailed')) });
     } finally {
       setBusy(null);
     }
@@ -905,10 +921,10 @@ export default function App() {
       setNewEmail('');
       setNewPassword('');
       setNewRole('user');
-      setMessage({ kind: 'notice', text: 'User created.' });
+      setMessage({ kind: 'notice', text: tu('created') });
       await refreshUsers();
     } catch (error) {
-      setMessage({ kind: 'error', text: errorText(error, 'Unable to create user.') });
+      setMessage({ kind: 'error', text: errorText(error, tu('createFailed')) });
     } finally {
       setBusy(null);
     }
@@ -926,10 +942,10 @@ export default function App() {
     setMessage(null);
     try {
       await api.uploadFile(file);
-      setMessage({ kind: 'notice', text: `Uploaded ${file.name}.` });
+      setMessage({ kind: 'notice', text: tv('uploaded', { name: file.name }) });
       await refreshFiles();
     } catch (error) {
-      setMessage({ kind: 'error', text: errorText(error, 'Unable to upload vault.') });
+      setMessage({ kind: 'error', text: errorText(error, tv('uploadFailed')) });
     } finally {
       setBusy(null);
     }
@@ -938,7 +954,7 @@ export default function App() {
   /** Creates an encrypted KDBX in the browser and uploads the resulting file. */
   async function handleCreateVault() {
     if (!newVaultName.trim() || !newVaultPassword) {
-      setMessage({ kind: 'error', text: 'Vault name and master password are required.' });
+      setMessage({ kind: 'error', text: tv('nameAndPasswordRequired') });
       return;
     }
     setBusy('create-vault');
@@ -953,10 +969,10 @@ export default function App() {
       await api.uploadFile(file, fileName);
       setNewVaultName('');
       setNewVaultPassword('');
-      setMessage({ kind: 'notice', text: 'Vault created in the browser and uploaded.' });
+      setMessage({ kind: 'notice', text: tv('created') });
       await refreshFiles();
     } catch (error) {
-      setMessage({ kind: 'error', text: errorText(error, 'Unable to create vault.') });
+      setMessage({ kind: 'error', text: errorText(error, tv('createFailed')) });
     } finally {
       setBusy(null);
     }
@@ -969,7 +985,7 @@ export default function App() {
   async function handleCreateWebDav(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!webdavUserId || !webdavLabel.trim() || !webdavPassword) {
-      setMessage({ kind: 'error', text: 'User, label and app password are required.' });
+      setMessage({ kind: 'error', text: tw('required') });
       return;
     }
     setBusy('create-webdav');
@@ -980,11 +996,11 @@ export default function App() {
       setWebdavPassword('');
       setMessage({
         kind: 'notice',
-        text: 'WebDAV credential created. Give the user the WebDAV username and app password.'
+        text: tw('createdNotice')
       });
       await refreshWebDav();
     } catch (error) {
-      setMessage({ kind: 'error', text: errorText(error, 'Unable to create WebDAV credential.') });
+      setMessage({ kind: 'error', text: errorText(error, tw('createFailed')) });
     } finally {
       setBusy(null);
     }
@@ -999,10 +1015,10 @@ export default function App() {
     setMessage(null);
     try {
       await api.revokeWebDavCredential(id);
-      setMessage({ kind: 'notice', text: 'WebDAV credential revoked.' });
+      setMessage({ kind: 'notice', text: tw('revokedNotice') });
       await refreshWebDav();
     } catch (error) {
-      setMessage({ kind: 'error', text: errorText(error, 'Unable to revoke WebDAV credential.') });
+      setMessage({ kind: 'error', text: errorText(error, tw('revokeFailed')) });
     } finally {
       setBusy(null);
     }
@@ -1013,8 +1029,8 @@ export default function App() {
       type="button"
       variant="outline"
       size="icon"
-      aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-      title={theme === 'dark' ? 'Light mode' : 'Dark mode'}
+      aria-label={theme === 'dark' ? t('switchToLight') : t('switchToDark')}
+      title={theme === 'dark' ? t('lightMode') : t('darkMode')}
       onClick={/** Toggles the theme and updates the workspace controls. */ () => setTheme(toggleTheme())}
     >
       {theme === 'dark' ? <SunIcon /> : <MoonIcon />}
@@ -1026,18 +1042,18 @@ export default function App() {
       <AuthLayout area="Admin" themeAction={themeAction}>
         {!ready ? (
           <p role="status" className="text-sm text-muted-foreground">
-            Loading admin console…
+            {ta('loading')}
           </p>
         ) : (
           <form className="grid gap-5" onSubmit={setupRequired ? handleSetup : handleLogin}>
             <div className="space-y-2">
               <h1 className="text-3xl font-semibold tracking-tight">
-                {setupRequired ? 'Initial setup' : 'Admin sign in'}
+                {setupRequired ? ta('initialSetup') : ta('adminSignIn')}
               </h1>
               <p className="text-sm leading-relaxed text-muted-foreground">
                 {setupRequired
-                  ? 'Use the one-time token from the KeePort logs to create your first administrator account.'
-                  : 'Sign in with an administrator account to manage vault files, users and WebDAV access.'}
+                  ? ta('setupIntro')
+                  : ta('signInIntro')}
               </p>
             </div>
             {message?.kind === 'error' && (
@@ -1048,22 +1064,22 @@ export default function App() {
             <FieldGroup className="gap-4">
               {setupRequired && (
                 <Field>
-                  <FieldLabel htmlFor="setupToken">Setup token</FieldLabel>
+                  <FieldLabel htmlFor="setupToken">{ta('setupToken')}</FieldLabel>
                   <Input id="setupToken" name="setupToken" autoComplete="off" required />
                 </Field>
               )}
               <Field>
-                <FieldLabel htmlFor="username">Username</FieldLabel>
+                <FieldLabel htmlFor="username">{ta('username')}</FieldLabel>
                 <Input id="username" name="username" autoComplete="username" required />
               </Field>
               {setupRequired && (
                 <Field>
-                  <FieldLabel htmlFor="setup-email">Email address</FieldLabel>
+                  <FieldLabel htmlFor="setup-email">{ta('email')}</FieldLabel>
                   <Input id="setup-email" name="email" type="email" autoComplete="email" maxLength={254} required />
                 </Field>
               )}
               <Field>
-                <FieldLabel htmlFor="password">Password</FieldLabel>
+                <FieldLabel htmlFor="password">{ta('password')}</FieldLabel>
                 <Input
                   id="password"
                   name="password"
@@ -1076,11 +1092,11 @@ export default function App() {
             <Button type="submit" disabled={busy === 'setup' || busy === 'login'}>
               {setupRequired
                 ? busy === 'setup'
-                  ? 'Creating…'
-                  : 'Create admin'
+                  ? ta('creating')
+                  : ta('createAdmin')
                 : busy === 'login'
-                  ? 'Signing in…'
-                  : 'Sign in'}
+                  ? ta('signingIn')
+                  : ta('signIn')}
             </Button>
           </form>
         )}
@@ -1110,14 +1126,14 @@ export default function App() {
         <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center gap-3 border-b bg-background/95 px-4 backdrop-blur sm:px-6">
           <SidebarTrigger />
           <Separator orientation="vertical" className="data-vertical:h-4 data-vertical:self-center" />
-          <span className="min-w-0 flex-1 truncate text-sm font-medium">Admin console</span>
+          <span className="min-w-0 flex-1 truncate text-sm font-medium">{t('adminConsole')}</span>
           {themeAction}
           <Button
             type="button"
             variant="ghost"
             size="icon"
-            aria-label="Sign out"
-            title="Sign out"
+            aria-label={t('signOut')}
+            title={t('signOut')}
             disabled={busy !== null}
             onClick={handleLogout}
           >
@@ -1126,9 +1142,9 @@ export default function App() {
         </header>
         <div className="mx-auto grid w-full max-w-7xl gap-6 p-4 sm:p-6 lg:p-8">
           <div className="space-y-1">
-            <div className="text-xs font-medium tracking-widest text-muted-foreground uppercase">Administration</div>
-            <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">{currentSection.title}</h1>
-            <p className="text-sm text-muted-foreground">{currentSection.description}</p>
+            <div className="text-xs font-medium tracking-widest text-muted-foreground uppercase">{t('administration')}</div>
+            <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">{t(currentSection.title)}</h1>
+            <p className="text-sm text-muted-foreground">{t(currentSection.description)}</p>
           </div>
           {storage?.needsAttention && (
             <DataStorageBanner
@@ -1175,13 +1191,13 @@ export default function App() {
               <div className="grid gap-4 xl:grid-cols-2">
                 <Card>
                   <CardHeader>
-                    <CardTitle>Create a vault</CardTitle>
-                    <CardDescription>New vaults are encrypted in your browser before upload.</CardDescription>
+                    <CardTitle>{tv('createTitle')}</CardTitle>
+                    <CardDescription>{tv('createDescription')}</CardDescription>
                   </CardHeader>
                   <CardContent>
                     {!browserCrypto && (
                       <div className="mb-4">
-                        <InsecureContextAlert action="Creating a vault" />
+                        <InsecureContextAlert action={tv('creatingAction')} />
                       </div>
                     )}
                     <form
@@ -1196,7 +1212,7 @@ export default function App() {
                     >
                       <FieldGroup className="grid gap-3 sm:grid-cols-2">
                         <Field>
-                          <FieldLabel htmlFor="vault-name">Vault name</FieldLabel>
+                          <FieldLabel htmlFor="vault-name">{tv('vaultName')}</FieldLabel>
                           <Input
                             id="vault-name"
                             value={newVaultName}
@@ -1209,7 +1225,7 @@ export default function App() {
                           />
                         </Field>
                         <Field>
-                          <FieldLabel htmlFor="vault-master-password">Master password</FieldLabel>
+                          <FieldLabel htmlFor="vault-master-password">{tv('masterPassword')}</FieldLabel>
                           <Input
                             id="vault-master-password"
                             type="password"
@@ -1225,20 +1241,20 @@ export default function App() {
                       </FieldGroup>
                       <Button type="submit" size="sm" className="justify-self-start" disabled={busy !== null || !browserCrypto}>
                         <PlusIcon />
-                        {busy === 'create-vault' ? 'Creating…' : 'Create KDBX'}
+                        {busy === 'create-vault' ? tc('creating') : tv('createKdbx')}
                       </Button>
                     </form>
                   </CardContent>
                 </Card>
                 <Card>
                   <CardHeader>
-                    <CardTitle>Upload a vault</CardTitle>
-                    <CardDescription>Add an existing encrypted KeePass file.</CardDescription>
+                    <CardTitle>{tv('uploadTitle')}</CardTitle>
+                    <CardDescription>{tv('uploadDescription')}</CardDescription>
                   </CardHeader>
                   <CardContent>
                     <Field className="max-w-sm">
                       <FieldLabel htmlFor="vault-upload">
-                        <UploadIcon className="size-4" /> KDBX file
+                        <UploadIcon className="size-4" /> {tv('kdbxFile')}
                       </FieldLabel>
                       <Input
                         type="file"
@@ -1248,7 +1264,7 @@ export default function App() {
                         disabled={busy !== null}
                       />
                       <FieldDescription>
-                        {busy === 'upload' ? 'Uploading…' : 'The file uploads as soon as you select it.'}
+                        {busy === 'upload' ? tv('uploading') : tv('uploadHint')}
                       </FieldDescription>
                     </Field>
                   </CardContent>
@@ -1257,10 +1273,8 @@ export default function App() {
               <Card className="gap-0 overflow-hidden py-0">
                 <CardHeader className="flex flex-wrap items-center justify-between gap-3 border-b py-5">
                   <div className="space-y-1">
-                    <CardTitle>Stored vaults</CardTitle>
-                    <CardDescription>
-                      {files.length} {files.length === 1 ? 'file' : 'files'}
-                    </CardDescription>
+                    <CardTitle>{tv('storedVaults')}</CardTitle>
+                    <CardDescription>{tv('fileCount', { count: files.length })}</CardDescription>
                   </div>
                   <Field orientation="horizontal" className="w-auto gap-2">
                     <Checkbox
@@ -1271,21 +1285,21 @@ export default function App() {
                        * @param checked - The checkbox state for including soft-deleted files.
                        */ (checked) => setIncludeDeleted(checked === true)}
                     />
-                    <FieldLabel htmlFor="show-deleted">Show deleted</FieldLabel>
+                    <FieldLabel htmlFor="show-deleted">{tv('showDeleted')}</FieldLabel>
                   </Field>
                 </CardHeader>
                 <DataTable
-                  label="Stored vaults"
+                  label={tv('storedVaults')}
                   rows={files}
-                  columns={VAULT_COLUMNS}
-                  searchLabel="Search vault files"
-                  emptyMessage="No vault files yet."
+                  columns={vaultColumns()}
+                  searchLabel={tv('search')}
+                  emptyMessage={tv('empty')}
                   matches={/**
                    * Searches the visible filename, size, revision, date, and status fields.
                    * @param file - The vault row whose displayed metadata is searched.
                    * @param query - The search text to match against the row.
                    */ (file, query) => matchesTableSearch(
-                    query, file.name, formatBytes(file.size), file.revision, formatDate(file.updatedAt), file.deletedAt ? 'Deleted' : 'Active'
+                    query, file.name, formatBytes(file.size), file.revision, formatDate(file.updatedAt), fileStatus(file)
                   )}
                   renderRow={/**
                    * Renders a vault row with its management actions.
@@ -1317,15 +1331,15 @@ export default function App() {
             <>
               <Card>
                 <CardHeader>
-                  <CardTitle>Create a user</CardTitle>
+                  <CardTitle>{tu('createTitle')}</CardTitle>
                   <CardDescription>
-                    Choose an account role; grant access to individual vaults separately.
+                    {tu('createDescription')}
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
                   <form className="flex flex-wrap items-end gap-4" onSubmit={handleCreateUser}>
                     <Field className="w-full sm:w-48">
-                      <FieldLabel htmlFor="new-username">Username</FieldLabel>
+                      <FieldLabel htmlFor="new-username">{tu('username')}</FieldLabel>
                       <Input
                         id="new-username"
                         value={newUsername}
@@ -1337,7 +1351,7 @@ export default function App() {
                       />
                     </Field>
                     <Field className="w-full sm:w-60">
-                      <FieldLabel htmlFor="new-user-email">Email address</FieldLabel>
+                      <FieldLabel htmlFor="new-user-email">{tu('email')}</FieldLabel>
                       <Input
                         id="new-user-email"
                         type="email"
@@ -1352,7 +1366,7 @@ export default function App() {
                       />
                     </Field>
                     <Field className="w-full sm:w-48">
-                      <FieldLabel htmlFor="new-user-password">Password</FieldLabel>
+                      <FieldLabel htmlFor="new-user-password">{tu('password')}</FieldLabel>
                       <Input
                         id="new-user-password"
                         type="password"
@@ -1366,7 +1380,7 @@ export default function App() {
                       />
                     </Field>
                     <Field className="w-auto">
-                      <FieldLabel htmlFor="new-role">Role</FieldLabel>
+                      <FieldLabel htmlFor="new-role">{tu('role')}</FieldLabel>
                       <NativeSelect
                         id="new-role"
                         value={newRole}
@@ -1375,36 +1389,34 @@ export default function App() {
                          * @param event - The new account role selector change event.
                          */ (event) => setNewRole(event.target.value as 'admin' | 'user')}
                       >
-                        <NativeSelectOption value="user">User</NativeSelectOption>
-                        <NativeSelectOption value="admin">Admin</NativeSelectOption>
+                        <NativeSelectOption value="user">{tu('roleUser')}</NativeSelectOption>
+                        <NativeSelectOption value="admin">{tu('roleAdmin')}</NativeSelectOption>
                       </NativeSelect>
                     </Field>
                     <Button type="submit" disabled={busy === 'create-user'}>
                       <PlusIcon />
-                      {busy === 'create-user' ? 'Creating…' : 'Create user'}
+                      {busy === 'create-user' ? tc('creating') : tu('createUser')}
                     </Button>
                   </form>
                 </CardContent>
               </Card>
               <Card className="gap-0 overflow-hidden py-0">
                 <CardHeader className="gap-1 border-b py-5">
-                  <CardTitle>Accounts</CardTitle>
-                  <CardDescription>
-                    {users.length} {users.length === 1 ? 'account' : 'accounts'}
-                  </CardDescription>
+                  <CardTitle>{tu('accounts')}</CardTitle>
+                  <CardDescription>{tu('accountCount', { count: users.length })}</CardDescription>
                 </CardHeader>
                 <DataTable
-                  label="Accounts"
+                  label={tu('accounts')}
                   rows={users}
-                  columns={ACCOUNT_COLUMNS}
-                  searchLabel="Search accounts"
-                  emptyMessage="No accounts yet."
+                  columns={accountColumns()}
+                  searchLabel={tu('search')}
+                  emptyMessage={tu('empty')}
                   matches={/**
                    * Searches the displayed account details.
                    * @param account - The account row supplying the displayed fields.
                    * @param query - The search text to match against the row.
                    */ (account, query) => matchesTableSearch(
-                    query, account.username, account.email, account.role, account.disabled ? 'Disabled' : 'Enabled', formatDate(account.lastLoginAt)
+                    query, account.username, account.email, account.role, account.disabled ? tu('disabled') : tu('enabled'), formatDate(account.lastLoginAt)
                   )}
                   renderRow={/**
                    * Renders an editable row for the account.
@@ -1427,15 +1439,15 @@ export default function App() {
             <>
               <Card>
                 <CardHeader>
-                  <CardTitle>Create a WebDAV credential</CardTitle>
+                  <CardTitle>{tw('createTitle')}</CardTitle>
                   <CardDescription>
-                    Use a separate app password for each KeePass-compatible device or client.
+                    {tw('createDescription')}
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
                   <form className="flex flex-wrap items-end gap-4" onSubmit={handleCreateWebDav}>
                     <Field className="w-full sm:w-44">
-                      <FieldLabel htmlFor="webdav-user">User</FieldLabel>
+                      <FieldLabel htmlFor="webdav-user">{tw('user')}</FieldLabel>
                       <NativeSelect
                         id="webdav-user"
                         value={webdavUserId}
@@ -1446,7 +1458,7 @@ export default function App() {
                          */ (event) => setWebdavUserId(event.target.value)}
                         required
                       >
-                        <NativeSelectOption value="">Select user</NativeSelectOption>
+                        <NativeSelectOption value="">{tw('selectUser')}</NativeSelectOption>
                         {users
                           .filter(/**
                            * Offers WebDAV credentials only for enabled non-admin accounts.
@@ -1463,7 +1475,7 @@ export default function App() {
                       </NativeSelect>
                     </Field>
                     <Field className="w-full sm:w-44">
-                      <FieldLabel htmlFor="webdav-label">Label</FieldLabel>
+                      <FieldLabel htmlFor="webdav-label">{tw('label')}</FieldLabel>
                       <Input
                         id="webdav-label"
                         value={webdavLabel}
@@ -1476,7 +1488,7 @@ export default function App() {
                       />
                     </Field>
                     <Field className="w-full sm:w-44">
-                      <FieldLabel htmlFor="webdav-password">App password</FieldLabel>
+                      <FieldLabel htmlFor="webdav-password">{tw('appPassword')}</FieldLabel>
                       <Input
                         id="webdav-password"
                         type="password"
@@ -1491,61 +1503,61 @@ export default function App() {
                     </Field>
                     <Button type="submit" disabled={busy === 'create-webdav'}>
                       <PlusIcon />
-                      {busy === 'create-webdav' ? 'Creating…' : 'Create credential'}
+                      {busy === 'create-webdav' ? tc('creating') : tw('createCredential')}
                     </Button>
                   </form>
                 </CardContent>
               </Card>
               <Card className="gap-0 overflow-hidden py-0">
                 <CardHeader className="gap-1 border-b py-5">
-                  <CardTitle>App credentials</CardTitle>
-                  <CardDescription>Revoke credentials independently from the web login.</CardDescription>
+                  <CardTitle>{tw('listTitle')}</CardTitle>
+                  <CardDescription>{tw('listDescription')}</CardDescription>
                 </CardHeader>
                 <DataTable
-                  label="App credentials"
+                  label={tw('listTitle')}
                   rows={credentials}
                   columns={[
                     /**
                      * Sorts by the WebDAV login name.
                      * @param item - The WebDAV credential supplying this column's sort value.
                      */
-                    { id: 'username', label: 'Username', sortValue: (item) => item.username },
+                    { id: 'username', label: tw('username'), sortValue: (item) => item.username },
                     /**
                      * Sorts by the credential label.
                      * @param item - The WebDAV credential supplying this column's sort value.
                      */
-                    { id: 'label', label: 'Label', sortValue: (item) => item.label },
+                    { id: 'label', label: tw('label'), sortValue: (item) => item.label },
                     /**
                      * Sorts by the owner's displayed name, falling back to the owner ID.
                      * @param item - The WebDAV credential supplying this column's sort value.
                      */
-                    { id: 'user', label: 'User', sortValue: (item) => usernamesById.get(item.userId) ?? item.userId },
+                    { id: 'user', label: tw('user'), sortValue: (item) => usernamesById.get(item.userId) ?? item.userId },
                     /**
                      * Sorts by credential creation time.
                      * @param item - The WebDAV credential supplying this column's sort value.
                      */
-                    { id: 'created', label: 'Created', sortValue: (item) => timestampSortValue(item.createdAt) },
+                    { id: 'created', label: tw('created'), sortValue: (item) => timestampSortValue(item.createdAt) },
                     /**
                      * Sorts by the last use time, leaving unused credentials distinct.
                      * @param item - The WebDAV credential supplying this column's sort value.
                      */
-                    { id: 'lastUsed', label: 'Last used', sortValue: (item) => timestampSortValue(item.lastUsedAt) },
+                    { id: 'lastUsed', label: tw('lastUsed'), sortValue: (item) => timestampSortValue(item.lastUsedAt) },
                     /**
                      * Sorts by the visible revocation status.
                      * @param item - The WebDAV credential supplying this column's sort value.
                      */
-                    { id: 'status', label: 'Status', sortValue: (item) => item.revokedAt ? 'Revoked' : 'Active' },
-                    { id: 'actions', label: 'Actions' }
+                    { id: 'status', label: tc('status'), sortValue: (item) => item.revokedAt ? tw('revoked') : tc('active') },
+                    { id: 'actions', label: tc('actions') }
                   ]}
-                  searchLabel="Search WebDAV credentials"
-                  emptyMessage="No WebDAV credentials yet."
+                  searchLabel={tw('search')}
+                  emptyMessage={tw('empty')}
                   matches={/**
                    * Searches visible credential metadata without using its password.
                    * @param item - The credential whose displayed metadata is searched.
                    * @param query - The search text to match against the row.
                    */ (item, query) => matchesTableSearch(
                     query, item.username, item.label, usernamesById.get(item.userId) ?? item.userId,
-                    formatDate(item.createdAt), formatDate(item.lastUsedAt), item.revokedAt ? 'Revoked' : 'Active'
+                    formatDate(item.createdAt), formatDate(item.lastUsedAt), item.revokedAt ? tw('revoked') : tc('active')
                   )}
                   renderRow={/**
                    * Renders the credential details and its revocation action.
@@ -1559,15 +1571,15 @@ export default function App() {
                       <TableCell className="text-muted-foreground">{formatDate(credential.lastUsedAt)}</TableCell>
                       <TableCell>
                         <Badge variant={credential.revokedAt ? 'outline' : 'secondary'}>
-                          {credential.revokedAt ? 'Revoked' : 'Active'}
+                          {credential.revokedAt ? tw('revoked') : tc('active')}
                         </Badge>
                       </TableCell>
                       <TableCell>
                         {!credential.revokedAt && (
                           <ConfirmAction
-                            label="Revoke"
-                            title="Revoke WebDAV access?"
-                            description={`The client using ${credential.username} will no longer be able to connect.`}
+                            label={tw('revoke')}
+                            title={tw('revokeTitle')}
+                            description={tw('revokeDescription', { name: credential.username })}
                             disabled={busy === 'revoke-webdav'}
                             onConfirm={/** Revokes this credential after confirmation. */ () => {
                               void revokeWebDav(credential.id);
@@ -1598,6 +1610,7 @@ function AdminNavigation({ tab, user, onProfileUpdate, onSelect }: {
   onSelect: (tab: Tab) => void;
 }) {
   const { setOpenMobile } = useSidebar();
+  const t = useT(sidebarText);
 
   /**
    * Opens a section unless it is already active and closes the mobile navigation drawer.
@@ -1619,13 +1632,13 @@ function AdminNavigation({ tab, user, onProfileUpdate, onSelect }: {
             <p className="flex items-center gap-1.5 text-sm font-semibold">
               KeePort <VersionBadge />
             </p>
-            <p className="text-xs text-muted-foreground">Administration</p>
+            <p className="text-xs text-muted-foreground">{t('administration')}</p>
           </div>
         </div>
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel>Manage</SidebarGroupLabel>
+          <SidebarGroupLabel>{t('manage')}</SidebarGroupLabel>
           <SidebarMenu>
             {MANAGE_TABS.map(/**
              * Renders one navigation button for each management section.
@@ -1641,7 +1654,7 @@ function AdminNavigation({ tab, user, onProfileUpdate, onSelect }: {
                     onClick={/** Opens this management section. */ () => select(section)}
                   >
                     <Icon />
-                    <span>{title}</span>
+                    <span>{t(title)}</span>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               );
@@ -1653,7 +1666,7 @@ function AdminNavigation({ tab, user, onProfileUpdate, onSelect }: {
                 onClick={/** Opens the first log section. */ () => select(LOG_TABS[0])}
               >
                 <ScrollTextIcon />
-                <span>Logs</span>
+                <span>{t('logs')}</span>
               </SidebarMenuButton>
               <SidebarMenuSub>
                 {LOG_TABS.map(/**
@@ -1668,7 +1681,7 @@ function AdminNavigation({ tab, user, onProfileUpdate, onSelect }: {
                         aria-current={tab === section ? 'page' : undefined}
                         onClick={/** Opens this log section. */ () => select(section)}
                       >
-                        <span>{ADMIN_SECTIONS[section].title}</span>
+                        <span>{t(ADMIN_SECTIONS[section].title)}</span>
                       </button>
                     </SidebarMenuSubButton>
                   </SidebarMenuSubItem>

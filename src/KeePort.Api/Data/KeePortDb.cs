@@ -178,6 +178,7 @@ public sealed partial class KeePortDb : IDisposable
         EnsureColumn("users", "show_favicons", "INTEGER NOT NULL DEFAULT 0");
         EnsureColumn("users", "clipboard_clear_seconds", "INTEGER NULL");
         EnsureColumn("users", "check_breaches", "INTEGER NOT NULL DEFAULT 0");
+        EnsureColumn("users", "language", "TEXT NULL");
         Execute(connection, "INSERT INTO app_state (key, value) VALUES ('login_stats_since', @now) ON CONFLICT(key) DO NOTHING;",
             new SqliteParameter("@now", DateTimeOffset.UtcNow.ToString("O")));
         EnsureSetupToken();
@@ -291,7 +292,7 @@ public sealed partial class KeePortDb : IDisposable
         connection.Open();
         using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT id, username, password_hash, role, disabled, created_at, last_login_at, auto_lock_minutes, email, show_favicons, clipboard_clear_seconds, check_breaches
+            SELECT id, username, password_hash, role, disabled, created_at, last_login_at, auto_lock_minutes, email, show_favicons, clipboard_clear_seconds, check_breaches, language
             FROM users WHERE username = @username COLLATE NOCASE;
             """;
         command.Parameters.AddWithValue("@username", username);
@@ -307,7 +308,7 @@ public sealed partial class KeePortDb : IDisposable
         connection.Open();
         using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT id, username, password_hash, role, disabled, created_at, last_login_at, auto_lock_minutes, email, show_favicons, clipboard_clear_seconds, check_breaches
+            SELECT id, username, password_hash, role, disabled, created_at, last_login_at, auto_lock_minutes, email, show_favicons, clipboard_clear_seconds, check_breaches, language
             FROM users WHERE id = @id;
             """;
         command.Parameters.AddWithValue("@id", id);
@@ -322,7 +323,7 @@ public sealed partial class KeePortDb : IDisposable
         connection.Open();
         using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT id, username, password_hash, role, disabled, created_at, last_login_at, auto_lock_minutes, email, show_favicons, clipboard_clear_seconds, check_breaches
+            SELECT id, username, password_hash, role, disabled, created_at, last_login_at, auto_lock_minutes, email, show_favicons, clipboard_clear_seconds, check_breaches, language
             FROM users ORDER BY username COLLATE NOCASE;
             """;
         var users = new List<UserRecord>();
@@ -418,6 +419,18 @@ public sealed partial class KeePortDb : IDisposable
             new SqliteParameter("@value", showFavicons ? 1 : 0));
     }
 
+    /// <summary>Stores the interface language of an account: de, en or fr, or null to follow the browser.</summary>
+    /// <param name="id">The user's identifier.</param>
+    /// <param name="language">The language code, or null for automatic.</param>
+    public void UpdateUserLanguage(string id, string? language)
+    {
+        using var connection = Open();
+        connection.Open();
+        Execute(connection, "UPDATE users SET language = @value WHERE id = @id;",
+            new SqliteParameter("@id", id),
+            new SqliteParameter("@value", DbValue(language)));
+    }
+
     /// <summary>Stores whether the web vault checks passwords against "Have I Been Pwned".</summary>
     /// <param name="id">The user's identifier.</param>
     /// <param name="checkBreaches">Whether the breach check is on.</param>
@@ -498,7 +511,7 @@ public sealed partial class KeePortDb : IDisposable
         using var command = connection.CreateCommand();
         command.CommandText = """
             SELECT s.id, s.user_id, s.token_hash, s.csrf_token, s.created_at, s.expires_at, s.last_seen_at, s.user_agent, s.ip_address,
-                   u.id, u.username, u.password_hash, u.role, u.disabled, u.created_at, u.last_login_at, u.auto_lock_minutes, u.email, u.show_favicons, u.clipboard_clear_seconds, u.check_breaches
+                   u.id, u.username, u.password_hash, u.role, u.disabled, u.created_at, u.last_login_at, u.auto_lock_minutes, u.email, u.show_favicons, u.clipboard_clear_seconds, u.check_breaches, u.language
             FROM sessions s
             JOIN users u ON u.id = s.user_id
             WHERE s.token_hash = @tokenHash;
@@ -840,7 +853,7 @@ public sealed partial class KeePortDb : IDisposable
         using var command = connection.CreateCommand();
         command.CommandText = """
             SELECT c.id, c.user_id, c.username, c.label, c.password_hash, c.created_at, c.last_used_at, c.revoked_at,
-                   u.id, u.username, u.password_hash, u.role, u.disabled, u.created_at, u.last_login_at, u.auto_lock_minutes, u.email, u.show_favicons, u.clipboard_clear_seconds, u.check_breaches
+                   u.id, u.username, u.password_hash, u.role, u.disabled, u.created_at, u.last_login_at, u.auto_lock_minutes, u.email, u.show_favicons, u.clipboard_clear_seconds, u.check_breaches, u.language
             FROM webdav_credentials c
             JOIN users u ON u.id = c.user_id
             WHERE c.username = @username COLLATE NOCASE;
@@ -875,7 +888,7 @@ public sealed partial class KeePortDb : IDisposable
         using var command = connection.CreateCommand();
         command.CommandText = """
             SELECT c.id, c.user_id, c.username, c.label, c.password_hash, c.created_at, c.last_used_at, c.revoked_at,
-                   u.id, u.username, u.password_hash, u.role, u.disabled, u.created_at, u.last_login_at, u.auto_lock_minutes, u.email, u.show_favicons, u.clipboard_clear_seconds, u.check_breaches
+                   u.id, u.username, u.password_hash, u.role, u.disabled, u.created_at, u.last_login_at, u.auto_lock_minutes, u.email, u.show_favicons, u.clipboard_clear_seconds, u.check_breaches, u.language
             FROM webdav_credentials c
             JOIN users u ON u.id = c.user_id
             ORDER BY c.created_at DESC;
@@ -1230,7 +1243,8 @@ public sealed partial class KeePortDb : IDisposable
             Email = reader.IsDBNull(offset + 8) ? null : reader.GetString(offset + 8),
             ShowFavicons = !reader.IsDBNull(offset + 9) && reader.GetInt32(offset + 9) != 0,
             ClipboardClearSeconds = reader.IsDBNull(offset + 10) ? null : reader.GetInt32(offset + 10),
-            CheckBreaches = !reader.IsDBNull(offset + 11) && reader.GetInt32(offset + 11) != 0
+            CheckBreaches = !reader.IsDBNull(offset + 11) && reader.GetInt32(offset + 11) != 0,
+            Language = reader.IsDBNull(offset + 12) ? null : reader.GetString(offset + 12)
         };
     }
 
