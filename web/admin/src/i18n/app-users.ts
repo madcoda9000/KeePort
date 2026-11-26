@@ -32,7 +32,14 @@ export default defineMessages({
     updated: 'Updated {name}.',
     updateFailed: 'Unable to update user.',
     deleted: 'Deleted {name}.',
-    deleteFailed: 'Unable to delete user.'
+    deleteFailed: 'Unable to delete user.',
+    inviteInstead: 'Send an invitation by e-mail instead of setting a password',
+    invitationSent: 'Invitation sent to {email}.',
+    inviteFailed: 'Unable to send the invitation.',
+    sendInvitation: 'Send invitation',
+    sendInvitationTo: 'Send a new invitation link to {email}',
+    emailConfirmed: 'Confirmed',
+    emailNotConfirmed: 'Not confirmed'
   },
   de: {
     createTitle: 'Benutzer anlegen',
@@ -64,7 +71,14 @@ export default defineMessages({
     updated: '{name} aktualisiert.',
     updateFailed: 'Der Benutzer konnte nicht aktualisiert werden.',
     deleted: '{name} gelöscht.',
-    deleteFailed: 'Der Benutzer konnte nicht gelöscht werden.'
+    deleteFailed: 'Der Benutzer konnte nicht gelöscht werden.',
+    inviteInstead: 'Statt eines Passworts eine Einladung per E-Mail senden',
+    invitationSent: 'Einladung an {email} gesendet.',
+    inviteFailed: 'Die Einladung konnte nicht gesendet werden.',
+    sendInvitation: 'Einladung senden',
+    sendInvitationTo: 'Einen neuen Einladungslink an {email} senden',
+    emailConfirmed: 'Bestätigt',
+    emailNotConfirmed: 'Nicht bestätigt'
   },
   fr: {
     createTitle: 'Créer un utilisateur',
@@ -96,6 +110,13 @@ export default defineMessages({
     updated: '{name} mis à jour.',
     updateFailed: 'Impossible de mettre à jour l’utilisateur.',
     deleted: '{name} supprimé.',
-    deleteFailed: 'Impossible de supprimer l’utilisateur.'
+    deleteFailed: 'Impossible de supprimer l’utilisateur.',
+    inviteInstead: 'Envoyer une invitation par e-mail au lieu de définir un mot de passe',
+    invitationSent: 'Invitation envoyée à {email}.',
+    inviteFailed: 'Impossible d’envoyer l’invitation.',
+    sendInvitation: 'Envoyer une invitation',
+    sendInvitationTo: 'Envoyer un nouveau lien d’invitation à {email}',
+    emailConfirmed: 'Confirmée',
+    emailNotConfirmed: 'Non confirmée'
   }
 });

@@ -1,0 +1,68 @@
+import { defineMessages } from '../core.ts';
+
+/** Texts for confirming the own e-mail address and choosing e-mail notifications, in both apps. */
+export default defineMessages({
+  en: {
+    confirmed: 'Confirmed',
+    notConfirmed: 'Not confirmed',
+    confirmHelp: 'Confirm your address so KeePort can send you security notifications and password reset links.',
+    sendCode: 'Send code',
+    sending: 'Sending…',
+    sendAgain: 'Send a new code',
+    codeSent: 'We sent a 6-digit code to {email}. It is valid for 30 minutes.',
+    codeLabel: 'Code from the e-mail',
+    confirm: 'Confirm',
+    confirming: 'Confirming…',
+    confirmedNotice: 'E-mail address confirmed.',
+    failed: 'That did not work. Please try again.',
+    notificationsTitle: 'E-mail notifications',
+    notificationsHelp: 'Password changes are always reported. Notifications go only to a confirmed address.',
+    notifySignIn: 'Sign-ins from a new browser or device',
+    notifySignInHelp: 'An e-mail when your account is signed in to from a browser it has not used in the last 90 days.',
+    notifyAppPassword: 'New WebDAV app passwords',
+    notifyAppPasswordHelp: 'An e-mail when an administrator creates an app password for your account.',
+    notificationsSaved: 'Notification settings saved.'
+  },
+  de: {
+    confirmed: 'Bestätigt',
+    notConfirmed: 'Nicht bestätigt',
+    confirmHelp: 'Bestätige deine Adresse, damit KeePort dir Sicherheitsbenachrichtigungen und Links zum Zurücksetzen des Passworts schicken kann.',
+    sendCode: 'Code senden',
+    sending: 'Wird gesendet…',
+    sendAgain: 'Neuen Code senden',
+    codeSent: 'Wir haben einen 6-stelligen Code an {email} geschickt. Er gilt 30 Minuten.',
+    codeLabel: 'Code aus der E-Mail',
+    confirm: 'Bestätigen',
+    confirming: 'Wird bestätigt…',
+    confirmedNotice: 'E-Mail-Adresse bestätigt.',
+    failed: 'Das hat nicht geklappt. Bitte versuche es erneut.',
+    notificationsTitle: 'E-Mail-Benachrichtigungen',
+    notificationsHelp: 'Passwortänderungen werden immer gemeldet. Benachrichtigungen gehen nur an eine bestätigte Adresse.',
+    notifySignIn: 'Anmeldungen von einem neuen Browser oder Gerät',
+    notifySignInHelp: 'Eine E-Mail, wenn dein Konto von einem Browser angemeldet wird, den es in den letzten 90 Tagen nicht benutzt hat.',
+    notifyAppPassword: 'Neue WebDAV-App-Passwörter',
+    notifyAppPasswordHelp: 'Eine E-Mail, wenn ein Administrator ein App-Passwort für dein Konto anlegt.',
+    notificationsSaved: 'Benachrichtigungen gespeichert.'
+  },
+  fr: {
+    confirmed: 'Confirmée',
+    notConfirmed: 'Non confirmée',
+    confirmHelp: 'Confirmez votre adresse pour que KeePort puisse vous envoyer des notifications de sécurité et des liens de réinitialisation du mot de passe.',
+    sendCode: 'Envoyer le code',
+    sending: 'Envoi…',
+    sendAgain: 'Envoyer un nouveau code',
+    codeSent: 'Nous avons envoyé un code à 6 chiffres à {email}. Il est valable 30 minutes.',
+    codeLabel: 'Code reçu par e-mail',
+    confirm: 'Confirmer',
+    confirming: 'Confirmation…',
+    confirmedNotice: 'Adresse e-mail confirmée.',
+    failed: 'Cela n’a pas fonctionné. Veuillez réessayer.',
+    notificationsTitle: 'Notifications par e-mail',
+    notificationsHelp: 'Les changements de mot de passe sont toujours signalés. Les notifications ne sont envoyées qu’à une adresse confirmée.',
+    notifySignIn: 'Connexions depuis un nouveau navigateur ou appareil',
+    notifySignInHelp: 'Un e-mail lorsque votre compte est connecté depuis un navigateur qu’il n’a pas utilisé au cours des 90 derniers jours.',
+    notifyAppPassword: 'Nouveaux mots de passe d’application WebDAV',
+    notifyAppPasswordHelp: 'Un e-mail lorsqu’un administrateur crée un mot de passe d’application pour votre compte.',
+    notificationsSaved: 'Notifications enregistrées.'
+  }
+});

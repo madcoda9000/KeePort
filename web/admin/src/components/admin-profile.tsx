@@ -10,6 +10,8 @@ import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
 import { SidebarFooter, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar';
 import messages from '@/i18n/admin-profile';
+import { EmailConfirmation, EmailNotifications } from '@shared/email-account';
+import emailAccountMessages from '@shared/i18n/messages/email-account';
 import languageMessages from '@shared/i18n/messages/language';
 import { applyPreference, type LanguagePreference } from '@shared/i18n/core';
 import { LanguageSetting } from '@shared/i18n/language-select';
@@ -26,6 +28,7 @@ export function AdminProfile({ user, onUpdate }: { user: User; onUpdate: (user: 
   const [message, setMessage] = useState<ProfileMessage | null>(null);
   const t = useT(messages);
   const tLanguage = useT(languageMessages);
+  const tEmail = useT(emailAccountMessages);
 
   /**
    * Saves the contact email and updates the account displayed in the sidebar.
@@ -44,6 +47,33 @@ export function AdminProfile({ user, onUpdate }: { user: User; onUpdate: (user: 
     } finally {
       setBusy(null);
     }
+  }
+
+  /** Asks the server to send a confirmation code to the admin's address; errors are shown by the confirmation section. */
+  async function requestEmailCode() {
+    setMessage(null);
+    await api.requestEmailVerification();
+  }
+
+  /**
+   * Confirms the admin's address with the code from the e-mail and shows the updated account.
+   * @param code - The 6-digit code the admin entered.
+   */
+  async function verifyEmail(code: string) {
+    setMessage(null);
+    onUpdate(await api.verifyEmail(code));
+    setMessage({ kind: 'notice', text: tEmail('confirmedNotice') });
+  }
+
+  /**
+   * Saves which security notifications the admin gets by e-mail.
+   * @param signIn - Notify about sign-ins from a new browser.
+   * @param appPassword - Notify about new app passwords.
+   */
+  async function saveNotifications(signIn: boolean, appPassword: boolean) {
+    setMessage(null);
+    onUpdate(await api.updateNotifications({ signIn, appPassword }));
+    setMessage({ kind: 'notice', text: tEmail('notificationsSaved') });
   }
 
   /**
@@ -138,6 +168,20 @@ export function AdminProfile({ user, onUpdate }: { user: User; onUpdate: (user: 
                   {busy === 'email' ? t('saving') : t('saveEmail')}
                 </Button>
               </form>
+              <EmailConfirmation
+                key={`confirm-${user.email ?? ''}`}
+                email={user.email}
+                verified={user.emailVerified}
+                onRequestCode={requestEmailCode}
+                onVerify={verifyEmail}
+              />
+              <EmailNotifications
+                signIn={user.notifySignIn}
+                appPassword={user.notifyAppPassword}
+                showAppPassword={false}
+                verified={user.emailVerified}
+                onSave={saveNotifications}
+              />
               <Separator />
               <Field>
                 <FieldLabel htmlFor="account-language">{tLanguage('label')}</FieldLabel>

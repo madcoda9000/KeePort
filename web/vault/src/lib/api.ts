@@ -25,6 +25,18 @@ export interface User {
   checkBreaches: boolean;
   /** The interface language stored on the account, or null to follow the browser. */
   language: 'de' | 'en' | 'fr' | null;
+  /** Whether the account's e-mail address has been confirmed with a code or a link. */
+  emailVerified: boolean;
+  /** Whether the account gets an e-mail on sign-ins from a new browser or device. */
+  notifySignIn: boolean;
+  /** Whether the account gets an e-mail when an app password is created for it. */
+  notifyAppPassword: boolean;
+}
+
+/** What an invitation or password reset link is for, and for which account. */
+export interface PasswordLinkInfo {
+  purpose: 'invite' | 'reset';
+  username: string;
 }
 
 export interface VaultFile {
@@ -188,6 +200,49 @@ export const api = {
   },
   async updateEmail(email: string) {
     return request<User>('/api/auth/email', { method: 'PUT', body: JSON.stringify({ email }) });
+  },
+  /**
+   * Sends a 6-digit code to the signed-in account's e-mail address, to confirm it.
+   */
+  async requestEmailCode() {
+    await request<void>('/api/auth/email/verification', { method: 'POST' });
+  },
+  /**
+   * Confirms the signed-in account's e-mail address with the code from the e-mail and returns the updated user.
+   * @param code - The 6-digit code.
+   */
+  async verifyEmail(code: string) {
+    return request<User>('/api/auth/email/verify', { method: 'POST', body: JSON.stringify({ code }) });
+  },
+  /**
+   * Chooses which security notifications the signed-in account gets by e-mail and returns the updated user.
+   * @param payload - Whether to notify about sign-ins from new browsers and about new app passwords.
+   */
+  async updateNotifications(payload: { signIn: boolean; appPassword: boolean }) {
+    return request<User>('/api/auth/notifications', { method: 'PUT', body: JSON.stringify(payload) });
+  },
+  /**
+   * Asks for a password reset link; the server answers the same whether or not an account matches.
+   * @param identifier - The username or e-mail address the user entered.
+   */
+  async requestPasswordReset(identifier: string) {
+    await request<void>('/api/auth/password-reset', { method: 'POST', body: JSON.stringify({ identifier }) });
+  },
+  /**
+   * Looks up what an invitation or reset link is for; fails with status 404 when it is invalid, expired or used.
+   * @param token - The token from the link's URL fragment.
+   * @param signal - Aborts the request when the page is no longer shown.
+   */
+  async checkPasswordLink(token: string, signal?: AbortSignal) {
+    return request<PasswordLinkInfo>('/api/auth/token', { method: 'POST', body: JSON.stringify({ token }), signal });
+  },
+  /**
+   * Sets the account password with an invitation or reset link.
+   * @param token - The token from the link's URL fragment.
+   * @param password - The new account password.
+   */
+  async setPasswordWithLink(token: string, password: string) {
+    await request<void>('/api/auth/set-password', { method: 'POST', body: JSON.stringify({ token, password }) });
   },
   /**
    * Saves the vault preferences and returns the updated profile; fields left out stay unchanged.

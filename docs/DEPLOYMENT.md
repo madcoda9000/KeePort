@@ -414,6 +414,29 @@ After signing in, the admin console opens on the **Dashboard**. It shows whether
 
 Users now sign in to the web vault with their account and unlock vaults with the vault's master password, which never leaves the browser.
 
+## ✉️ E-mail (optional)
+
+KeePort can send e-mails through any SMTP server — your own mail server, Synology MailPlus, your provider's mailbox or a service such as Brevo or Mailjet. With e-mail set up, KeePort can:
+
+- **invite** new users: they choose their own password through a link, so the administrator never knows it;
+- send **"Forgot password?"** links to users (never to administrators);
+- **confirm** e-mail addresses with a 6-digit code;
+- **notify** users about sign-ins from a new browser, password changes, a changed e-mail address and new WebDAV app passwords;
+- **warn** administrators about many failed sign-ins, an expiring admin certificate, data outside a host folder and low disk space.
+
+Set it up in **Admin → Settings → E-mail**:
+
+| Field | Example |
+|---|---|
+| SMTP server / Port / Security | `smtp.example.com`, `587` with **STARTTLS**, or `465` with **SSL/TLS** |
+| Username / Password | The mailbox or SMTP credentials, if the server needs them. The password is stored encrypted (key in `/data/keys`) and never shown again. |
+| Sender address / name | `keeport@example.com`, `KeePort` |
+| Web vault address | `https://vault.example.com` — links in e-mails point here. It must be reachable from where users open their mail; never enter the admin console. |
+
+Click **Send test e-mail** to check the settings; the server's answer is shown if it fails. E-mails go through a queue and are retried after 1, 5, 15 and 60 minutes. E-mails never contain passwords or vault content — links carry one-time tokens only (invitation 48 hours, password reset 30 minutes), and those are part of the address after `#`, so they do not reach the reverse proxy's logs.
+
+Users confirm their address in the web vault under **Profile**; administrators in the admin console under **Profile**. Only confirmed addresses get notifications, warnings and reset links.
+
 ## 📱 Connect KeePass apps
 
 | Setting | Value |
@@ -498,6 +521,7 @@ KeePort keeps everything in `/data`. **Admin → Settings → Data storage** sho
 | `vault/` | The encrypted `.kdbx` files |
 | `vault-versions/` | Earlier versions of each vault, kept on every save (by default 30 per vault, at most 90 days; **Admin → Settings → Vault versions**). Plan for up to 30 times the size of your vaults — usually only a few MB. |
 | `tls/` | The admin console's self-signed certificate |
+| `keys/` | The key that encrypts the stored SMTP password. Without it, enter the SMTP password again after a restore. |
 
 - **Data in a folder** (`KEEPORT_DATA=/path`): back up that folder with your usual tool — Hyper Backup, Hybrid Backup Sync, restic, borg — ideally while KeePort is stopped.
 - **Data in the Docker volume** (default): stop the container and archive the volume:

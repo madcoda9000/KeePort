@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.DataProtection;
 using System.Globalization;
 using System.Threading.RateLimiting;
 using KeePort.Api.Data;
@@ -43,6 +44,16 @@ builder.Services.AddSingleton<VaultService>();
 builder.Services.AddSingleton<WebDavStagingStore>();
 builder.Services.AddSingleton<RateLimitSettingsService>();
 builder.Services.AddSingleton<AuditLog>();
+// Keys for encrypting stored secrets such as the SMTP password; kept in /data so they survive container updates.
+builder.Services.AddDataProtection()
+    .PersistKeysToFileSystem(new DirectoryInfo(Path.Combine(dataDir, "keys")))
+    .SetApplicationName("KeePort");
+builder.Services.AddSingleton<EmailSettingsService>();
+builder.Services.AddSingleton<EmailQueue>();
+builder.Services.AddSingleton<AccountTokens>();
+builder.Services.AddSingleton<SecurityNotifier>();
+builder.Services.AddHostedService<EmailWorker>();
+builder.Services.AddHostedService<AdminWarningService>();
 builder.Services.AddHostedService<VersionCleanupService>();
 builder.Services.AddSingleton<IFaviconFetcher, FaviconFetcher>();
 
@@ -270,6 +281,7 @@ app.MapGet("/api/health", () => Results.Ok(new { status = "ok", time = DateTimeO
 app.MapAuthEndpoints();
 app.MapVaultEndpoints();
 app.MapAdminEndpoints();
+app.MapEmailEndpoints();
 app.MapWebDavEndpoints();
 
 app.UseDefaultFiles();

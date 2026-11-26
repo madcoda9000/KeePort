@@ -1,0 +1,65 @@
+import { defineMessages } from '../../../shared/i18n/core.ts';
+
+/** Texts of the page that sets the account password from an invitation or reset link. */
+export default defineMessages({
+  en: {
+    checking: 'Checking the link…',
+    inviteTitle: 'Welcome to KeePort',
+    inviteIntro: 'Choose a password for your account {username}.',
+    resetTitle: 'Choose a new password',
+    resetIntro: 'for {username}. This changes only your KeePort account password, not the master passwords of your vaults.',
+    newPassword: 'New password',
+    confirmPassword: 'Confirm password',
+    passwordHint: 'At least 10 characters, not your username.',
+    passwordsDiffer: 'The passwords do not match.',
+    save: 'Set password',
+    saving: 'Saving…',
+    failed: 'The password could not be set. Please try again.',
+    invalidTitle: 'Link not usable',
+    invalid: 'This link is invalid or has expired.',
+    invalidReset: 'You can request a new link with “Forgot password?”.',
+    checkFailed: 'The link could not be checked. Please try again later.',
+    toSignIn: 'Go to sign-in',
+    forgotPassword: 'Forgot password?'
+  },
+  de: {
+    checking: 'Link wird geprüft…',
+    inviteTitle: 'Willkommen bei KeePort',
+    inviteIntro: 'Wähle ein Passwort für dein Konto {username}.',
+    resetTitle: 'Neues Passwort wählen',
+    resetIntro: 'für {username}. Das ändert nur dein Konto-Passwort für KeePort, nicht die Master-Passwörter deiner Tresore.',
+    newPassword: 'Neues Passwort',
+    confirmPassword: 'Passwort bestätigen',
+    passwordHint: 'Mindestens 10 Zeichen, nicht dein Benutzername.',
+    passwordsDiffer: 'Die Passwörter stimmen nicht überein.',
+    save: 'Passwort festlegen',
+    saving: 'Wird gespeichert…',
+    failed: 'Das Passwort konnte nicht festgelegt werden. Bitte versuche es erneut.',
+    invalidTitle: 'Link nicht verwendbar',
+    invalid: 'Dieser Link ist ungültig oder abgelaufen.',
+    invalidReset: 'Über „Passwort vergessen?“ kannst du einen neuen Link anfordern.',
+    checkFailed: 'Der Link konnte nicht geprüft werden. Bitte versuche es später erneut.',
+    toSignIn: 'Zur Anmeldung',
+    forgotPassword: 'Passwort vergessen?'
+  },
+  fr: {
+    checking: 'Vérification du lien…',
+    inviteTitle: 'Bienvenue dans KeePort',
+    inviteIntro: 'Choisissez un mot de passe pour votre compte {username}.',
+    resetTitle: 'Choisir un nouveau mot de passe',
+    resetIntro: 'pour {username}. Cela modifie uniquement le mot de passe de votre compte KeePort, pas les mots de passe maîtres de vos coffres-forts.',
+    newPassword: 'Nouveau mot de passe',
+    confirmPassword: 'Confirmer le mot de passe',
+    passwordHint: 'Au moins 10 caractères, différent de votre nom d’utilisateur.',
+    passwordsDiffer: 'Les mots de passe ne correspondent pas.',
+    save: 'Définir le mot de passe',
+    saving: 'Enregistrement…',
+    failed: 'Impossible de définir le mot de passe. Veuillez réessayer.',
+    invalidTitle: 'Lien inutilisable',
+    invalid: 'Ce lien n’est pas valide ou a expiré.',
+    invalidReset: 'Vous pouvez demander un nouveau lien avec « Mot de passe oublié ? ».',
+    checkFailed: 'Impossible de vérifier le lien. Veuillez réessayer plus tard.',
+    toSignIn: 'Aller à la connexion',
+    forgotPassword: 'Mot de passe oublié ?'
+  }
+});

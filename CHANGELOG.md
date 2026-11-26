@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.19.0] - 2026-11-26
+
+### Added
+
+- **E-mail (SMTP):** **Admin → Settings → E-mail** sets up sending through any SMTP server (STARTTLS, SSL/TLS or none), with sender, the web vault address for links and a **Send test e-mail** button that shows the server's answer. E-mails go through a queue in the database and are retried after 1, 5, 15 and 60 minutes; the card shows waiting, sent and failed e-mails and the last error. The SMTP password is stored encrypted with ASP.NET Core Data Protection (key in `/data/keys`) and is never shown again.
+- **Confirm e-mail address:** in the profile of the web vault and the admin console, with a 6-digit code (valid 30 minutes, 5 attempts). Changing the address makes it unconfirmed again and tells the previous address.
+- **Invitations:** when creating a user, an administrator can send an invitation instead of setting a password. The user chooses the password through a link (valid 48 hours, works once), so the administrator never knows it. Invitations can be sent again from the user list.
+- **Forgot password?** on the web vault's sign-in page: a link (valid 30 minutes) to the confirmed address of a user account. The answer is the same whether an account exists or not; administrator accounts cannot be reset by e-mail. Resetting signs the account out everywhere.
+- **Security notifications** to the account owner: sign-in from a browser not used in the last 90 days, password changed or reset, e-mail address changed (to the previous address), new WebDAV app password. Sign-in and app password notifications can be turned off in the profile; password changes are always reported.
+- **Warnings to administrators** with a confirmed address: many failed sign-ins (10 within 15 minutes, at most hourly), the admin certificate expires within 30 days, data not in a host folder (weekly), low disk space under 1 GB or 5 % (daily). Each can be turned off.
+- E-mails are written in the recipient's language (English, German or French) as text and HTML; they never contain passwords or vault content.
+- Audit log: `EmailSettingsChanged`, `TestEmailSent`, `InvitationSent`, `InvitationAccepted`, `PasswordResetRequested`, `PasswordResetCompleted`, `EmailVerified`.
+- Accounts returned by the API have `emailVerified`, `notifySignIn` and `notifyAppPassword`. New endpoints: `GET`/`PUT /api/admin/settings/email`, `POST /api/admin/settings/email/test`, `POST /api/admin/users/{id}/invite`, `POST …/auth/email/verification`, `POST …/auth/email/verify`, `PUT …/auth/notifications`, `POST /api/auth/password-reset`, `POST /api/auth/token`, `POST /api/auth/set-password`; `POST /api/admin/users` accepts `invite`.
+
+### Security
+
+- New dependency **MailKit 5.0.0** (MIT, with MimeKit.Core) for SMTP.
+- One-time links carry 256 random bits and are stored only as SHA-256 hashes; the token is in the URL fragment (`#token=…`), so it does not appear in server or proxy logs. Sent e-mails lose their bodies in the queue right away.
+
 ## [0.18.0] - 2026-11-26
 
 ### Added
@@ -418,6 +437,7 @@ First beta release.
 - Login and setup share a configurable per-IP rate limit; session checks and sign-out are exempt. WebDAV has a separate configurable limit applied before authentication.
 - Admin accounts can only sign in to the Admin console; Vault and WebDAV require a separate user account. Admin sessions are scoped to the Admin API, so existing admins need to sign in again after updating.
 
+[0.19.0]: https://github.com/madcoda9000/KeePort/compare/v0.18.0...v0.19.0
 [0.18.0]: https://github.com/madcoda9000/KeePort/compare/v0.17.0...v0.18.0
 [0.17.0]: https://github.com/madcoda9000/KeePort/compare/v0.16.0...v0.17.0
 [0.16.0]: https://github.com/madcoda9000/KeePort/compare/v0.15.0...v0.16.0

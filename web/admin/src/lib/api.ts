@@ -9,6 +9,43 @@ export interface User {
   lastLoginAt: string | null;
   /** The interface language stored on the account, or null to follow the browser. */
   language?: 'de' | 'en' | 'fr' | null;
+  /** Whether the account's e-mail address has been confirmed with a code. */
+  emailVerified: boolean;
+  /** Whether the account gets an e-mail on sign-ins from a new browser. */
+  notifySignIn: boolean;
+  /** Whether the account gets an e-mail when an app password is created for it. */
+  notifyAppPassword: boolean;
+}
+
+/** How KeePort sends e-mail and which admin warnings it sends. */
+export interface EmailSettings {
+  host: string | null;
+  port: number;
+  security: 'starttls' | 'ssl' | 'none';
+  username: string | null;
+  /** Always null from the server; on save null keeps the stored password, '' removes it, a string replaces it. */
+  password: string | null;
+  hasPassword: boolean;
+  fromAddress: string | null;
+  fromName: string | null;
+  publicUrl: string | null;
+  warnFailedSignIns: boolean;
+  warnCertificate: boolean;
+  warnStorage: boolean;
+  warnDiskSpace: boolean;
+}
+
+/** The e-mail settings together with whether they are complete and the state of the outgoing queue. */
+export interface EmailSettingsResponse {
+  settings: EmailSettings;
+  configured: boolean;
+  queue: {
+    waiting: number;
+    sentLast7Days: number;
+    failedLast7Days: number;
+    lastSentAt: string | null;
+    lastError: string | null;
+  };
 }
 
 export interface AuthResponse {
@@ -259,6 +296,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 
 const AUTH_PATH = '/api/admin/auth';
 const RATE_LIMITS_PATH = '/api/admin/settings/rate-limits';
+const EMAIL_SETTINGS_PATH = '/api/admin/settings/email';
 
 export const api = {
   /** Checks whether an administrator needs to complete first-run setup. */
@@ -316,6 +354,43 @@ export const api = {
   async updateEmail(email: string) {
     return request<User>(`${AUTH_PATH}/email`, { method: 'PUT', body: JSON.stringify({ email }) });
   },
+  /** Asks the server to send a confirmation code to the signed-in admin's e-mail address. */
+  async requestEmailVerification() {
+    await request<void>(`${AUTH_PATH}/email/verification`, { method: 'POST' });
+  },
+  /**
+   * Confirms the signed-in admin's e-mail address with the code from the e-mail.
+   * @param code - The 6-digit code.
+   */
+  async verifyEmail(code: string) {
+    return request<User>(`${AUTH_PATH}/email/verify`, { method: 'POST', body: JSON.stringify({ code }) });
+  },
+  /**
+   * Saves which security notifications the signed-in admin gets by e-mail.
+   * @param payload - Notify about sign-ins from new browsers and about new app passwords.
+   */
+  async updateNotifications(payload: { signIn: boolean; appPassword: boolean }) {
+    return request<User>(`${AUTH_PATH}/notifications`, { method: 'PUT', body: JSON.stringify(payload) });
+  },
+
+  /**
+   * Loads the e-mail settings, whether they are complete, and the queue status.
+   * @param signal - An optional signal for aborting the request.
+   */
+  async getEmailSettings(signal?: AbortSignal) {
+    return request<EmailSettingsResponse>(EMAIL_SETTINGS_PATH, { signal });
+  },
+  /**
+   * Saves the e-mail settings and returns them with the new status.
+   * @param settings - The settings; password null keeps the stored one, '' removes it.
+   */
+  async updateEmailSettings(settings: EmailSettings) {
+    return request<EmailSettingsResponse>(EMAIL_SETTINGS_PATH, { method: 'PUT', body: JSON.stringify(settings) });
+  },
+  /** Sends a test e-mail to the signed-in admin's own address and returns the recipient. */
+  async sendTestEmail() {
+    return request<{ sentTo: string }>(`${EMAIL_SETTINGS_PATH}/test`, { method: 'POST' });
+  },
 
   /**
    * Loads the current login and WebDAV limits.
@@ -338,10 +413,17 @@ export const api = {
   },
   /**
    * Creates an account with the supplied login details and role.
-   * @param payload - The username, contact email, initial password, and role of the new account.
+   * @param payload - The username, contact email, initial password or invite flag, and role of the new account.
    */
-  async createUser(payload: { username: string; email: string; password: string; role: 'admin' | 'user' }) {
+  async createUser(payload: { username: string; email: string; password?: string; role: 'admin' | 'user'; invite?: boolean }) {
     return request<User>('/api/admin/users', { method: 'POST', body: JSON.stringify(payload) });
+  },
+  /**
+   * Sends a user a new invitation link by e-mail.
+   * @param id - The ID of the account to invite.
+   */
+  async inviteUser(id: string) {
+    await request<void>(`/api/admin/users/${encodeURIComponent(id)}/invite`, { method: 'POST' });
   },
   /**
    * Applies the supplied account edits, leaving omitted fields unchanged.

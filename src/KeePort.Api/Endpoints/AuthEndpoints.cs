@@ -152,7 +152,8 @@ public static class AuthEndpoints
         // <param name="configuration">The configuration used to select the session cookie security options.</param>
         // <param name="context">The current HTTP request and response context.</param>
         // <param name="audit">The audit log that records the sign-in attempt.</param>
-        group.MapPost("/login", (LoginRequest request, KeePortDb db, PasswordHasher hasher, SessionService sessions, IConfiguration configuration, HttpContext context, AuditLog audit) =>
+        // <param name="notifier">Sends the "new sign-in" notification.</param>
+        group.MapPost("/login", (LoginRequest request, KeePortDb db, PasswordHasher hasher, SessionService sessions, IConfiguration configuration, HttpContext context, AuditLog audit, SecurityNotifier notifier) =>
         {
             var user = db.GetUserByUsername(request.Username ?? string.Empty);
             var channel = role == UserRole.Admin ? "Admin console" : "Web vault";
@@ -169,6 +170,7 @@ public static class AuthEndpoints
             }
 
             CountLogin(db, context, role, success: true);
+            notifier.SignedIn(user, context);
             audit.Record(context, AuditActions.LoginSucceeded, actor: user, targetType: "session", targetName: channel);
             db.UpdateLastLogin(user.Id, DateTimeOffset.UtcNow);
             var (_, token, csrfToken) = sessions.CreateSession(user, context);
@@ -223,7 +225,8 @@ public static class AuthEndpoints
         // <param name="db">The SQLite store for KeePort metadata.</param>
         // <param name="hasher">The service for hashing and verifying passwords.</param>
         // <param name="audit">The audit log that records the change or the rejected attempt.</param>
-        group.MapPost("/change-password", (ChangePasswordRequest request, HttpContext context, KeePortDb db, PasswordHasher hasher, AuditLog audit) =>
+        // <param name="notifier">Sends the "password changed" notification.</param>
+        group.MapPost("/change-password", (ChangePasswordRequest request, HttpContext context, KeePortDb db, PasswordHasher hasher, AuditLog audit, SecurityNotifier notifier) =>
         {
             if (ApiAuth.RequireAuthenticated(context) is { } unauthorized)
             {
@@ -242,6 +245,7 @@ public static class AuthEndpoints
             }
             db.UpdateUserPassword(user.Id, hasher.Hash(request.NewPassword));
             audit.Record(context, AuditActions.PasswordChanged, targetType: "user", targetId: user.Id, targetName: user.Username);
+            notifier.PasswordChanged(user, EmailTemplates.Kinds.PasswordChangedSelf);
             return Results.NoContent();
         });
 
@@ -294,7 +298,8 @@ public static class AuthEndpoints
     /// <param name="context">The current HTTP request and response context.</param>
     /// <param name="db">The SQLite store for KeePort metadata.</param>
     /// <param name="audit">The audit log that records the change.</param>
-    private static IResult UpdateEmail(UpdateEmailRequest request, HttpContext context, KeePortDb db, AuditLog audit)
+    /// <param name="notifier">Tells the previous address about the change.</param>
+    private static IResult UpdateEmail(UpdateEmailRequest request, HttpContext context, KeePortDb db, AuditLog audit, SecurityNotifier notifier)
     {
         if (ApiAuth.RequireAuthenticated(context) is { } unauthorized)
         {
@@ -309,6 +314,10 @@ public static class AuthEndpoints
         db.UpdateUserEmail(user.Id, email);
         if (!string.Equals(user.Email, email, StringComparison.OrdinalIgnoreCase))
         {
+            // A new address must be confirmed again; old codes stop working, and the old address hears about it.
+            db.SetEmailVerified(user.Id, null);
+            db.DeleteAccountTokens(user.Id);
+            notifier.EmailChanged(user, email);
             audit.Record(context, AuditActions.EmailChanged, targetType: "user", targetId: user.Id, targetName: user.Username,
                 details: $"{user.Email ?? "none"} → {email}");
         }
@@ -344,7 +353,8 @@ public static class AuthEndpoints
     /// <param name="user">The user account associated with the operation.</param>
     internal static UserDto ToDto(UserRecord user)
     {
-        return new UserDto(user.Id, user.Username, user.Role.ToString().ToLowerInvariant(), user.Disabled, user.CreatedAt, user.LastLoginAt, user.AutoLockMinutes, user.Email, user.ShowFavicons, user.ClipboardClearSeconds, user.CheckBreaches, user.Language);
+        return new UserDto(user.Id, user.Username, user.Role.ToString().ToLowerInvariant(), user.Disabled, user.CreatedAt, user.LastLoginAt, user.AutoLockMinutes, user.Email, user.ShowFavicons, user.ClipboardClearSeconds, user.CheckBreaches, user.Language,
+            user.EmailVerifiedAt is not null, user.NotifySignIn, user.NotifyAppPassword);
     }
 
     /// <summary>

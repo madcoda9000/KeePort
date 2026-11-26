@@ -9,7 +9,10 @@ import {
   KeyRoundIcon,
   LayoutDashboardIcon,
   LogOutIcon,
+  MailCheckIcon,
+  MailWarningIcon,
   ScrollTextIcon,
+  SendIcon,
   MoonIcon,
   NetworkIcon,
   PlusIcon,
@@ -25,6 +28,7 @@ import { AuthLayout } from '@/components/auth-layout';
 import { DashboardPanel } from '@/components/dashboard';
 import { DataStorageBanner, DataStoragePanel } from '@/components/data-storage';
 import { RateLimitSettingsPanel } from '@/components/rate-limit-settings';
+import { EmailSettingsPanel } from '@/components/email-settings';
 import { WebDavLogsPanel } from '@/components/webdav-logs';
 import { AuditLogPanel } from '@/components/audit-log';
 import { AuditSettingsPanel } from '@/components/audit-settings';
@@ -88,6 +92,8 @@ import {
 } from '@/components/ui/sidebar';
 import { TableCell, TableRow } from '@/components/ui/table';
 import { VersionBadge } from '@shared/app-version';
+import { ACCENTS } from '@shared/accent';
+import { cn } from '@/lib/utils';
 import { InsecureContextAlert, hasBrowserCrypto } from '@shared/secure-context';
 import { DataTable, type TableColumn } from '@shared/data-table';
 import { matchesTableSearch, timestampSortValue } from '@shared/table-data';
@@ -307,6 +313,20 @@ function UserRow({
     }
   }
 
+  /** Sends the user a new invitation link by e-mail. */
+  async function invite() {
+    setBusy(true);
+    setMessage(null);
+    try {
+      await api.inviteUser(user.id);
+      setMessage({ kind: 'notice', text: t('invitationSent', { email: user.email ?? '' }) });
+    } catch (error) {
+      setMessage({ kind: 'error', text: errorText(error, t('inviteFailed')) });
+    } finally {
+      setBusy(false);
+    }
+  }
+
   /** Deletes the account and refreshes the relevant lists. */
   async function remove() {
     setBusy(true);
@@ -327,8 +347,17 @@ function UserRow({
       <TableCell className="max-w-48 truncate ps-6 font-medium" title={user.id}>
         {user.username}
         {user.email && (
-          <div className="truncate text-xs font-normal text-muted-foreground" title={user.email}>
-            {user.email}
+          <div className="flex min-w-0 items-center gap-1.5 text-xs font-normal text-muted-foreground">
+            <span className="truncate" title={user.email}>{user.email}</span>
+            {user.emailVerified ? (
+              <Badge variant="outline" className={cn('shrink-0 gap-1 px-1.5 py-0 text-[0.7rem]', ACCENTS.emerald.badge)}>
+                <MailCheckIcon /> {t('emailConfirmed')}
+              </Badge>
+            ) : (
+              <Badge variant="outline" className={cn('shrink-0 gap-1 px-1.5 py-0 text-[0.7rem]', ACCENTS.amber.badge)}>
+                <MailWarningIcon /> {t('emailNotConfirmed')}
+              </Badge>
+            )}
           </div>
         )}
       </TableCell>
@@ -375,6 +404,18 @@ function UserRow({
           <Button size="sm" variant="outline" disabled={!changed || busy} onClick={save}>
             {tc('save')}
           </Button>
+          {user.role === 'user' && user.email && (
+            <Button
+              size="sm"
+              variant="outline"
+              title={t('sendInvitationTo', { email: user.email })}
+              disabled={busy}
+              onClick={/** Sends the user a new invitation link. */ () => void invite()}
+            >
+              <SendIcon />
+              {t('sendInvitation')}
+            </Button>
+          )}
           <ConfirmAction
             label={tc('delete')}
             title={t('deleteTitle', { name: user.username })}
@@ -721,6 +762,7 @@ export default function App() {
   const [newEmail, setNewEmail] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [newRole, setNewRole] = useState<'admin' | 'user'>('user');
+  const [newInvite, setNewInvite] = useState(false);
 
   const [newVaultName, setNewVaultName] = useState('');
   const [newVaultPassword, setNewVaultPassword] = useState('');
@@ -919,12 +961,17 @@ export default function App() {
     setBusy('create-user');
     setMessage(null);
     try {
-      await api.createUser({ username: newUsername, email: newEmail, password: newPassword, role: newRole });
+      const invite = newInvite && newRole === 'user';
+      const email = newEmail.trim();
+      await api.createUser(invite
+        ? { username: newUsername, email, role: newRole, invite: true }
+        : { username: newUsername, email, password: newPassword, role: newRole });
       setNewUsername('');
       setNewEmail('');
       setNewPassword('');
       setNewRole('user');
-      setMessage({ kind: 'notice', text: tu('created') });
+      setNewInvite(false);
+      setMessage({ kind: 'notice', text: invite ? tu('invitationSent', { email }) : tu('created') });
       await refreshUsers();
     } catch (error) {
       setMessage({ kind: 'error', text: errorText(error, tu('createFailed')) });
@@ -1167,6 +1214,7 @@ export default function App() {
 
           {tab === 'settings' && (
             <>
+              <EmailSettingsPanel />
               <RateLimitSettingsPanel />
               <VersionSettingsPanel />
               <AuditSettingsPanel />
@@ -1369,20 +1417,22 @@ export default function App() {
                         required
                       />
                     </Field>
-                    <Field className="w-full sm:w-48">
-                      <FieldLabel htmlFor="new-user-password">{tu('password')}</FieldLabel>
-                      <Input
-                        id="new-user-password"
-                        type="password"
-                        autoComplete="new-password"
-                        value={newPassword}
-                        onChange={/**
-                         * Updates the draft login password for the new account.
-                         * @param event - The new account password input change event.
-                         */ (event) => setNewPassword(event.target.value)}
-                        required
-                      />
-                    </Field>
+                    {!(newInvite && newRole === 'user') && (
+                      <Field className="w-full sm:w-48">
+                        <FieldLabel htmlFor="new-user-password">{tu('password')}</FieldLabel>
+                        <Input
+                          id="new-user-password"
+                          type="password"
+                          autoComplete="new-password"
+                          value={newPassword}
+                          onChange={/**
+                           * Updates the draft login password for the new account.
+                           * @param event - The new account password input change event.
+                           */ (event) => setNewPassword(event.target.value)}
+                          required
+                        />
+                      </Field>
+                    )}
                     <Field className="w-auto">
                       <FieldLabel htmlFor="new-role">{tu('role')}</FieldLabel>
                       <NativeSelect
@@ -1397,6 +1447,19 @@ export default function App() {
                         <NativeSelectOption value="admin">{tu('roleAdmin')}</NativeSelectOption>
                       </NativeSelect>
                     </Field>
+                    {newRole === 'user' && (
+                      <Field orientation="horizontal" className="w-full">
+                        <Checkbox
+                          id="new-user-invite"
+                          checked={newInvite}
+                          onCheckedChange={/**
+                           * Chooses between an e-mail invitation and an initial password.
+                           * @param checked - The checkbox state; true sends an invitation.
+                           */ (checked) => setNewInvite(checked === true)}
+                        />
+                        <FieldLabel htmlFor="new-user-invite" className="font-normal">{tu('inviteInstead')}</FieldLabel>
+                      </Field>
+                    )}
                     <Button type="submit" disabled={busy === 'create-user'}>
                       <PlusIcon />
                       {busy === 'create-user' ? tc('creating') : tu('createUser')}

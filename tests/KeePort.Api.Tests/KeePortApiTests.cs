@@ -1023,6 +1023,205 @@ public class KeePortApiTests : IDisposable
         Assert.Equal(1, (await GetJsonAsync(_admin, $"/api/admin/files/{vault.Id}/versions")).GetProperty("current").GetProperty("revision").GetInt64());
     }
 
+    /// <summary>
+    /// Checks the SMTP settings: validation, the password is stored encrypted and never returned, only admins have
+    /// access, and a failing test mail reports the server error and is logged.
+    /// </summary>
+    [Fact]
+    public async Task Email_Settings_Keep_The_Password_Secret_And_Report_Test_Failures()
+    {
+        var adminCsrf = await SetupAdminAsync(_admin);
+        using (var invalid = await SendAsync(_admin, HttpMethod.Put, "/api/admin/settings/email", json: new { host = "mail.example.test", port = 0, security = "starttls" }, csrf: adminCsrf))
+        {
+            Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+        }
+        await ConfigureEmailAsync(adminCsrf, password: "Smtp secret 42");
+        var status = await GetJsonAsync(_admin, "/api/admin/settings/email");
+        Assert.True(status.GetProperty("configured").GetBoolean());
+        Assert.True(status.GetProperty("settings").GetProperty("hasPassword").GetBoolean());
+        Assert.Equal(JsonValueKind.Null, status.GetProperty("settings").GetProperty("password").ValueKind);
+        Assert.DoesNotContain("Smtp secret 42", status.GetRawText());
+        var stored = _factory.Services.GetRequiredService<KeePortDb>().GetState("email_settings")!;
+        Assert.DoesNotContain("Smtp secret 42", stored);
+        Assert.Equal("Smtp secret 42", _factory.Services.GetRequiredService<EmailSettingsService>().RevealPassword(
+            _factory.Services.GetRequiredService<EmailSettingsService>().Get()));
+
+        // Saving without a password keeps the stored one.
+        await ConfigureEmailAsync(adminCsrf, password: null);
+        Assert.True((await GetJsonAsync(_admin, "/api/admin/settings/email")).GetProperty("settings").GetProperty("hasPassword").GetBoolean());
+
+        using (var test = await SendAsync(_admin, HttpMethod.Post, "/api/admin/settings/email/test", csrf: adminCsrf))
+        {
+            Assert.Equal(HttpStatusCode.BadGateway, test.StatusCode);
+            Assert.Equal("email_failed", (await test.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("error").GetString());
+        }
+        Assert.Equal(1, (await GetJsonAsync(_admin, "/api/admin/logs/audit?action=TestEmailSent&failedOnly=true")).GetProperty("total").GetInt64());
+        Assert.Equal(HttpStatusCode.Unauthorized, (await _user.GetAsync("/api/admin/settings/email")).StatusCode);
+    }
+
+    /// <summary>
+    /// Checks confirming an address with a code (wrong code, throttling, success) and that changing the address
+    /// unconfirms it and tells the previous address.
+    /// </summary>
+    [Fact]
+    public async Task Email_Address_Is_Confirmed_With_A_Code()
+    {
+        var adminCsrf = await SetupAdminAsync(_admin);
+        await ConfigureEmailAsync(adminCsrf);
+        await CreateUserAsync(_admin, adminCsrf, "alice", "user");
+        var (csrf, _) = await LoginAsync(_user, "alice", "User passphrase 123");
+        using (var request = await SendAsync(_user, HttpMethod.Post, "/api/auth/email/verification", csrf: csrf))
+        {
+            Assert.Equal(HttpStatusCode.NoContent, request.StatusCode);
+        }
+        using (var again = await SendAsync(_user, HttpMethod.Post, "/api/auth/email/verification", csrf: csrf))
+        {
+            Assert.Equal(HttpStatusCode.TooManyRequests, again.StatusCode);
+        }
+        var mail = OutboxMail("alice@example.test", "verify");
+        var code = System.Text.RegularExpressions.Regex.Match(mail.TextBody, @"\b\d{6}\b").Value;
+        Assert.Equal(6, code.Length);
+        var wrong = code == "000000" ? "111111" : "000000";
+        using (var bad = await SendAsync(_user, HttpMethod.Post, "/api/auth/email/verify", json: new { code = wrong }, csrf: csrf))
+        {
+            Assert.Equal("wrong_code", (await bad.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("error").GetString());
+        }
+        using (var ok = await SendAsync(_user, HttpMethod.Post, "/api/auth/email/verify", json: new { code }, csrf: csrf))
+        {
+            ok.EnsureSuccessStatusCode();
+            Assert.True((await ok.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("emailVerified").GetBoolean());
+        }
+
+        using (var change = await SendAsync(_user, HttpMethod.Put, "/api/auth/email", json: new { email = "alice.new@example.test" }, csrf: csrf))
+        {
+            change.EnsureSuccessStatusCode();
+            Assert.False((await change.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("emailVerified").GetBoolean());
+        }
+        Assert.Contains("alice.new@example.test", OutboxMail("alice@example.test", "emailChanged").TextBody);
+    }
+
+    /// <summary>
+    /// Checks the invitation (link, set password once, address confirmed), the forgotten-password flow (same answer for
+    /// unknown accounts, admins excluded, sessions ended) and the notifications about new browsers, app passwords and
+    /// password resets.
+    /// </summary>
+    [Fact]
+    public async Task Invitation_Password_Reset_And_Notifications()
+    {
+        var adminCsrf = await SetupAdminAsync(_admin);
+        await ConfigureEmailAsync(adminCsrf);
+        using (var adminInvite = await SendAsync(_admin, HttpMethod.Post, "/api/admin/users", json: new { username = "boss", email = "boss@example.test", role = "admin", invite = true }, csrf: adminCsrf))
+        {
+            Assert.Equal(HttpStatusCode.BadRequest, adminInvite.StatusCode);
+        }
+        string bobId;
+        using (var invite = await SendAsync(_admin, HttpMethod.Post, "/api/admin/users", json: new { username = "bob", email = "bob@example.test", role = "user", invite = true }, csrf: adminCsrf))
+        {
+            invite.EnsureSuccessStatusCode();
+            bobId = (await invite.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetString()!;
+        }
+        var inviteToken = TokenFrom(OutboxMail("bob@example.test", "invite"));
+        var info = await (await _user.PostAsJsonAsync("/api/auth/token", new { token = inviteToken })).Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("invite", info.GetProperty("purpose").GetString());
+        Assert.Equal("bob", info.GetProperty("username").GetString());
+        Assert.Equal(HttpStatusCode.BadRequest, (await _user.PostAsJsonAsync("/api/auth/set-password", new { token = inviteToken, password = "short" })).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await _user.PostAsJsonAsync("/api/auth/set-password", new { token = inviteToken, password = "Bob passphrase 123" })).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await _user.PostAsJsonAsync("/api/auth/set-password", new { token = inviteToken, password = "Other passphrase 1" })).StatusCode);
+        var (bobCsrf, _) = await LoginAsync(_user, "bob", "Bob passphrase 123");
+        Assert.True((await GetJsonAsync(_user, "/api/auth/me")).GetProperty("emailVerified").GetBoolean());
+
+        // A sign-in from another browser is reported; the first sign-in was not.
+        Assert.Null(_factory.Services.GetRequiredService<KeePortDb>().GetLatestEmail("bob@example.test", "signIn"));
+        using (var other = _factory.CreateClient())
+        {
+            other.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (Windows NT 10.0; Win64; x64) Firefox/120.0");
+            await LoginAsync(other, "bob", "Bob passphrase 123");
+        }
+        Assert.Contains("Firefox 120", OutboxMail("bob@example.test", "signIn").TextBody);
+
+        // A new app password is reported to its owner.
+        await CreateWebDavCredentialAsync(_admin, adminCsrf, bobId);
+        Assert.NotNull(OutboxMail("bob@example.test", "appPassword"));
+
+        // Forgotten password: same answer for everyone, a link only for confirmed user accounts.
+        foreach (var identifier in new[] { "nobody", "admin", "bob@example.test" })
+        {
+            Assert.Equal(HttpStatusCode.NoContent, (await _admin.PostAsJsonAsync("/api/auth/password-reset", new { identifier })).StatusCode);
+        }
+        Assert.Null(_factory.Services.GetRequiredService<KeePortDb>().GetLatestEmail(AdminEmail, "reset"));
+        var resetToken = TokenFrom(OutboxMail("bob@example.test", "reset"));
+        Assert.Equal("reset", (await (await _admin.PostAsJsonAsync("/api/auth/token", new { token = resetToken })).Content.ReadFromJsonAsync<JsonElement>()).GetProperty("purpose").GetString());
+        Assert.Equal(HttpStatusCode.NoContent, (await _admin.PostAsJsonAsync("/api/auth/set-password", new { token = resetToken, password = "Bob fresh passphrase 9" })).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await _user.GetAsync("/api/auth/me")).StatusCode);
+        await LoginAsync(_user, "bob", "Bob fresh passphrase 9");
+        Assert.NotNull(OutboxMail("bob@example.test", "passwordChangedReset"));
+        Assert.Equal(3, (await GetJsonAsync(_admin, "/api/admin/logs/audit?action=PasswordResetRequested")).GetProperty("total").GetInt64());
+
+        // An admin's reset of the password is reported too.
+        using (var reset = await SendAsync(_admin, HttpMethod.Patch, $"/api/admin/users/{bobId}", json: new { password = "Admin set passphrase 7" }, csrf: adminCsrf))
+        {
+            reset.EnsureSuccessStatusCode();
+        }
+        Assert.NotNull(OutboxMail("bob@example.test", "passwordChangedAdmin"));
+        _ = bobCsrf;
+    }
+
+    /// <summary>Checks that many failed sign-ins warn administrators with a confirmed address, at most once an hour.</summary>
+    [Fact]
+    public async Task Admins_Are_Warned_About_Many_Failed_Sign_Ins()
+    {
+        var adminCsrf = await SetupAdminAsync(_admin);
+        await ConfigureEmailAsync(adminCsrf);
+        var db = _factory.Services.GetRequiredService<KeePortDb>();
+        var adminId = (await GetJsonAsync(_admin, $"{AdminAuthPath}/me")).GetProperty("id").GetString()!;
+        db.SetEmailVerified(adminId, DateTimeOffset.UtcNow);
+        for (var i = 0; i < AdminWarningService.FailedSignInThreshold; i++)
+        {
+            db.AddAuditEntry(new AuditEntryDto(0, DateTimeOffset.UtcNow, "auth", "LoginFailed", false, null, "mallory", "session", null, "Web vault", "Unknown username", "198.51.100.7", null), 365);
+        }
+        var warnings = ActivatorUtilities.CreateInstance<AdminWarningService>(_factory.Services);
+        warnings.CheckOnce(DateTimeOffset.UtcNow);
+        var mail = OutboxMail(AdminEmail, "warnFailedSignIns");
+        Assert.Contains("10 failed sign-ins", mail.TextBody);
+        warnings.CheckOnce(DateTimeOffset.UtcNow);
+        Assert.Equal(mail.Id, OutboxMail(AdminEmail, "warnFailedSignIns").Id);
+    }
+
+    /// <summary>Stores SMTP settings that point at a closed local port, so e-mails are queued but never delivered.</summary>
+    /// <param name="adminCsrf">The admin's CSRF token.</param>
+    /// <param name="password">An SMTP password to store, or null to keep the stored one.</param>
+    private async Task ConfigureEmailAsync(string adminCsrf, string? password = null)
+    {
+        using var response = await SendAsync(_admin, HttpMethod.Put, "/api/admin/settings/email", json: new
+        {
+            host = "127.0.0.1",
+            port = 1,
+            security = "none",
+            username = password is null ? null : "keeport",
+            password,
+            fromAddress = "keeport@example.test",
+            fromName = "KeePort",
+            publicUrl = "https://vault.example.test",
+            warnFailedSignIns = true,
+            warnCertificate = true,
+            warnStorage = true,
+            warnDiskSpace = true
+        }, csrf: adminCsrf);
+        response.EnsureSuccessStatusCode();
+    }
+
+    /// <summary>Reads the newest queued e-mail of a kind to an address; fails the test when there is none.</summary>
+    /// <param name="recipient">The recipient address.</param>
+    /// <param name="kind">The template name.</param>
+    private OutboxEmail OutboxMail(string recipient, string kind)
+        => _factory.Services.GetRequiredService<KeePortDb>().GetLatestEmail(recipient, kind)
+           ?? throw new Xunit.Sdk.XunitException($"No {kind} e-mail to {recipient} was queued.");
+
+    /// <summary>Extracts the one-time token from the link in an invitation or reset e-mail.</summary>
+    /// <param name="mail">The e-mail.</param>
+    private static string TokenFrom(OutboxEmail mail)
+        => System.Text.RegularExpressions.Regex.Match(mail.TextBody, @"#token=([A-Za-z0-9_-]+)").Groups[1].Value;
+
     /// <summary>Completes first-run setup and returns the administrator's CSRF token.</summary>
     /// <param name="client">The test client connected to the Admin API.</param>
     private async Task<string> SetupAdminAsync(HttpClient client)

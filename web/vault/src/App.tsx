@@ -79,6 +79,11 @@ import type { BreachCheckState } from '@/components/security-report';
 import { SecurityReportTiles } from '@/components/security-report';
 import { PasswordGenerator } from '@/components/password-generator';
 import { RecentSignIns } from '@/components/recent-sign-ins';
+import { ForgotPassword } from '@/components/forgot-password';
+import { PasswordLink } from '@/components/password-link';
+import { clearLinkToken, readLinkToken } from './lib/password-link';
+import { EmailConfirmation, EmailNotifications } from '@shared/email-account';
+import emailAccountMessages from '@shared/i18n/messages/email-account';
 import { applyAccountLanguage, LanguageSetting } from '@shared/i18n/language-select';
 import { applyPreference, formatDateTime, formatNumber, formatRelative as describeRelative, translate, type LanguagePreference } from '@shared/i18n/core';
 import languageMessages from '@shared/i18n/messages/language';
@@ -361,6 +366,10 @@ export default function App() {
   const [autoLockMinutes, setAutoLockMinutes] = useState(DEFAULT_AUTO_LOCK_MINUTES);
   const [showProfile, setShowProfile] = useState(false);
   const [profileMessage, setProfileMessage] = useState<Message>(null);
+  const [linkToken, setLinkToken] = useState<string | null>(/** Reads the token of an e-mail link the page was opened with. */ () => readLinkToken(location.hash));
+  const [signInView, setSignInView] = useState<'signIn' | 'forgot'>('signIn');
+  const [signInName, setSignInName] = useState('');
+  const tEmail = useT(emailAccountMessages);
 
   const selectedFile = useMemo(/** Resolves the selected vault against the available file metadata. */ () => files.find(/**
    * Matches the selected vault by ID.
@@ -1279,6 +1288,58 @@ export default function App() {
   }
 
   /**
+   * Confirms the account's e-mail address with the code from the e-mail.
+   * @param code - The 6-digit code the user entered.
+   */
+  async function handleVerifyEmail(code: string) {
+    const updated = await api.verifyEmail(code);
+    setUser(updated);
+    setProfileMessage({ kind: 'notice', text: tEmail('confirmedNotice') });
+  }
+
+  /**
+   * Saves which security notifications the account gets by e-mail.
+   * @param signIn - Notify about sign-ins from a new browser or device.
+   * @param appPassword - Notify about new app passwords.
+   */
+  async function handleSaveNotifications(signIn: boolean, appPassword: boolean) {
+    setUser(await api.updateNotifications({ signIn, appPassword }));
+  }
+
+  /**
+   * Leaves the password link page: clears the token from the address and shows the sign-in form.
+   * @param view - The form to show next: sign-in, or the "forgot password" form.
+   */
+  function leavePasswordLink(view: 'signIn' | 'forgot') {
+    clearLinkToken();
+    setLinkToken(null);
+    setSignInView(view);
+    setMessage(null);
+  }
+
+  /**
+   * Finishes the password link page after the password was set: the server ended all sessions of that account, so a
+   * session in this tab is closed too, and the sign-in form opens with the username filled in.
+   * @param username - The account whose password was set.
+   */
+  function finishPasswordLink(username: string) {
+    leavePasswordLink('signIn');
+    if (user) void handleLogout();
+    setSignInName(username);
+    setMessage({ kind: 'notice', text: tUnlock('passwordSet') });
+  }
+
+  /**
+   * Opens the "forgot password" form, starting with the username typed into the sign-in form.
+   * @param username - The username currently in the sign-in form.
+   */
+  function openForgotPassword(username: string) {
+    setSignInName(username);
+    setSignInView('forgot');
+    setMessage(null);
+  }
+
+  /**
    * Validates and saves the user's auto-lock delay.
    * @param event - The submission event from the auto-lock preference form.
    */
@@ -1337,6 +1398,17 @@ export default function App() {
     return /** Marks session initialization as obsolete when the component unmounts. */ () => {
       cancelled = true;
     };
+  }, []);
+
+  /** Shows the password link page when an e-mail link is opened in a tab that already shows the vault. */
+  useEffect(() => {
+    /** Picks up a token that was added to the address. */
+    const onHashChange = () => {
+      const token = readLinkToken(location.hash);
+      if (token) setLinkToken(token);
+    };
+    window.addEventListener('hashchange', onHashChange);
+    return /** Stops watching the address. */ () => window.removeEventListener('hashchange', onHashChange);
   }, []);
 
   /** Schedules auto-lock while the open vault's browser tab is hidden. */
@@ -1413,6 +1485,20 @@ export default function App() {
     </Button>
   );
 
+  if (linkToken) {
+    return (
+      <AuthLayout area="Vault" themeAction={themeAction}>
+        <PasswordLink
+          key={linkToken}
+          token={linkToken}
+          onDone={finishPasswordLink}
+          onCancel={/** Returns to the sign-in form or the open session. */ () => leavePasswordLink('signIn')}
+          onForgot={/** Opens the form for a new reset link. */ () => leavePasswordLink('forgot')}
+        />
+      </AuthLayout>
+    );
+  }
+
   if (!authChecked || !user) {
     return (
       <AuthLayout area="Vault" themeAction={themeAction}>
@@ -1420,6 +1506,11 @@ export default function App() {
           <p role="status" className="text-sm text-muted-foreground">
             {tUnlock('restoring')}
           </p>
+        ) : signInView === 'forgot' ? (
+          <ForgotPassword
+            initialIdentifier={signInName}
+            onBack={/** Returns to the sign-in form. */ () => setSignInView('signIn')}
+          />
         ) : (
           <form className="grid gap-5" onSubmit={handleLogin}>
             <div className="space-y-2">
@@ -1429,15 +1520,20 @@ export default function App() {
               </p>
             </div>
             {!hasBrowserCrypto() && <InsecureContextAlert action={tUnlock('insecureSignIn')} />}
-            {message?.kind === 'error' && (
-              <Alert variant="destructive">
+            {message && (
+              <Alert
+                variant={message.kind === 'error' ? 'destructive' : 'default'}
+                role={message.kind === 'error' ? undefined : 'status'}
+                className={message.kind === 'error' ? undefined : 'border-primary/25 bg-accent text-accent-foreground'}
+              >
+                {message.kind === 'notice' && <InfoIcon />}
                 <AlertDescription>{message.text}</AlertDescription>
               </Alert>
             )}
             <FieldGroup className="gap-4">
               <Field>
                 <FieldLabel htmlFor="username">{tUnlock('username')}</FieldLabel>
-                <Input id="username" name="username" autoComplete="username" required />
+                <Input key={signInName} id="username" name="username" autoComplete="username" defaultValue={signInName} required />
               </Field>
               <Field>
                 <FieldLabel htmlFor="password">{tUnlock('password')}</FieldLabel>
@@ -1446,6 +1542,17 @@ export default function App() {
             </FieldGroup>
             <Button type="submit" disabled={busy === 'login'}>
               {busy === 'login' ? tUnlock('signingIn') : tUnlock('signIn')}
+            </Button>
+            <Button
+              type="button"
+              variant="link"
+              className="justify-self-start px-0"
+              onClick={/**
+               * Opens the "forgot password" form with the typed username.
+               * @param event - The click event, used to read the sign-in form.
+               */ (event) => openForgotPassword(String(new FormData(event.currentTarget.form ?? undefined).get('username') ?? ''))}
+            >
+              {tUnlock('forgotPassword')}
             </Button>
             <p className="text-xs leading-relaxed text-muted-foreground">
               {tUnlock('firstRun')}
@@ -1548,6 +1655,13 @@ export default function App() {
                   {busy === 'email' ? tProfile('saving') : tProfile('saveEmail')}
                 </Button>
               </form>
+              <EmailConfirmation
+                key={user.email ?? ''}
+                email={user.email}
+                verified={user.emailVerified}
+                onRequestCode={/** Sends a confirmation code to the account's address. */ () => api.requestEmailCode()}
+                onVerify={handleVerifyEmail}
+              />
               <Separator />
               <Field>
                 <FieldLabel htmlFor="account-language">{tLanguage('label')}</FieldLabel>
@@ -1557,6 +1671,14 @@ export default function App() {
                  */ (language) => void handleSaveLanguage(language)} />
                 <FieldDescription id="account-language-help">{tLanguage('help')}</FieldDescription>
               </Field>
+              <Separator />
+              <EmailNotifications
+                signIn={user.notifySignIn}
+                appPassword={user.notifyAppPassword}
+                showAppPassword
+                verified={user.emailVerified}
+                onSave={handleSaveNotifications}
+              />
               <Separator />
               <form className="grid gap-4" onSubmit={handleSaveAutoLock}>
                 <h3 className="text-sm font-semibold">{tProfile('preferences')}</h3>

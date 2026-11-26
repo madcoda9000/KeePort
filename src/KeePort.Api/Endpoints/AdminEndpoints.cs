@@ -133,7 +133,7 @@ public static class AdminEndpoints
         // <param name="context">The current HTTP request and response context.</param>
         // <param name="db">The SQLite store for KeePort metadata.</param>
         // <param name="hasher">The service for hashing and verifying passwords.</param>
-        group.MapPost("/users", (CreateUserRequest request, HttpContext context, KeePortDb db, PasswordHasher hasher, AuditLog audit) =>
+        group.MapPost("/users", (CreateUserRequest request, HttpContext context, KeePortDb db, PasswordHasher hasher, AuditLog audit, AccountTokens tokens, EmailQueue queue) =>
         {
             if (ApiAuth.RequireAdmin(context) is { } forbidden)
             {
@@ -148,7 +148,17 @@ public static class AdminEndpoints
             {
                 return BadRequest("invalid_role", "Role must be 'admin' or 'user'.");
             }
-            var passwordError = PasswordPolicy.Validate(request.Password, request.Username);
+            if (request.Invite && role != UserRole.User)
+            {
+                return BadRequest("invite_not_possible", "Invitations are only for user accounts; set a password for administrators.");
+            }
+            if (request.Invite && !queue.IsConfigured)
+            {
+                return BadRequest("email_not_configured", "Set up e-mail under Settings first.");
+            }
+            // An invited account gets a random password nobody knows until the invitation link sets a real one.
+            var password = request.Invite ? KeePortDb.Base64Url(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32)) : request.Password;
+            var passwordError = PasswordPolicy.Validate(password, request.Username);
             if (passwordError is not null)
             {
                 return BadRequest("invalid_password", passwordError);
@@ -169,14 +179,18 @@ public static class AdminEndpoints
                 Id = Guid.NewGuid().ToString("N"),
                 Username = username,
                 Email = email,
-                PasswordHash = hasher.Hash(request.Password),
+                PasswordHash = hasher.Hash(password!),
                 Role = role,
                 Disabled = false,
                 CreatedAt = DateTimeOffset.UtcNow
             };
             db.CreateUser(user);
             audit.Record(context, AuditActions.UserCreated, targetType: "user", targetId: user.Id, targetName: user.Username,
-                details: $"Role {user.Role}");
+                details: request.Invite ? $"Role {user.Role}, invited by e-mail" : $"Role {user.Role}");
+            if (request.Invite && EmailEndpoints.SendInvitation(context, user, tokens, queue, audit) is { } inviteError)
+            {
+                return inviteError;
+            }
             return Results.Ok(AuthEndpoints.ToDto(user));
         });
 
@@ -186,7 +200,7 @@ public static class AdminEndpoints
         // <param name="context">The current HTTP request and response context.</param>
         // <param name="db">The SQLite store for KeePort metadata.</param>
         // <param name="hasher">The service for hashing and verifying passwords.</param>
-        group.MapPatch("/users/{id}", (string id, UpdateUserRequest request, HttpContext context, KeePortDb db, PasswordHasher hasher, AuditLog audit) =>
+        group.MapPatch("/users/{id}", (string id, UpdateUserRequest request, HttpContext context, KeePortDb db, PasswordHasher hasher, AuditLog audit, SecurityNotifier notifier) =>
         {
             if (ApiAuth.RequireAdmin(context) is { } forbidden)
             {
@@ -227,6 +241,10 @@ public static class AdminEndpoints
                 db.DeleteSessionsForUser(target.Id, ApiAuth.GetSession(context)?.Id);
                 audit.Record(context, AuditActions.UserPasswordReset, targetType: "user", targetId: target.Id, targetName: target.Username,
                     details: "Signed out everywhere");
+                if (!string.Equals(target.Id, ApiAuth.GetUser(context)?.Id, StringComparison.Ordinal))
+                {
+                    notifier.PasswordChanged(target, EmailTemplates.Kinds.PasswordChangedAdmin);
+                }
             }
             if (role != target.Role)
             {
@@ -743,7 +761,7 @@ public static class AdminEndpoints
         // <param name="context">The current HTTP request and response context.</param>
         // <param name="db">The SQLite store for KeePort metadata.</param>
         // <param name="hasher">The service for hashing and verifying passwords.</param>
-        group.MapPost("/webdav-credentials", (CreateWebDavCredentialRequest request, HttpContext context, KeePortDb db, PasswordHasher hasher, AuditLog audit) =>
+        group.MapPost("/webdav-credentials", (CreateWebDavCredentialRequest request, HttpContext context, KeePortDb db, PasswordHasher hasher, AuditLog audit, SecurityNotifier notifier) =>
         {
             if (ApiAuth.RequireAdmin(context) is { } forbidden)
             {
@@ -777,6 +795,7 @@ public static class AdminEndpoints
             db.CreateWebDavCredential(credential);
             audit.Record(context, AuditActions.AppPasswordCreated, targetType: "appPassword", targetId: credential.Id, targetName: credential.Username,
                 details: $"{credential.Label} for {user.Username}");
+            notifier.AppPasswordCreated(user, credential.Label);
             return Results.Ok(ToWebDavDto(credential));
         });
 

@@ -114,11 +114,14 @@ public static class ApiSecurityExtensions
         });
     }
 
-    /// <summary>Identifies the setup and login routes that can run without a CSRF token.</summary>
+    /// <summary>Identifies the setup, login and password-link routes that can run without a CSRF token.</summary>
     /// <param name="path">The API request path to check against the exemption list.</param>
     private static bool IsCsrfExempt(string path)
     {
         return path.Equals("/api/auth/login", StringComparison.OrdinalIgnoreCase) ||
+               path.Equals("/api/auth/password-reset", StringComparison.OrdinalIgnoreCase) ||
+               path.Equals("/api/auth/token", StringComparison.OrdinalIgnoreCase) ||
+               path.Equals("/api/auth/set-password", StringComparison.OrdinalIgnoreCase) ||
                path.Equals(SessionService.AdminApiPath + "/auth/login", StringComparison.OrdinalIgnoreCase) ||
                path.Equals(SessionService.AdminApiPath + "/auth/setup", StringComparison.OrdinalIgnoreCase);
     }

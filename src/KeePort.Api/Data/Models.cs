@@ -40,6 +40,12 @@ public sealed class UserRecord
     public bool CheckBreaches { get; init; }
     /// <summary>The interface language (de, en, fr), or null to follow the browser.</summary>
     public string? Language { get; init; }
+    /// <summary>When the e-mail address was confirmed, or null while it is unconfirmed.</summary>
+    public DateTimeOffset? EmailVerifiedAt { get; init; }
+    /// <summary>Whether the account gets an e-mail about sign-ins from a new browser or device.</summary>
+    public bool NotifySignIn { get; init; } = true;
+    /// <summary>Whether the account gets an e-mail when a WebDAV app password is created for it.</summary>
+    public bool NotifyAppPassword { get; init; } = true;
 }
 
 public sealed record SessionRecord
@@ -109,6 +115,9 @@ public sealed class WebDavCredentialRecord
 /// <param name="ClipboardClearSeconds">Seconds after which copied values are cleared, null for the default, 0 for off.</param>
 /// <param name="CheckBreaches">Whether the web vault checks passwords against "Have I Been Pwned" (opt-in).</param>
 /// <param name="Language">The interface language (de, en, fr), or null to follow the browser.</param>
+/// <param name="EmailVerified">Whether the e-mail address was confirmed.</param>
+/// <param name="NotifySignIn">Whether the account gets e-mails about sign-ins from a new browser or device.</param>
+/// <param name="NotifyAppPassword">Whether the account gets e-mails about new WebDAV app passwords.</param>
 public sealed record UserDto(
     string Id,
     string Username,
@@ -121,7 +130,10 @@ public sealed record UserDto(
     bool ShowFavicons = false,
     int? ClipboardClearSeconds = null,
     bool CheckBreaches = false,
-    string? Language = null);
+    string? Language = null,
+    bool EmailVerified = false,
+    bool NotifySignIn = true,
+    bool NotifyAppPassword = true);
 
 /// <summary>Represents vault file metadata without the encrypted file contents.</summary>
 /// <param name="Id">The stable identifier for this resource.</param>
@@ -191,7 +203,8 @@ public sealed record SetupRequest(string SetupToken, string Username, string Pas
 /// <param name="Password">The plaintext password submitted by the caller for authentication or hashing.</param>
 /// <param name="Role">The account role, such as admin or user.</param>
 /// <param name="Email">The account's contact email address.</param>
-public sealed record CreateUserRequest(string Username, string Password, string Role, string? Email);
+/// <param name="Invite">Send an invitation link instead of setting a password (user accounts only; needs e-mail).</param>
+public sealed record CreateUserRequest(string Username, string? Password, string Role, string? Email, bool Invite = false);
 
 /// <summary>Carries optional account changes made by an administrator.</summary>
 /// <param name="Role">The replacement role, or null to leave the role unchanged.</param>
@@ -499,3 +512,92 @@ public sealed record VaultVersionsDto(VaultVersionDto Current, IReadOnlyList<Vau
 /// <param name="MaxDays">Days a version is kept, 0 to 3650; 0 keeps them regardless of age.</param>
 /// <param name="UsedBytes">Space used by all kept versions; ignored when saving.</param>
 public sealed record VersionSettingsDto(int MaxCount, int MaxDays, long UsedBytes = 0);
+
+/// <summary>One queued e-mail.</summary>
+/// <param name="Id">The queue ID.</param>
+/// <param name="Kind">The template name.</param>
+/// <param name="Recipient">The recipient address.</param>
+/// <param name="Subject">The subject line.</param>
+/// <param name="TextBody">The plain-text body.</param>
+/// <param name="HtmlBody">The HTML body.</param>
+/// <param name="Attempts">How many sending attempts failed so far.</param>
+public sealed record OutboxEmail(long Id, string Kind, string Recipient, string Subject, string TextBody, string HtmlBody, int Attempts);
+
+/// <summary>The state of the e-mail queue for the admin console.</summary>
+/// <param name="Waiting">E-mails not sent yet.</param>
+/// <param name="SentLast7Days">E-mails sent in the last 7 days.</param>
+/// <param name="FailedLast7Days">E-mails given up in the last 7 days.</param>
+/// <param name="LastSentAt">When the last e-mail was sent.</param>
+/// <param name="LastError">The most recent sending error, if any.</param>
+public sealed record EmailQueueStatusDto(long Waiting, long SentLast7Days, long FailedLast7Days, DateTimeOffset? LastSentAt, string? LastError);
+
+/// <summary>A one-time token or code for an account, stored as a hash.</summary>
+/// <param name="TokenHash">The SHA-256 of the token.</param>
+/// <param name="UserId">The account's ID.</param>
+/// <param name="Purpose">invite, reset or verify.</param>
+/// <param name="Email">The address the token was sent to.</param>
+/// <param name="ExpiresAt">When it stops working.</param>
+/// <param name="Attempts">Wrong attempts so far.</param>
+public sealed record AccountTokenRecord(string TokenHash, string UserId, string Purpose, string? Email, DateTimeOffset ExpiresAt, int Attempts);
+
+/// <summary>SMTP settings and admin warnings as shown in the admin console; the password itself is never returned.</summary>
+/// <param name="Host">The SMTP server name.</param>
+/// <param name="Port">The SMTP port.</param>
+/// <param name="Security">starttls, ssl or none.</param>
+/// <param name="Username">The SMTP user, if the server needs a sign-in.</param>
+/// <param name="Password">A new SMTP password when saving; null keeps the stored one. Never returned.</param>
+/// <param name="HasPassword">Whether a password is stored; ignored when saving.</param>
+/// <param name="FromAddress">The sender address.</param>
+/// <param name="FromName">The sender name.</param>
+/// <param name="PublicUrl">The address of the web vault for links in e-mails, e.g. https://vault.example.com.</param>
+/// <param name="WarnFailedSignIns">Warn admins about many failed sign-ins.</param>
+/// <param name="WarnCertificate">Warn admins when the admin certificate expires soon.</param>
+/// <param name="WarnStorage">Warn admins when the data is not in a host folder.</param>
+/// <param name="WarnDiskSpace">Warn admins when free disk space is low.</param>
+public sealed record EmailSettingsDto(
+    string? Host,
+    int Port,
+    string Security,
+    string? Username,
+    string? Password,
+    bool HasPassword,
+    string? FromAddress,
+    string? FromName,
+    string? PublicUrl,
+    bool WarnFailedSignIns = true,
+    bool WarnCertificate = true,
+    bool WarnStorage = true,
+    bool WarnDiskSpace = true);
+
+/// <summary>The e-mail settings with the queue state, for the admin console.</summary>
+/// <param name="Settings">The settings without the password.</param>
+/// <param name="Configured">Whether host, sender and web vault address are set, so e-mails can be sent.</param>
+/// <param name="Queue">The queue state.</param>
+public sealed record EmailStatusDto(EmailSettingsDto Settings, bool Configured, EmailQueueStatusDto Queue);
+
+/// <summary>A verification code entered by the user.</summary>
+/// <param name="Code">The 6-digit code from the e-mail.</param>
+public sealed record VerifyEmailRequest(string? Code);
+
+/// <summary>Which security notifications the user receives by e-mail.</summary>
+/// <param name="SignIn">Sign-ins from a new browser or device.</param>
+/// <param name="AppPassword">New WebDAV app passwords.</param>
+public sealed record EmailNotificationsRequest(bool SignIn, bool AppPassword);
+
+/// <summary>A request for a password reset link.</summary>
+/// <param name="Identifier">The username or e-mail address.</param>
+public sealed record PasswordResetRequest(string? Identifier);
+
+/// <summary>A one-time token from an invitation or reset link.</summary>
+/// <param name="Token">The token from the link.</param>
+public sealed record AccountTokenRequest(string? Token);
+
+/// <summary>Sets a password with a one-time token from an invitation or reset link.</summary>
+/// <param name="Token">The token from the link.</param>
+/// <param name="Password">The new password.</param>
+public sealed record SetPasswordRequest(string? Token, string? Password);
+
+/// <summary>What a one-time link is for, shown before the password form.</summary>
+/// <param name="Purpose">invite or reset.</param>
+/// <param name="Username">The account's username.</param>
+public sealed record AccountTokenInfoDto(string Purpose, string Username);

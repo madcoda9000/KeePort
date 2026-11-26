@@ -42,7 +42,9 @@ export default defineMessages({
     missingCredentials: 'Enter the master password or select a key file.',
     unlocked: 'Unlocked {name}. Data stays in this browser only.',
     unlockFailed: 'Unable to unlock vault. Check the password and key file.',
-    lockedNotice: 'Vault locked. Secrets were discarded from this browser tab.'
+    lockedNotice: 'Vault locked. Secrets were discarded from this browser tab.',
+    forgotPassword: 'Forgot password?',
+    passwordSet: 'Password set. Sign in with your new password.'
   },
   de: {
     restoring: 'Sichere Sitzung wird wiederhergestellt…',
@@ -84,7 +86,9 @@ export default defineMessages({
     missingCredentials: 'Gib das Master-Passwort ein oder wähle eine Schlüsseldatei.',
     unlocked: '{name} entsperrt. Die Daten bleiben nur in diesem Browser.',
     unlockFailed: 'Der Tresor konnte nicht entsperrt werden. Prüfe Passwort und Schlüsseldatei.',
-    lockedNotice: 'Tresor gesperrt. Die Geheimnisse wurden aus diesem Browser-Tab entfernt.'
+    lockedNotice: 'Tresor gesperrt. Die Geheimnisse wurden aus diesem Browser-Tab entfernt.',
+    forgotPassword: 'Passwort vergessen?',
+    passwordSet: 'Passwort festgelegt. Melde dich mit deinem neuen Passwort an.'
   },
   fr: {
     restoring: 'Restauration de la session sécurisée…',
@@ -126,6 +130,8 @@ export default defineMessages({
     missingCredentials: 'Saisissez le mot de passe maître ou sélectionnez un fichier clé.',
     unlocked: '{name} déverrouillé. Les données restent uniquement dans ce navigateur.',
     unlockFailed: 'Impossible de déverrouiller le coffre-fort. Vérifiez le mot de passe et le fichier clé.',
-    lockedNotice: 'Coffre-fort verrouillé. Les secrets ont été effacés de cet onglet.'
+    lockedNotice: 'Coffre-fort verrouillé. Les secrets ont été effacés de cet onglet.',
+    forgotPassword: 'Mot de passe oublié ?',
+    passwordSet: 'Mot de passe défini. Connectez-vous avec votre nouveau mot de passe.'
   }
 });

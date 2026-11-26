@@ -37,6 +37,13 @@ public static class AuditActions
     public const string AppPasswordRevoked = nameof(AppPasswordRevoked);
 
     public const string RateLimitsChanged = nameof(RateLimitsChanged);
+    public const string EmailSettingsChanged = nameof(EmailSettingsChanged);
+    public const string TestEmailSent = nameof(TestEmailSent);
+    public const string InvitationSent = nameof(InvitationSent);
+    public const string InvitationAccepted = nameof(InvitationAccepted);
+    public const string PasswordResetRequested = nameof(PasswordResetRequested);
+    public const string PasswordResetCompleted = nameof(PasswordResetCompleted);
+    public const string EmailVerified = nameof(EmailVerified);
     public const string AuditRetentionChanged = nameof(AuditRetentionChanged);
     public const string VersionSettingsChanged = nameof(VersionSettingsChanged);
 
@@ -44,14 +51,16 @@ public static class AuditActions
     public static readonly IReadOnlyList<AuditActionDto> All =
     [
         new(LoginSucceeded, "auth"), new(LoginFailed, "auth"), new(Logout, "auth"), new(SetupCompleted, "auth"),
-        new(PasswordChanged, "account"), new(EmailChanged, "account"), new(SettingsChanged, "account"),
+        new(InvitationAccepted, "auth"), new(PasswordResetRequested, "auth"), new(PasswordResetCompleted, "auth"),
+        new(PasswordChanged, "account"), new(EmailChanged, "account"), new(SettingsChanged, "account"), new(EmailVerified, "account"),
         new(UserCreated, "user"), new(UserRoleChanged, "user"), new(UserDisabled, "user"), new(UserEnabled, "user"),
-        new(UserPasswordReset, "user"), new(UserDeleted, "user"),
+        new(UserPasswordReset, "user"), new(UserDeleted, "user"), new(InvitationSent, "user"),
         new(VaultUploaded, "vault"), new(VaultRenamed, "vault"), new(VaultDeleted, "vault"), new(VaultRestored, "vault"),
         new(VaultPermissionsChanged, "vault"), new(VaultSaved, "vault"), new(VaultConflictCopy, "vault"), new(VaultDownloaded, "vault"),
         new(VaultVersionRestored, "vault"),
         new(AppPasswordCreated, "webdav"), new(AppPasswordRevoked, "webdav"),
-        new(RateLimitsChanged, "settings"), new(AuditRetentionChanged, "settings"), new(VersionSettingsChanged, "settings")
+        new(RateLimitsChanged, "settings"), new(AuditRetentionChanged, "settings"), new(VersionSettingsChanged, "settings"),
+        new(EmailSettingsChanged, "settings"), new(TestEmailSent, "settings")
     ];
 
     private static readonly Dictionary<string, string> Categories = All.ToDictionary(/* Tag. */ a => a.Action, /* Category. */ a => a.Category);
