@@ -1,0 +1,22 @@
+/*
+ * KeePort brand colour (violet), shared by the web vault and the admin console.
+ * The theme tokens in each app's index.css are built from these values.
+ */
+:root {
+  --brand-hue: 293;
+  --brand-50: oklch(0.969 0.016 293.756);
+  --brand-100: oklch(0.943 0.029 294.588);
+  --brand-400: oklch(0.702 0.183 293.541);
+  --brand-500: oklch(0.606 0.25 292.717);
+  --brand-600: oklch(0.541 0.281 293.009);
+  --brand-700: oklch(0.491 0.27 292.581);
+  --brand-800: oklch(0.432 0.232 292.759);
+  --brand-primary: oklch(0.541 0.281 293.009);
+  --brand-gradient-from: oklch(0.606 0.25 292.717);
+  --brand-gradient-to: oklch(0.591 0.293 322.896);
+}
+
+/* The logo and other highlights use this diagonal brand gradient. */
+@utility bg-brand-gradient {
+  background-image: linear-gradient(135deg, var(--brand-gradient-from), var(--brand-gradient-to));
+}

@@ -19,6 +19,8 @@ import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle }
 import { Skeleton } from '@/components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { api, ApiError, type DashboardData, type LoginCounts } from '@/lib/api';
+import { cn } from '@/lib/utils';
+import { ACCENTS, type AccentName } from '@shared/accent';
 
 /** Admin sections the dashboard links to. */
 export type DashboardTarget = 'vaults' | 'users' | 'webdav' | 'settings' | 'webdav-logs';
@@ -79,17 +81,19 @@ function Fact({ label, children }: { label: string; children: ReactNode }) {
 
 /**
  * Shows a headline number with a short description, or a placeholder when the value is unknown.
- * @param props - The title, icon, value (null when unknown), detail line and optional action.
+ * @param props - The title, icon, accent colour of the icon, value (null when unknown), detail line and optional action.
  */
 function StatCard({
   title,
   icon,
+  accent,
   value,
   detail,
   action
 }: {
   title: string;
   icon: ReactNode;
+  accent: AccentName;
   value: ReactNode | null;
   detail: ReactNode;
   action?: ReactNode;
@@ -97,8 +101,11 @@ function StatCard({
   return (
     <Card size="sm">
       <CardHeader>
-        <CardDescription className="flex items-center gap-2 [&_svg]:size-4">{icon}{title}</CardDescription>
-        <CardTitle className="text-2xl tabular-nums">{value ?? <span className="text-base text-muted-foreground">Not available</span>}</CardTitle>
+        <CardDescription className="flex items-center gap-2.5 font-medium">
+          <span className={cn('grid size-8 shrink-0 place-items-center rounded-lg [&_svg]:size-4', ACCENTS[accent].tile)}>{icon}</span>
+          {title}
+        </CardDescription>
+        <CardTitle className="mt-1 text-2xl font-semibold tracking-tight tabular-nums">{value ?? <span className="text-base text-muted-foreground">Not available</span>}</CardTitle>
         <CardDescription>{detail}</CardDescription>
         {action && <CardAction>{action}</CardAction>}
       </CardHeader>
@@ -190,7 +197,7 @@ export function DashboardPanel({ onNavigate }: { onNavigate: (target: DashboardT
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2 text-sm">
           {data && !error ? (
-            <Badge variant="secondary" className="gap-1.5"><CircleCheckIcon className="text-emerald-600 dark:text-emerald-400" /> KeePort is running</Badge>
+            <Badge variant="outline" className={cn('gap-1.5', ACCENTS.emerald.badge)}><CircleCheckIcon /> KeePort is running</Badge>
           ) : error ? (
             <Badge variant="destructive" className="gap-1.5"><CircleAlertIcon /> Status not available</Badge>
           ) : null}
@@ -255,12 +262,14 @@ export function DashboardPanel({ onNavigate }: { onNavigate: (target: DashboardT
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <StatCard
               title="Uptime"
+              accent="emerald"
               icon={<ActivityIcon />}
               value={server ? formatUptime(server.uptimeSeconds) : null}
               detail={server ? `Since ${formatDateTime(server.startedAt)}` : ''}
             />
             <StatCard
               title="Vaults"
+              accent="sky"
               icon={<DatabaseIcon />}
               value={counts?.vaults ?? null}
               detail={counts ? `${counts.deletedVaults} deleted · ${counts.conflictCopies} conflict ${counts.conflictCopies === 1 ? 'copy' : 'copies'}` : 'Totals not available'}
@@ -268,6 +277,7 @@ export function DashboardPanel({ onNavigate }: { onNavigate: (target: DashboardT
             />
             <StatCard
               title="Accounts"
+              accent="violet"
               icon={<UsersIcon />}
               value={counts ? counts.users + counts.admins : null}
               detail={counts
@@ -277,6 +287,7 @@ export function DashboardPanel({ onNavigate }: { onNavigate: (target: DashboardT
             />
             <StatCard
               title="WebDAV app passwords"
+              accent="amber"
               icon={<NetworkIcon />}
               value={counts?.activeWebDavCredentials ?? null}
               detail={counts ? `${counts.webDavRequestsLast24Hours} ${counts.webDavRequestsLast24Hours === 1 ? 'request' : 'requests'} in the last 24 hours` : 'Totals not available'}
@@ -351,7 +362,7 @@ export function DashboardPanel({ onNavigate }: { onNavigate: (target: DashboardT
             {server && (
               <Card>
                 <CardHeader>
-                  <CardTitle className="flex items-center gap-2"><ServerIcon className="size-4" /> System</CardTitle>
+                  <CardTitle className="flex items-center gap-2"><ServerIcon className="size-4 text-primary" /> System</CardTitle>
                   <CardDescription>The running KeePort application. Docker's own status and engine version are not visible from inside the container.</CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -371,7 +382,7 @@ export function DashboardPanel({ onNavigate }: { onNavigate: (target: DashboardT
             {server && (
               <Card>
                 <CardHeader>
-                  <CardTitle className="flex items-center gap-2"><ShieldCheckIcon className="size-4" /> Network & admin access</CardTitle>
+                  <CardTitle className="flex items-center gap-2"><ShieldCheckIcon className="size-4 text-primary" /> Network & admin access</CardTitle>
                   <CardDescription>
                     {server.inDocker
                       ? 'Addresses and ports inside the container. The host ports come from your .env file.'
@@ -406,7 +417,7 @@ export function DashboardPanel({ onNavigate }: { onNavigate: (target: DashboardT
 
             <Card className="xl:col-span-2">
               <CardHeader>
-                <CardTitle className="flex items-center gap-2"><HardDriveIcon className="size-4" /> Data storage</CardTitle>
+                <CardTitle className="flex items-center gap-2"><HardDriveIcon className="size-4 text-primary" /> Data storage</CardTitle>
                 <CardDescription>Where KeePort keeps its database and vault files.</CardDescription>
                 <CardAction>
                   <Button variant="outline" size="sm" onClick={/** Opens the settings with the storage details. */ () => onNavigate('settings')}>

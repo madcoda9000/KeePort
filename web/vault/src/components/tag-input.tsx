@@ -5,6 +5,8 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { FieldError } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
+import { cn } from '@/lib/utils';
+import { accentFor } from '@shared/accent';
 
 /** How many suggestions are offered below the input. */
 const MAX_SUGGESTIONS = 8;
@@ -77,7 +79,7 @@ export function TagInput({
            * Renders one tag chip.
            * @param tag - One tag of the entry.
            */ (tag) => (
-            <Badge key={tag} variant="secondary" className="h-6 gap-1 pe-1 text-xs">
+            <Badge key={tag} variant="outline" className={cn('h-6 gap-1 pe-1 text-xs', accentFor(tag).badge)}>
               {tag}
               {canWrite && (
                 <button

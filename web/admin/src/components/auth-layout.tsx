@@ -23,7 +23,7 @@ export function AuthLayout({
       <Card className="grid w-full max-w-4xl gap-0 overflow-hidden p-0 md:grid-cols-2">
         <CardContent className="flex flex-col justify-center p-6 sm:p-10 lg:p-12">
           <div className="mb-8 flex items-center gap-2.5 text-sm font-semibold">
-            <span className="grid size-8 place-items-center rounded-lg bg-primary text-primary-foreground">
+            <span className="grid size-8 place-items-center rounded-lg bg-brand-gradient text-white shadow-sm">
               <KeyRoundIcon className="size-4" />
             </span>
             KeePort <span className="font-normal text-muted-foreground">/ {area}</span>
@@ -31,12 +31,12 @@ export function AuthLayout({
           </div>
           {children}
         </CardContent>
-        <div className="relative hidden min-h-110 overflow-hidden border-s bg-muted/65 md:flex md:flex-col md:justify-between">
+        <div className="relative hidden min-h-110 overflow-hidden border-s bg-accent md:flex md:flex-col md:justify-between">
           <svg
             aria-hidden="true"
             viewBox="0 0 420 420"
             preserveAspectRatio="xMidYMid slice"
-            className="absolute inset-0 size-full text-foreground/10"
+            className="absolute inset-0 size-full text-primary/15"
             fill="none"
           >
             <defs>
@@ -53,11 +53,11 @@ export function AuthLayout({
             <span className="size-1.5 rounded-full bg-emerald-500" /> Self-hosted workspace
           </div>
           <div className="absolute inset-0 grid -translate-y-5 place-items-center" aria-hidden="true">
-            <div className="grid size-24 place-items-center rounded-3xl border bg-card shadow-sm">
+            <div className="grid size-24 place-items-center rounded-3xl bg-brand-gradient text-white shadow-lg shadow-primary/25">
               <ShieldCheckIcon strokeWidth={1.25} className="size-11" />
             </div>
           </div>
-          <div className="relative space-y-2 bg-linear-to-t from-muted via-muted/90 to-transparent px-8 pt-10 pb-8">
+          <div className="relative space-y-2 bg-linear-to-t from-accent via-accent/90 to-transparent px-8 pt-10 pb-8">
             <p className="text-xl font-semibold tracking-tight">
               {admin ? 'Your vaults. Your server.' : 'Your secrets stay yours.'}
             </p>

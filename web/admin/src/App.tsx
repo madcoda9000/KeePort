@@ -1602,7 +1602,7 @@ function AdminNavigation({ tab, user, onProfileUpdate, onSelect }: {
     <Sidebar variant="inset">
       <SidebarHeader className="h-14 shrink-0 justify-center border-b px-5 py-0">
         <div className="flex items-center gap-3">
-          <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-primary text-primary-foreground">
+          <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-brand-gradient text-white shadow-sm">
             <KeyRoundIcon className="size-4" />
           </span>
           <div>

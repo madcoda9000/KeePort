@@ -28,8 +28,12 @@ import type { AttachmentDraft } from './lib/attachments';
 import { parseOtpSecret, totpCode, totpUri } from './lib/totp';
 import { getTheme, toggleTheme } from './theme';
 import { cn } from '@/lib/utils';
+import { ACCENTS, accentFor, type Accent } from '@shared/accent';
 import {
   ChevronDownIcon,
+  ClockIcon,
+  HardDriveIcon,
+  InfoIcon,
   CircleCheckIcon,
   Columns3Icon,
   ImageDownIcon,
@@ -192,6 +196,19 @@ const ENTRY_COLUMNS: readonly TableColumn<EntryView>[] = [
    */
   { id: 'website', label: 'Website', sortValue: (entry) => entry.url || null, className: 'hidden md:table-cell' }
 ];
+
+/**
+ * Labels a headline number with an icon on a tinted tile.
+ * @param props - The icon, its accent colour and the label text.
+ */
+function StatLabel({ icon, accent, children }: { icon: ReactNode; accent: Accent; children: ReactNode }) {
+  return (
+    <CardDescription className="flex items-center gap-2.5 font-medium">
+      <span className={cn('grid size-8 shrink-0 place-items-center rounded-lg [&_svg]:size-4', accent.tile)}>{icon}</span>
+      {children}
+    </CardDescription>
+  );
+}
 
 /**
  * Formats the encrypted file size for display.
@@ -1657,7 +1674,7 @@ export default function App() {
               </p>
             </div>
             {selectedFile && (
-              <Badge variant={unlocked ? 'secondary' : 'outline'}>
+              <Badge variant="outline" className={unlocked ? (canWrite ? ACCENTS.emerald.badge : ACCENTS.amber.badge) : undefined}>
                 {unlocked ? (
                   <>
                     <ShieldCheckIcon /> {canWrite ? 'Read-write' : 'Read-only'}
@@ -1671,8 +1688,12 @@ export default function App() {
             )}
           </div>
           {message && !edits && (
-            <Alert variant={message.kind === 'error' ? 'destructive' : 'default'}>
-              <AlertDescription>{message.text}</AlertDescription>
+            <Alert
+              variant={message.kind === 'error' ? 'destructive' : 'default'}
+              className={message.kind === 'error' ? undefined : 'border-primary/25 bg-accent text-accent-foreground'}
+            >
+              {message.kind === 'error' ? <TriangleAlertIcon /> : <InfoIcon />}
+              <AlertDescription className={message.kind === 'error' ? undefined : 'text-accent-foreground'}>{message.text}</AlertDescription>
             </Alert>
           )}
 
@@ -1743,20 +1764,20 @@ export default function App() {
               <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
                 <Card size="sm">
                   <CardHeader>
-                    <CardDescription>Entries</CardDescription>
-                    <CardTitle className="text-xl tabular-nums">{visibleCount}</CardTitle>
+                    <StatLabel icon={<KeyRoundIcon />} accent={ACCENTS.sky}>Entries</StatLabel>
+                    <CardTitle className="mt-1 text-2xl font-semibold tracking-tight tabular-nums">{visibleCount}</CardTitle>
                   </CardHeader>
                 </Card>
                 <Card size="sm">
                   <CardHeader>
-                    <CardDescription>Vault size</CardDescription>
-                    <CardTitle className="text-xl tabular-nums">{formatBytes(selectedFile.size)}</CardTitle>
+                    <StatLabel icon={<HardDriveIcon />} accent={ACCENTS.violet}>Vault size</StatLabel>
+                    <CardTitle className="mt-1 text-2xl font-semibold tracking-tight tabular-nums">{formatBytes(selectedFile.size)}</CardTitle>
                   </CardHeader>
                 </Card>
                 <Card size="sm" className="col-span-2 lg:col-span-1">
                   <CardHeader>
-                    <CardDescription>Last updated</CardDescription>
-                    <CardTitle className="text-base">{formatDate(selectedFile.updatedAt)}</CardTitle>
+                    <StatLabel icon={<ClockIcon />} accent={ACCENTS.amber}>Last updated</StatLabel>
+                    <CardTitle className="mt-1 text-base font-semibold">{formatDate(selectedFile.updatedAt)}</CardTitle>
                     <CardDescription>Revision {selectedFile.revision}</CardDescription>
                   </CardHeader>
                 </Card>
@@ -1943,7 +1964,7 @@ export default function App() {
                           title={`Open ${entry.title}`}
                           onClick={/** Opens the entry. */ () => openEntry(entry)}
                         >
-                          <EntryIcon iconUrl={entry.iconUrl} url={entry.url} showFavicons={showFavicons} className="mt-0.5" />
+                          <EntryIcon iconUrl={entry.iconUrl} url={entry.url} showFavicons={showFavicons} title={entry.title} />
                           <span className="min-w-0">
                             <span className="block truncate font-medium text-primary underline-offset-4 group-hover/title:underline group-focus-visible/title:underline">{entry.title}</span>
                             <span className="flex min-w-0 items-center gap-1.5 text-xs font-normal text-muted-foreground">
@@ -1960,12 +1981,12 @@ export default function App() {
                           </span>
                         </Button>
                         {entry.tags.length > 0 && (
-                          <span className="flex max-w-44 flex-wrap gap-1 ps-9 pb-1 sm:max-w-72">
+                          <span className="flex max-w-44 flex-wrap gap-1 ps-13 pb-1 sm:max-w-72">
                             {entry.tags.slice(0, 3).map(/**
                              * Renders one tag as a filter button.
                              * @param tag - One tag of the entry.
                              */ (tag) => (
-                              <Badge key={tag} asChild variant="outline" className="h-4 px-1.5 text-[0.65rem]">
+                              <Badge key={tag} asChild variant="outline" className={cn('h-4 px-1.5 text-[0.65rem]', accentFor(tag).badge)}>
                                 <button type="button" title={`Show entries tagged ${tag}`} onClick={/** Filters the list by this tag. */ () => showTag(tag)}>
                                   {tag}
                                 </button>
@@ -2600,7 +2621,7 @@ function VaultNavigation({
     <Sidebar variant="inset">
       <SidebarHeader className="h-14 shrink-0 justify-center border-b px-5 py-0">
         <div className="flex items-center gap-3">
-          <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-primary text-primary-foreground">
+          <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-brand-gradient text-white shadow-sm">
             <KeyRoundIcon className="size-4" />
           </span>
           <div>

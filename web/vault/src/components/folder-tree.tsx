@@ -59,6 +59,7 @@ import {
   useSidebar
 } from '@/components/ui/sidebar';
 import { cn } from '@/lib/utils';
+import { accentFor } from '@shared/accent';
 
 /** What the folder tree asks the page to do; the page owns the dialogs and the saving. */
 export interface FolderActions {
@@ -354,7 +355,7 @@ export function FolderTree({
                     setOpenMobile(false);
                   }}
                 >
-                  <TagIcon />
+                  <TagIcon className={accentFor(item.tag).text} />
                   <span>{item.tag}</span>
                 </SidebarMenuButton>
                 <SidebarMenuBadge aria-label={`${item.count} entries`}>{item.count}</SidebarMenuBadge>
