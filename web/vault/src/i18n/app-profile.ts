@@ -3,6 +3,9 @@ import { defineMessages } from '../../../shared/i18n/core.ts';
 /** Texts of the web vault's account settings dialog. */
 export default defineMessages({
   en: {
+    expiryWarning: 'Expiry reminder (days)',
+    expiryWarningHelp: 'Entries expiring within this many days are marked and listed under “Expiring soon”. 0 turns it off.',
+    expiryWarningRange: 'The expiry reminder must be between 0 (off) and 365 days.',
     profile: 'Profile',
     title: 'Account settings',
     description: 'Manage contact, vault and sign-in settings for {username}.',
@@ -39,6 +42,9 @@ export default defineMessages({
     passwordFailed: 'Unable to change password.'
   },
   de: {
+    expiryWarning: 'Ablauf-Erinnerung (Tage)',
+    expiryWarningHelp: 'Einträge, die innerhalb dieser Tage ablaufen, werden markiert und unter „Läuft bald ab“ gezeigt. 0 schaltet das aus.',
+    expiryWarningRange: 'Die Ablauf-Erinnerung muss zwischen 0 (aus) und 365 Tagen liegen.',
     profile: 'Profil',
     title: 'Kontoeinstellungen',
     description: 'Verwalte Kontakt-, Tresor- und Anmeldeeinstellungen für {username}.',
@@ -75,6 +81,9 @@ export default defineMessages({
     passwordFailed: 'Das Passwort konnte nicht geändert werden.'
   },
   fr: {
+    expiryWarning: 'Rappel d’expiration (jours)',
+    expiryWarningHelp: 'Les entrées qui expirent dans ce nombre de jours sont signalées et listées sous « Expire bientôt ». 0 désactive le rappel.',
+    expiryWarningRange: 'Le rappel d’expiration doit être compris entre 0 (désactivé) et 365 jours.',
     profile: 'Profil',
     title: 'Paramètres du compte',
     description: 'Gérez les paramètres de contact, du coffre-fort et de connexion de {username}.',

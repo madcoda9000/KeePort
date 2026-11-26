@@ -32,6 +32,7 @@ import type { AttachmentDraft } from './lib/attachments';
 import { parseOtpSecret, totpCode, totpUri } from './lib/totp';
 import { getTheme, toggleTheme } from './theme';
 import { cn } from '@/lib/utils';
+import { DEFAULT_EXPIRY_WARNING_DAYS, expiryInMonths, isExpiringSoon } from '@/lib/expiry';
 import { ACCENTS, accentFor, type Accent } from '@shared/accent';
 import {
   ChevronDownIcon,
@@ -163,7 +164,7 @@ import { InsecureContextAlert, hasBrowserCrypto } from '@shared/secure-context';
 import { DataTable, type DataTableView, type TableColumn } from '@shared/data-table';
 import { Textarea } from '@/components/ui/textarea';
 
-type Message = { kind: 'notice' | 'error'; text: string } | null;
+type Message = { kind: 'notice' | 'error'; text: string; action?: { label: string; onClick: () => void } } | null;
 type EntryDraft = EntryEdits & { attachments: AttachmentDraft };
 
 const DEFAULT_AUTO_LOCK_MINUTES = 5;
@@ -311,7 +312,9 @@ export default function App() {
   const [moving, setMoving] = useState(false);
   const [showAllFields, setShowAllFields] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const [expiredView, setExpiredView] = useState(false);
+  const [dateView, setDateView] = useState<'expired' | 'expiring' | null>(null);
+  const expiredView = dateView === 'expired';
+  const expiringView = dateView === 'expiring';
   const [tagView, setTagView] = useState<string | null>(null);
   const [securityView, setSecurityView] = useState(false);
   const [securityIssue, setSecurityIssue] = useState<SecurityIssue | null>(null);
@@ -400,7 +403,8 @@ export default function App() {
      * Checks whether the template lists the field.
      * @param field - One template field.
      */ (field) => field.kind === 'standard' && field.name === name);
-  const report = useMemo(/** Checks the passwords of the open vault, only in this browser. */ () => buildReport(entries, new Date(listedAt), breach.status === 'done' ? breachResults : undefined), [entries, listedAt, breach.status, breachResults]);
+  const expiryWarningDays = user?.expiryWarningDays ?? DEFAULT_EXPIRY_WARNING_DAYS;
+  const report = useMemo(/** Checks the passwords of the open vault, only in this browser. */ () => buildReport(entries, new Date(listedAt), breach.status === 'done' ? breachResults : undefined, expiryWarningDays), [entries, listedAt, breach.status, breachResults, expiryWarningDays]);
   const visibleColumns = useMemo(/** Lists the columns that are not hidden; the title is always shown. */ () => ENTRY_COLUMNS.filter(/**
    * Keeps the title and the columns the user did not hide.
    * @param column - One column.
@@ -434,7 +438,9 @@ export default function App() {
     ? (entry: EntryView) => hasTag(entry.tags, tagView)
     : expiredView
       ? (entry: EntryView) => entry.expired
-      : currentFolder ? (entry: EntryView) => entry.groupId === currentFolder.id : undefined), [currentFolder, expiredView, tagView, securityView, securityIssue, report]);
+      : expiringView
+      ? (entry: EntryView) => isExpiringSoon(entry, expiryWarningDays)
+      : currentFolder ? (entry: EntryView) => entry.groupId === currentFolder.id : undefined), [currentFolder, expiredView, expiringView, expiryWarningDays, tagView, securityView, securityIssue, report]);
   /**
    * The entries the table works on: templates and recycled entries only while their own folder is selected.
    */
@@ -446,6 +452,10 @@ export default function App() {
    * Keeps expired regular entries.
    * @param entry - One entry of the vault.
    */ (entry) => entry.expired && !entry.hidden).length, [entries]);
+  const expiringCount = useMemo(/** Counts entries expiring soon outside templates and the recycle bin. */ () => entries.filter(/**
+   * Keeps regular entries expiring soon.
+   * @param entry - One entry of the vault.
+   */ (entry) => !entry.hidden && isExpiringSoon(entry, expiryWarningDays)).length, [entries, expiryWarningDays]);
   const vaultTags = useMemo(/** Lists the tags of regular entries with their counts. */ () => listTags(entries.filter(/**
    * Keeps regular entries.
    * @param entry - One entry of the vault.
@@ -495,7 +505,7 @@ export default function App() {
     setFolderRequest(null);
     setFolderToDelete(null);
     setMoving(false);
-    setExpiredView(false);
+    setDateView(null);
     setTagView(null);
     setSecurityView(false);
     setSecurityIssue(null);
@@ -541,6 +551,16 @@ export default function App() {
     setMessage(null);
   }
 
+  /** Shows the entries of all folders that expire soon. */
+  function showExpiring() {
+    setFolderId(null);
+    setDateView('expiring');
+    setTagView(null);
+    setSecurityView(false);
+    setSelection(new Set());
+    setMessage(null);
+  }
+
   /**
    * Downloads the encrypted vault and unlocks it locally with the supplied credentials.
    * @param event - The submission event from the vault unlock form.
@@ -570,7 +590,17 @@ export default function App() {
       setEdits(null);
       setPassword('');
       setKeyFile(null);
-      setMessage({ kind: 'notice', text: tUnlock('unlocked', { name: selectedFile.name }) });
+      const soon = listEntries(vault).filter(/**
+       * Keeps regular entries expiring soon.
+       * @param entry - One entry of the vault.
+       */ (entry) => !entry.hidden && isExpiringSoon(entry, expiryWarningDays)).length;
+      setMessage(soon > 0
+        ? {
+            kind: 'notice',
+            text: `${tUnlock('unlocked', { name: selectedFile.name })} ${tUnlock('expiringNotice', { count: soon, days: expiryWarningDays })}`,
+            action: { label: tUnlock('showExpiring'), onClick: showExpiring }
+          }
+        : { kind: 'notice', text: tUnlock('unlocked', { name: selectedFile.name }) });
     } catch (error) {
       setMessage({ kind: 'error', text: errorText(error, tUnlock('unlockFailed')) });
     } finally {
@@ -983,7 +1013,7 @@ export default function App() {
   function showTag(tag: string) {
     setTagView(tag);
     setFolderId(null);
-    setExpiredView(false);
+    setDateView(null);
     setSecurityView(false);
     setSelection(new Set());
   }
@@ -1089,7 +1119,7 @@ export default function App() {
      */
     onSelect: (id) => {
       setFolderId(id);
-      setExpiredView(false);
+      setDateView(null);
       setTagView(null);
       setSecurityView(false);
       setSelection(new Set());
@@ -1369,6 +1399,7 @@ export default function App() {
     const data = new FormData(event.currentTarget);
     const minutes = Number(data.get('autoLockMinutes'));
     const clipboardSeconds = Number(data.get('clipboardClearSeconds'));
+    const expiryDays = Number(data.get('expiryWarningDays'));
     if (!Number.isFinite(minutes) || minutes < 1 || minutes > 1440) {
       setProfileMessage({ kind: 'error', text: tProfile('autoLockRange') });
       return;
@@ -1377,12 +1408,17 @@ export default function App() {
       setProfileMessage({ kind: 'error', text: tProfile('clipboardRange') });
       return;
     }
+    if (!Number.isFinite(expiryDays) || expiryDays < 0 || expiryDays > 365) {
+      setProfileMessage({ kind: 'error', text: tProfile('expiryWarningRange') });
+      return;
+    }
     setBusy('settings');
     setProfileMessage(null);
     try {
       const updated = await api.updateSettings({
         autoLockMinutes: Math.round(minutes),
         clipboardClearSeconds: Math.round(clipboardSeconds),
+        expiryWarningDays: Math.round(expiryDays),
         showFavicons: data.get('showFavicons') === 'on',
         checkBreaches: data.get('checkBreaches') === 'on'
       });
@@ -1651,13 +1687,16 @@ export default function App() {
             vaultName={selectedFile.name}
             folders={folders}
             totalEntries={visibleCount}
-            selectedId={expiredView || tagView || securityView ? null : folderId}
-            allSelected={!expiredView && !tagView && !securityView && folderId === null}
+            selectedId={dateView || tagView || securityView ? null : folderId}
+            allSelected={!dateView && !tagView && !securityView && folderId === null}
             expiredCount={expiredCount}
             expiredSelected={expiredView}
+            expiringCount={expiringCount}
+            expiringSelected={expiringView}
+            onSelectExpiring={showExpiring}
             onSelectExpired={/** Shows the expired entries of all folders. */ () => {
               setFolderId(null);
-              setExpiredView(true);
+              setDateView('expired');
               setTagView(null);
               setSecurityView(false);
               setSelection(new Set());
@@ -1666,7 +1705,7 @@ export default function App() {
             securitySelected={securityView}
             onSelectSecurity={/** Shows the security report. */ () => {
               setFolderId(null);
-              setExpiredView(false);
+              setDateView(null);
               setTagView(null);
               setSecurityView(true);
               setSecurityIssue(null);
@@ -1847,6 +1886,23 @@ export default function App() {
                         {tProfile('clipboardHelp')}
                       </FieldDescription>
                     </Field>
+                    <Field>
+                      <FieldLabel htmlFor="expiry-warning">{tProfile('expiryWarning')}</FieldLabel>
+                      <Input
+                        id="expiry-warning"
+                        name="expiryWarningDays"
+                        className="max-w-32"
+                        type="number"
+                        min={0}
+                        max={365}
+                        defaultValue={user.expiryWarningDays ?? DEFAULT_EXPIRY_WARNING_DAYS}
+                        required
+                        aria-describedby="expiry-warning-help"
+                      />
+                      <FieldDescription id="expiry-warning-help">
+                        {tProfile('expiryWarningHelp')}
+                      </FieldDescription>
+                    </Field>
                     <Field orientation="horizontal">
                       <Checkbox id="show-favicons" name="showFavicons" defaultChecked={user.showFavicons} aria-describedby="show-favicons-help" />
                       <div className="grid gap-1">
@@ -1929,7 +1985,16 @@ export default function App() {
               className={message.kind === 'error' ? undefined : 'border-primary/25 bg-accent text-accent-foreground'}
             >
               {message.kind === 'error' ? <TriangleAlertIcon /> : <InfoIcon />}
-              <AlertDescription className={message.kind === 'error' ? undefined : 'text-accent-foreground'}>{message.text}</AlertDescription>
+              <AlertDescription className={message.kind === 'error' ? undefined : 'text-accent-foreground'}>
+                <span>
+                  {message.text}
+                  {message.action && (
+                    <Button type="button" variant="link" className="ms-1 h-auto p-0 align-baseline" onClick={message.action.onClick}>
+                      {message.action.label}
+                    </Button>
+                  )}
+                </span>
+              </AlertDescription>
             </Alert>
           )}
 
@@ -2022,7 +2087,7 @@ export default function App() {
                 <CardHeader className="gap-4 border-b py-5">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0 space-y-1">
-                      <CardTitle className="wrap-break-word">{securityView ? t('securityReport') : tagView ? t('tagTitle', { tag: tagView }) : expiredView ? t('expiredEntries') : currentFolder ? currentFolder.name : t('allEntries')}</CardTitle>
+                      <CardTitle className="wrap-break-word">{securityView ? t('securityReport') : tagView ? t('tagTitle', { tag: tagView }) : expiredView ? t('expiredEntries') : expiringView ? t('expiringEntries') : currentFolder ? currentFolder.name : t('allEntries')}</CardTitle>
                       <CardDescription className="wrap-break-word">
                         {securityView
                           ? t('securityIntro')
@@ -2030,6 +2095,8 @@ export default function App() {
                           ? t('tagIntro')
                           : expiredView
                           ? t('expiredIntro', { count: expiredCount })
+                          : expiringView
+                          ? t('expiringIntro', { count: expiringCount, days: expiryWarningDays })
                           : currentFolder
                           ? t('folderIntro', { path: currentFolder.path, count: currentFolder.entryCount })
                           : t('allIntro', { count: visibleCount })}
@@ -2112,8 +2179,8 @@ export default function App() {
                   />
                 )}
                 <DataTable
-                  key={`${selectedFile.id}:${securityView ? `security:${securityIssue ?? 'all'}` : tagView ? `tag:${tagView}` : expiredView ? 'expired' : folderId ?? 'all'}`}
-                  label={securityView ? t('tableSecurity') : tagView ? t('tableTag', { tag: tagView }) : expiredView ? t('expiredEntries') : currentFolder ? t('tableFolder', { folder: currentFolder.name }) : t('tableAll')}
+                  key={`${selectedFile.id}:${securityView ? `security:${securityIssue ?? 'all'}` : tagView ? `tag:${tagView}` : dateView ?? folderId ?? 'all'}`}
+                  label={securityView ? t('tableSecurity') : tagView ? t('tableTag', { tag: tagView }) : expiredView ? t('expiredEntries') : expiringView ? t('expiringEntries') : currentFolder ? t('tableFolder', { folder: currentFolder.name }) : t('tableAll')}
                   rows={tableEntries}
                   columns={visibleColumns}
                   searchActions={
@@ -2153,7 +2220,7 @@ export default function App() {
                   }
                   searchLabel={t('search')}
                   matches={entryMatches}
-                  emptyMessage={securityView ? t('emptySecurity') : tagView ? t('emptyTag') : expiredView ? t('emptyExpired') : currentFolder ? t('emptyFolder') : t('emptyVault')}
+                  emptyMessage={securityView ? t('emptySecurity') : tagView ? t('emptyTag') : expiredView ? t('emptyExpired') : expiringView ? t('emptyExpiring') : currentFolder ? t('emptyFolder') : t('emptyVault')}
                   browseFilter={browseFilter}
                   leadingHeader={canWrite ? renderSelectAll : undefined}
                   toolbar={canWrite ? renderSelectionBar : undefined}
@@ -2206,6 +2273,11 @@ export default function App() {
                             <span className="flex min-w-0 items-center gap-1.5 text-xs font-normal text-muted-foreground">
                               {entry.expired && (
                                 <Badge variant="destructive" className="h-4 shrink-0 px-1.5 text-[0.65rem]">{t('expired')}</Badge>
+                              )}
+                              {isExpiringSoon(entry, expiryWarningDays) && (
+                                <Badge variant="outline" className={cn('h-4 shrink-0 px-1.5 text-[0.65rem]', ACCENTS.amber.badge)}>
+                                  {entry.expiresInDays === 0 ? t('expiresToday') : entry.expiresInDays === 1 ? t('expiresTomorrow') : t('expiresInDays', { count: entry.expiresInDays ?? 0 })}
+                                </Badge>
                               )}
                               {(entry.template || entry.isTemplate) && (
                                 <Badge variant="outline" className="h-4 shrink-0 px-1.5 text-[0.65rem]">
@@ -2619,6 +2691,27 @@ export default function App() {
                            */ (event) => setEdits({ ...edits, expires: event.target.value })}
                           aria-describedby="expires-help"
                         />
+                        {canEditEntry && (
+                          <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label={tEntry('expiresQuick')}>
+                            <span className="text-xs text-muted-foreground">{tEntry('expiresQuick')}</span>
+                            {[1, 3, 6, 12].map(/**
+                             * Shows one quick choice.
+                             * @param months - Months from today.
+                             */ (months) => (
+                              <Button
+                                key={months}
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                className="h-7 px-2 text-xs"
+                                disabled={busy === 'save'}
+                                onClick={/** Sets the expiry date this many months ahead. */ () => setEdits({ ...edits, expires: expiryInMonths(months, new Date()) })}
+                              >
+                                {tEntry('inMonths', { count: months })}
+                              </Button>
+                            ))}
+                          </div>
+                        )}
                         <FieldDescription id="expires-help">{tEntry('expiresHelp')}</FieldDescription>
                       </Field>
                       <EntryAttachments

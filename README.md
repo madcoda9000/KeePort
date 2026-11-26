@@ -47,7 +47,7 @@ KeePass files are great: open format, strong encryption, dozens of apps. Keeping
 | 🔍 **Security report** | Finds weak, reused, old and empty passwords and expired entries — computed only in your browser — plus an opt-in check against Have I Been Pwned. |
 | 🕘 **History & tags** | See every earlier version of an entry, restore one or delete old versions; tag entries and filter by tag — compatible with KeePass2Android, KeePassXC and KeePassium. |
 | 📁 **Folders & recycle bin** | Browse the KDBX folder tree, create, rename and delete folders, move several entries at once, and delete to the recycle bin with restore — the structure stays the same in KeePassXC, KeePass2Android and KeePassium. |
-| 🧾 **Templates, fields & icons** | Credit cards, IDs and other KeePass2Android templates show their own fields; add, edit and protect custom fields, set expiry dates, and store website icons in the vault so every KeePass app shows them. |
+| 🧾 **Templates, fields & icons** | Credit cards, IDs and other KeePass2Android templates show their own fields; add, edit and protect custom fields, set expiry dates with a reminder before they expire, and store website icons in the vault so every KeePass app shows them. |
 | 🔑 **Full KDBX support** | KDBX 3.1 and 4.x, Argon2id/AES-KDF, optional key files, attachments up to 10 MiB, and TOTP codes with live countdown. |
 | 📱 **WebDAV for mobile apps** | Works with KeePass2Android and KeePassium, including transactional saves, conflict-safe sync and merging. |
 | 👥 **Users & per-vault ACLs** | `read` or `read-write` per vault, enforced the same way in the API, web vault and WebDAV. |

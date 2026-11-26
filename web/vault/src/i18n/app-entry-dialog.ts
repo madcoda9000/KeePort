@@ -3,6 +3,8 @@ import { defineMessages } from '../../../shared/i18n/core.ts';
 /** Texts of the entry sheet: viewing, editing and creating an entry. */
 export default defineMessages({
   en: {
+    expiresQuick: 'Set to',
+    inMonths: { one: 'in {count} month', other: 'in {count} months' },
     newFromTemplate: 'New {template}',
     newEntry: 'New entry',
     templateHint: 'This is a template for new entries. Edit templates in KeePass2Android.',
@@ -39,6 +41,8 @@ export default defineMessages({
     copyPassword: 'Copy password'
   },
   de: {
+    expiresQuick: 'Setzen auf',
+    inMonths: { one: 'in {count} Monat', other: 'in {count} Monaten' },
     newFromTemplate: 'Neu: {template}',
     newEntry: 'Neuer Eintrag',
     templateHint: 'Dies ist eine Vorlage für neue Einträge. Bearbeite Vorlagen in KeePass2Android.',
@@ -75,6 +79,8 @@ export default defineMessages({
     copyPassword: 'Passwort kopieren'
   },
   fr: {
+    expiresQuick: 'Définir à',
+    inMonths: { one: 'dans {count} mois', other: 'dans {count} mois' },
     newFromTemplate: 'Nouveau : {template}',
     newEntry: 'Nouvelle entrée',
     templateHint: 'Ceci est un modèle pour de nouvelles entrées. Modifiez les modèles dans KeePass2Android.',

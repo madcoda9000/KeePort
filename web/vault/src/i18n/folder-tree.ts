@@ -3,6 +3,8 @@ import { defineMessages } from '../../../shared/i18n/core.ts';
 /** Texts of the folder tree in the sidebar and its folder dialogs. */
 export default defineMessages({
   en: {
+    expiring: 'Expiring soon',
+    expiringEntries: { one: '{count} entry expiring soon', other: '{count} entries expiring soon' },
     rootUndeletable: 'The root folder cannot be deleted.',
     recycleBinUndeletable: 'The recycle bin cannot be deleted.',
     onlyEmpty: 'Only empty folders can be deleted.',
@@ -38,6 +40,8 @@ export default defineMessages({
     deleteFolder: 'Delete folder'
   },
   de: {
+    expiring: 'Läuft bald ab',
+    expiringEntries: { one: '{count} Eintrag läuft bald ab', other: '{count} Einträge laufen bald ab' },
     rootUndeletable: 'Der Stammordner kann nicht gelöscht werden.',
     recycleBinUndeletable: 'Der Papierkorb kann nicht gelöscht werden.',
     onlyEmpty: 'Nur leere Ordner können gelöscht werden.',
@@ -73,6 +77,8 @@ export default defineMessages({
     deleteFolder: 'Ordner löschen'
   },
   fr: {
+    expiring: 'Expire bientôt',
+    expiringEntries: { one: '{count} entrée expire bientôt', other: '{count} entrées expirent bientôt' },
     rootUndeletable: 'Le dossier racine ne peut pas être supprimé.',
     recycleBinUndeletable: 'La corbeille ne peut pas être supprimée.',
     onlyEmpty: 'Seuls les dossiers vides peuvent être supprimés.',

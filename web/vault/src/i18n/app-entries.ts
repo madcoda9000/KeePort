@@ -3,6 +3,12 @@ import { defineMessages } from '../../../shared/i18n/core.ts';
 /** Texts of the open vault's overview: stat tiles, entry list, selection bar and delete confirmations. */
 export default defineMessages({
   en: {
+    expiringEntries: 'Entries expiring soon',
+    expiringIntro: { one: '{count} entry expires within {days} days', other: '{count} entries expire within {days} days' },
+    emptyExpiring: 'No entry expires soon.',
+    expiresToday: 'Expires today',
+    expiresTomorrow: 'Expires tomorrow',
+    expiresInDays: { one: 'Expires in {count} day', other: 'Expires in {count} days' },
     statEntries: 'Entries',
     vaultSize: 'Vault size',
     lastUpdated: 'Last updated',
@@ -84,6 +90,12 @@ export default defineMessages({
     emptyBinText: 'All entries and folders in the recycle bin are deleted permanently. KeePass apps remove them too when they sync.'
   },
   de: {
+    expiringEntries: 'Bald ablaufende Einträge',
+    expiringIntro: { one: '{count} Eintrag läuft in den nächsten {days} Tagen ab', other: '{count} Einträge laufen in den nächsten {days} Tagen ab' },
+    emptyExpiring: 'Kein Eintrag läuft bald ab.',
+    expiresToday: 'Läuft heute ab',
+    expiresTomorrow: 'Läuft morgen ab',
+    expiresInDays: { one: 'Läuft in {count} Tag ab', other: 'Läuft in {count} Tagen ab' },
     statEntries: 'Einträge',
     vaultSize: 'Tresorgröße',
     lastUpdated: 'Zuletzt aktualisiert',
@@ -165,6 +177,12 @@ export default defineMessages({
     emptyBinText: 'Alle Einträge und Ordner im Papierkorb werden endgültig gelöscht. KeePass-Apps entfernen sie beim Synchronisieren ebenfalls.'
   },
   fr: {
+    expiringEntries: 'Entrées qui expirent bientôt',
+    expiringIntro: { one: '{count} entrée expire dans les {days} prochains jours', other: '{count} entrées expirent dans les {days} prochains jours' },
+    emptyExpiring: 'Aucune entrée n’expire bientôt.',
+    expiresToday: 'Expire aujourd’hui',
+    expiresTomorrow: 'Expire demain',
+    expiresInDays: { one: 'Expire dans {count} jour', other: 'Expire dans {count} jours' },
     statEntries: 'Entrées',
     vaultSize: 'Taille du coffre-fort',
     lastUpdated: 'Dernière mise à jour',

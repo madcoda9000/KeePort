@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.22.0] - 2026-11-26
+
+### Added
+
+- **Expiry reminder** in the web vault: entries whose expiry date is near are marked before they expire.
+  - A new view **Expiring soon** in the sidebar (amber, with count) lists them, next to **Expired**.
+  - In the entry list they show a badge such as "Expires in 5 days", "Expires tomorrow" or "Expires today".
+  - The **security report** has a new tile **Expiring soon**.
+  - After unlocking, the notice says how many entries expire soon, with a link to the view.
+  - **Profile → Vault → Expiry reminder (days)**: how many days before expiry an entry counts as expiring soon, by default 30; 0 turns it off. The setting is stored on the account (`expiryWarningDays` in `PUT /api/auth/settings`).
+- **Quick choice for the expiry date** in the entry form: "in 1 / 3 / 6 / 12 months", e.g. after changing a password.
+
+### Security
+
+- Expiry dates are read only in the browser after unlocking; the server learns nothing about them. Only the number of reminder days is stored on the account.
+
 ## [0.21.2] - 2026-11-26
 
 ### Fixed
@@ -501,6 +517,7 @@ First beta release.
 - Login and setup share a configurable per-IP rate limit; session checks and sign-out are exempt. WebDAV has a separate configurable limit applied before authentication.
 - Admin accounts can only sign in to the Admin console; Vault and WebDAV require a separate user account. Admin sessions are scoped to the Admin API, so existing admins need to sign in again after updating.
 
+[0.22.0]: https://github.com/madcoda9000/KeePort/compare/v0.21.2...v0.22.0
 [0.21.2]: https://github.com/madcoda9000/KeePort/compare/v0.21.1...v0.21.2
 [0.21.1]: https://github.com/madcoda9000/KeePort/compare/v0.21.0...v0.21.1
 [0.21.0]: https://github.com/madcoda9000/KeePort/compare/v0.20.1...v0.21.0

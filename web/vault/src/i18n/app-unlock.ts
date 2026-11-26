@@ -3,6 +3,8 @@ import { defineMessages } from '../../../shared/i18n/core.ts';
 /** Texts of the web vault's sign-in screen, page header, vault overview and unlock form. */
 export default defineMessages({
   en: {
+    expiringNotice: { one: '{count} entry expires within {days} days.', other: '{count} entries expire within {days} days.' },
+    showExpiring: 'Show them',
     restoring: 'Restoring secure session…',
     welcome: 'Welcome back',
     signInIntro: 'Sign in to access the KeePass vaults shared with you.',
@@ -47,6 +49,8 @@ export default defineMessages({
     passwordSet: 'Password set. Sign in with your new password.'
   },
   de: {
+    expiringNotice: { one: '{count} Eintrag läuft in den nächsten {days} Tagen ab.', other: '{count} Einträge laufen in den nächsten {days} Tagen ab.' },
+    showExpiring: 'Anzeigen',
     restoring: 'Sichere Sitzung wird wiederhergestellt…',
     welcome: 'Willkommen zurück',
     signInIntro: 'Melde dich an, um die KeePass-Tresore zu öffnen, die für dich freigegeben sind.',
@@ -91,6 +95,8 @@ export default defineMessages({
     passwordSet: 'Passwort festgelegt. Melde dich mit deinem neuen Passwort an.'
   },
   fr: {
+    expiringNotice: { one: '{count} entrée expire dans les {days} prochains jours.', other: '{count} entrées expirent dans les {days} prochains jours.' },
+    showExpiring: 'Les afficher',
     restoring: 'Restauration de la session sécurisée…',
     welcome: 'Bon retour',
     signInIntro: 'Connectez-vous pour accéder aux coffres-forts KeePass partagés avec vous.',

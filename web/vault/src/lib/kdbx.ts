@@ -15,6 +15,7 @@ import {
   type TemplateInfo
 } from './fields.ts';
 import { isExpired } from './entry-actions.ts';
+import { daysUntilExpiry } from './expiry.ts';
 import { requireGroup, rootGroup } from './groups.ts';
 import { backupEntry } from './history.ts';
 import { passwordChangedAt } from './security-report.ts';
@@ -99,6 +100,8 @@ export interface EntryView {
   iconUrl: string | null;
   /** Whether the entry's expiry date has passed. */
   expired: boolean;
+  /** Calendar days until the expiry date (0 today, negative when passed), or null when the entry does not expire. */
+  expiresInDays: number | null;
   /** When the entry was created. */
   created: Date | undefined;
   /** When the entry was last changed. */
@@ -172,6 +175,7 @@ function walkGroup(
       template,
       iconUrl: customIconUrl(db, entry),
       expired: isExpired(entry, now),
+      expiresInDays: daysUntilExpiry(entry.times.expires ? entry.times.expiryTime : undefined, now),
       created: entry.times.creationTime,
       modified: entry.times.lastModTime,
       passwordChanged: passwordChangedAt(entry),

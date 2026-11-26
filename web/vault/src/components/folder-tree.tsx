@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import {
+  CalendarClockIcon,
   CalendarX2Icon,
   ChevronRightIcon,
   EllipsisIcon,
@@ -87,6 +88,10 @@ interface FolderTreeProps extends FolderActions {
   expiredCount: number;
   expiredSelected: boolean;
   onSelectExpired: () => void;
+  /** The number of entries expiring soon; the "Expiring soon" view is listed only when there are some. */
+  expiringCount: number;
+  expiringSelected: boolean;
+  onSelectExpiring: () => void;
   /** The number of entries with security findings. */
   securityCount: number;
   securitySelected: boolean;
@@ -133,6 +138,9 @@ export function FolderTree({
   expiredCount,
   expiredSelected,
   onSelectExpired,
+  expiringCount,
+  expiringSelected,
+  onSelectExpiring,
   securityCount,
   securitySelected,
   onSelectSecurity,
@@ -315,6 +323,25 @@ export function FolderTree({
                 <span>{t('expired')}</span>
               </SidebarMenuButton>
               <SidebarMenuBadge className="text-destructive" aria-label={t('expiredEntries', { count: expiredCount })}>{expiredCount}</SidebarMenuBadge>
+            </SidebarMenuItem>
+          )}
+          {(expiringCount > 0 || expiringSelected) && (
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                type="button"
+                className="pe-8"
+                isActive={expiringSelected}
+                aria-current={expiringSelected ? 'true' : undefined}
+                disabled={disabled}
+                onClick={/** Shows the entries expiring soon and closes the sidebar sheet on small screens. */ () => {
+                  onSelectExpiring();
+                  setOpenMobile(false);
+                }}
+              >
+                <CalendarClockIcon className="text-amber-600 dark:text-amber-400" />
+                <span>{t('expiring')}</span>
+              </SidebarMenuButton>
+              <SidebarMenuBadge className="text-amber-700 dark:text-amber-400" aria-label={t('expiringEntries', { count: expiringCount })}>{expiringCount}</SidebarMenuBadge>
             </SidebarMenuItem>
           )}
           <SidebarMenuItem>

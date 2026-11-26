@@ -1,8 +1,9 @@
 import { ProtectedValue, type KdbxEntry } from 'kdbxweb';
 import { estimateStrength } from './strength.ts';
+import { isExpiringSoon } from './expiry.ts';
 
 /** The checks of the security report. */
-export type SecurityIssue = 'weak' | 'reused' | 'old' | 'empty' | 'expired' | 'breached';
+export type SecurityIssue = 'weak' | 'reused' | 'old' | 'empty' | 'expired' | 'expiring' | 'breached';
 
 /** Passwords not changed for longer than this count as old. */
 export const OLD_PASSWORD_DAYS = 365;
@@ -13,6 +14,8 @@ export interface ReportEntry {
   username: string;
   password: string;
   expired: boolean;
+  /** Days until the expiry date, or null when the entry does not expire. */
+  expiresInDays?: number | null;
   hidden: boolean;
   passwordChanged: Date | undefined;
 }
@@ -60,15 +63,17 @@ export function passwordChangedAt(entry: KdbxEntry): Date | undefined {
  * @param entries - The entries of the vault.
  * @param now - The current time.
  * @param breaches - Results of the opt-in "Have I Been Pwned" check, by password; omit when it did not run.
+ * @param expiryWarningDays - Entries expiring within this many days are listed as "expiring soon"; 0 turns it off.
  */
-export function buildReport(entries: readonly ReportEntry[], now: Date, breaches?: ReadonlyMap<string, number>): SecurityReport {
-  const issues: Record<SecurityIssue, Set<string>> = { weak: new Set(), reused: new Set(), old: new Set(), empty: new Set(), expired: new Set(), breached: new Set() };
+export function buildReport(entries: readonly ReportEntry[], now: Date, breaches?: ReadonlyMap<string, number>, expiryWarningDays = 0): SecurityReport {
+  const issues: Record<SecurityIssue, Set<string>> = { weak: new Set(), reused: new Set(), old: new Set(), empty: new Set(), expired: new Set(), expiring: new Set(), breached: new Set() };
   const breachCounts = new Map<string, number>();
   const byPassword = new Map<string, string[]>();
   const oldBefore = now.getTime() - OLD_PASSWORD_DAYS * 86400000;
   for (const entry of entries) {
     if (entry.hidden) continue;
     if (entry.expired) issues.expired.add(entry.id);
+    if (isExpiringSoon({ expired: entry.expired, expiresInDays: entry.expiresInDays ?? null }, expiryWarningDays)) issues.expiring.add(entry.id);
     if (!entry.password) {
       if (entry.username) issues.empty.add(entry.id);
       continue;

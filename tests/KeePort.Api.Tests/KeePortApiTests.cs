@@ -1496,6 +1496,29 @@ public class KeePortApiTests : IDisposable
         Assert.False((await GetJsonAsync(_admin, "/api/admin/users")).EnumerateArray().Single(/* Me. */ u => u.GetProperty("id").GetString() == adminId).GetProperty("disabled").GetBoolean());
     }
 
+    /// <summary>Checks the expiry reminder setting: default empty, 0 to 365 days, kept on the account.</summary>
+    [Fact]
+    public async Task Expiry_Reminder_Setting_Is_Stored()
+    {
+        var adminCsrf = await SetupAdminAsync(_admin);
+        await CreateUserAsync(_admin, adminCsrf, "fiona", "user");
+        var (csrf, _) = await LoginAsync(_user, "fiona", "User passphrase 123");
+        Assert.Equal(JsonValueKind.Null, (await GetJsonAsync(_user, "/api/auth/me")).GetProperty("expiryWarningDays").ValueKind);
+        using (var invalid = await SendAsync(_user, HttpMethod.Put, "/api/auth/settings", json: new { expiryWarningDays = 400 }, csrf: csrf))
+        {
+            Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+        }
+        using (var saved = await SendAsync(_user, HttpMethod.Put, "/api/auth/settings", json: new { expiryWarningDays = 14 }, csrf: csrf))
+        {
+            Assert.Equal(14, (await saved.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("expiryWarningDays").GetInt32());
+        }
+        using (var off = await SendAsync(_user, HttpMethod.Put, "/api/auth/settings", json: new { expiryWarningDays = 0 }, csrf: csrf))
+        {
+            off.EnsureSuccessStatusCode();
+        }
+        Assert.Equal(0, (await GetJsonAsync(_user, "/api/auth/me")).GetProperty("expiryWarningDays").GetInt32());
+    }
+
     /// <summary>Stores SMTP settings that point at a closed local port, so e-mails are queued but never delivered.</summary>
     /// <param name="adminCsrf">The admin's CSRF token.</param>
     /// <param name="password">An SMTP password to store, or null to keep the stored one.</param>

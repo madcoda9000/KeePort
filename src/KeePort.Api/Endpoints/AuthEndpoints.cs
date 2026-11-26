@@ -110,6 +110,10 @@ public static class AuthEndpoints
             {
                 return Results.Json(new ErrorResponse("invalid_settings", "Auto-lock minutes must be between 1 and 1440."), statusCode: StatusCodes.Status400BadRequest);
             }
+            if (request.ExpiryWarningDays is < 0 or > 365)
+            {
+                return Results.Json(new ErrorResponse("invalid_settings", "The expiry reminder must be between 0 (off) and 365 days."), statusCode: StatusCodes.Status400BadRequest);
+            }
             if (request.ClipboardClearSeconds is < 0 or > 600)
             {
                 return Results.Json(new ErrorResponse("invalid_settings", "Clipboard clearing must be between 0 (off) and 600 seconds."), statusCode: StatusCodes.Status400BadRequest);
@@ -129,6 +133,10 @@ public static class AuthEndpoints
             if (request.CheckBreaches is { } checkBreaches)
             {
                 db.UpdateUserCheckBreaches(user.Id, checkBreaches);
+            }
+            if (request.ExpiryWarningDays is { } expiryDays)
+            {
+                db.UpdateUserExpiryWarningDays(user.Id, expiryDays);
             }
             var changed = ChangedSettings(user, request);
             if (changed.Count > 0)
@@ -390,6 +398,10 @@ public static class AuthEndpoints
         {
             changed.Add($"Breach check {(breaches ? "on" : "off")}");
         }
+        if (request.ExpiryWarningDays is { } days && days != user.ExpiryWarningDays)
+        {
+            changed.Add($"Expiry reminder {days} days");
+        }
         return changed;
     }
 
@@ -398,7 +410,7 @@ public static class AuthEndpoints
     internal static UserDto ToDto(UserRecord user)
     {
         return new UserDto(user.Id, user.Username, user.Role.ToString().ToLowerInvariant(), user.Disabled, user.CreatedAt, user.LastLoginAt, user.AutoLockMinutes, user.Email, user.ShowFavicons, user.ClipboardClearSeconds, user.CheckBreaches, user.Language,
-            user.EmailVerifiedAt is not null, user.NotifySignIn, user.NotifyAppPassword);
+            user.EmailVerifiedAt is not null, user.NotifySignIn, user.NotifyAppPassword, ExpiryWarningDays: user.ExpiryWarningDays);
     }
 
     /// <summary>

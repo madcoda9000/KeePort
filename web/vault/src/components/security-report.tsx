@@ -1,4 +1,4 @@
-import { CalendarX2Icon, CopyXIcon, DatabaseZapIcon, HourglassIcon, KeyRoundIcon, RefreshCwIcon, ShieldAlertIcon, type LucideIcon } from 'lucide-react';
+import { CalendarClockIcon, CalendarX2Icon, CopyXIcon, DatabaseZapIcon, HourglassIcon, KeyRoundIcon, RefreshCwIcon, ShieldAlertIcon, type LucideIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { SecurityIssue, SecurityReport } from '@/lib/security-report';
 import { cn } from '@/lib/utils';
@@ -14,6 +14,7 @@ const CHECKS: readonly { issue: SecurityIssue; title: CheckKey; description: Che
   { issue: 'old', title: 'oldTitle', description: 'oldDescription', icon: HourglassIcon },
   { issue: 'empty', title: 'emptyTitle', description: 'emptyDescription', icon: KeyRoundIcon },
   { issue: 'expired', title: 'expiredTitle', description: 'expiredDescription', icon: CalendarX2Icon },
+  { issue: 'expiring', title: 'expiringTitle', description: 'expiringDescription', icon: CalendarClockIcon },
   { issue: 'breached', title: 'breachedTitle', description: 'breachedDescription', icon: DatabaseZapIcon }
 ];
 

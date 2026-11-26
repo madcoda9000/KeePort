@@ -3,6 +3,8 @@ import { defineMessages } from '../../../shared/i18n/core.ts';
 /** Texts of the security report tiles and the breach check status. */
 export default defineMessages({
   en: {
+    expiringTitle: 'Expiring soon',
+    expiringDescription: 'Expire within the reminder period of your account settings.',
     weakTitle: 'Weak',
     weakDescription: 'Short, common or patterned passwords',
     reusedTitle: 'Reused',
@@ -27,6 +29,8 @@ export default defineMessages({
     turnOn: 'Turn it on in your profile'
   },
   de: {
+    expiringTitle: 'Läuft bald ab',
+    expiringDescription: 'Laufen innerhalb der Vorwarnzeit aus deinen Kontoeinstellungen ab.',
     weakTitle: 'Schwach',
     weakDescription: 'Kurze, häufige oder gemusterte Passwörter',
     reusedTitle: 'Mehrfach verwendet',
@@ -51,6 +55,8 @@ export default defineMessages({
     turnOn: 'In deinem Profil einschalten'
   },
   fr: {
+    expiringTitle: 'Expire bientôt',
+    expiringDescription: 'Expirent dans le délai de rappel de vos paramètres de compte.',
     weakTitle: 'Faibles',
     weakDescription: 'Mots de passe courts, courants ou prévisibles',
     reusedTitle: 'Réutilisés',

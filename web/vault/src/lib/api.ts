@@ -24,6 +24,8 @@ export interface User {
   clipboardClearSeconds: number | null;
   /** Whether the web vault checks passwords against "Have I Been Pwned" (opt-in). */
   checkBreaches: boolean;
+  /** Days before expiry that entries count as expiring soon; null for the default (30), 0 for off. */
+  expiryWarningDays: number | null;
   /** The interface language stored on the account, or null to follow the browser. */
   language: 'de' | 'en' | 'fr' | null;
   /** Whether the account's e-mail address has been confirmed with a code or a link. */
@@ -265,7 +267,7 @@ export const api = {
    * Saves the vault preferences and returns the updated profile; fields left out stay unchanged.
    * @param payload - The auto-lock delay in minutes, the website icon opt-in and the clipboard clearing delay.
    */
-  async updateSettings(payload: { autoLockMinutes?: number; showFavicons?: boolean; clipboardClearSeconds?: number; checkBreaches?: boolean }) {
+  async updateSettings(payload: { autoLockMinutes?: number; showFavicons?: boolean; clipboardClearSeconds?: number; checkBreaches?: boolean; expiryWarningDays?: number }) {
     return request<User>('/api/auth/settings', { method: 'PUT', body: JSON.stringify(payload) });
   },
   /**
