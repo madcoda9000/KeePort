@@ -179,6 +179,7 @@ public sealed partial class KeePortDb : IDisposable
         EnsureColumn("users", "clipboard_clear_seconds", "INTEGER NULL");
         EnsureColumn("users", "check_breaches", "INTEGER NOT NULL DEFAULT 0");
         EnsureColumn("users", "language", "TEXT NULL");
+        EnsureRevisionSchema(connection);
         Execute(connection, "INSERT INTO app_state (key, value) VALUES ('login_stats_since', @now) ON CONFLICT(key) DO NOTHING;",
             new SqliteParameter("@now", DateTimeOffset.UtcNow.ToString("O")));
         EnsureSetupToken();

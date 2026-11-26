@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.18.0] - 2026-11-26
+
+### Added
+
+- **Vault versions:** every save keeps the previous state of the vault file on the server — from the web vault, from a KeePass app over WebDAV and when an administrator restores a version. **Admin → Vault files → Versions** lists the current revision and the kept versions with time, account, how they were saved (e.g. "WebDAV · Pixel 8") and size; each version can be downloaded as `<name>-r<revision>.kdbx` or restored.
+- Restoring saves the old content as a **new revision**, so every KeePass app notices the change and reloads, and the state before the restore stays available as a version.
+- **Admin → Settings → Vault versions:** how many versions are kept per vault (default 30, 0 turns versions off) and for how many days (default 90, 0 keeps them regardless of age), with the space they currently use. Older versions are removed after every save and once a day.
+- Audit log: `VaultVersionRestored` and `VersionSettingsChanged`; downloading a version is logged as `VaultDownloaded`.
+- `GET /api/admin/files/{id}/versions`, `GET …/versions/{revision}/content`, `POST …/versions/{revision}/restore`, `GET`/`PUT /api/admin/settings/versions`.
+
+### Changed
+
+- If the previous state cannot be kept (e.g. the disk is full), a save is refused with `507 Insufficient Storage` and the vault stays unchanged, instead of being overwritten without a way back.
+- Earlier versions are stored in `/data/vault-versions`, so existing backups of the data folder include them.
+
 ## [0.17.0] - 2026-11-26
 
 ### Added
@@ -403,6 +418,7 @@ First beta release.
 - Login and setup share a configurable per-IP rate limit; session checks and sign-out are exempt. WebDAV has a separate configurable limit applied before authentication.
 - Admin accounts can only sign in to the Admin console; Vault and WebDAV require a separate user account. Admin sessions are scoped to the Admin API, so existing admins need to sign in again after updating.
 
+[0.18.0]: https://github.com/madcoda9000/KeePort/compare/v0.17.0...v0.18.0
 [0.17.0]: https://github.com/madcoda9000/KeePort/compare/v0.16.0...v0.17.0
 [0.16.0]: https://github.com/madcoda9000/KeePort/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/madcoda9000/KeePort/compare/v0.14.3...v0.15.0

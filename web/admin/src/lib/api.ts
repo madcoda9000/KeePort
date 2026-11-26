@@ -96,6 +96,28 @@ export interface DashboardData {
   errors: string[];
 }
 
+/** One revision of a vault: the current one or a kept earlier version. */
+export interface VaultVersion {
+  revision: number;
+  size: number;
+  savedAt: string;
+  savedBy: string | null;
+  source: string | null;
+}
+
+/** The current revision and the kept earlier versions of a vault, newest first. */
+export interface VaultVersions {
+  current: VaultVersion;
+  versions: VaultVersion[];
+}
+
+/** How many earlier versions are kept per vault, for how many days, and the space they use. */
+export interface VersionSettings {
+  maxCount: number;
+  maxDays: number;
+  usedBytes: number;
+}
+
 /** The area an audit log entry belongs to. */
 export type AuditCategory = 'auth' | 'account' | 'user' | 'vault' | 'webdav' | 'settings';
 
@@ -359,6 +381,42 @@ export const api = {
    * Downloads the encrypted vault file as a Blob.
    * @param id - The ID of the vault file to update or retrieve.
    */
+  /**
+   * Lists the current revision and the kept earlier versions of a vault.
+   * @param id - The vault's ID.
+   */
+  async listVersions(id: string) {
+    return request<VaultVersions>(`/api/admin/files/${encodeURIComponent(id)}/versions`);
+  },
+  /**
+   * Downloads one kept earlier version.
+   * @param id - The vault's ID.
+   * @param revision - The revision number.
+   */
+  async downloadVersion(id: string, revision: number): Promise<Blob> {
+    const response = await fetch(`/api/admin/files/${encodeURIComponent(id)}/versions/${revision}/content`, { credentials: 'include' });
+    if (!response.ok) throw await parseError(response);
+    return response.blob();
+  },
+  /**
+   * Restores an earlier version as a new revision and returns the vault afterwards.
+   * @param id - The vault's ID.
+   * @param revision - The revision to restore.
+   */
+  async restoreVersion(id: string, revision: number) {
+    return request<AdminFile>(`/api/admin/files/${encodeURIComponent(id)}/versions/${revision}/restore`, { method: 'POST' });
+  },
+  /** Reads how many versions are kept and how much space they use. */
+  async getVersionSettings(signal?: AbortSignal) {
+    return request<VersionSettings>('/api/admin/settings/versions', { signal });
+  },
+  /**
+   * Changes how many versions are kept.
+   * @param settings - The new limits.
+   */
+  async updateVersionSettings(settings: { maxCount: number; maxDays: number }) {
+    return request<VersionSettings>('/api/admin/settings/versions', { method: 'PUT', body: JSON.stringify(settings) });
+  },
   async downloadFile(id: string): Promise<Blob> {
     const response = await fetch(`/api/admin/files/${encodeURIComponent(id)}/content`, { credentials: 'include' });
     if (!response.ok) throw await parseError(response);

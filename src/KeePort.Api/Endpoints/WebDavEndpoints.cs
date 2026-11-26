@@ -447,11 +447,15 @@ public static class WebDavEndpoints
         VaultWriteResult result;
         try
         {
-            result = await vault.WriteContentAsync(file.Id, content, expectedETag, auth.User, "webdav", cancellationToken);
+            result = await vault.WriteContentAsync(file.Id, content, expectedETag, auth.User, "webdav", cancellationToken, $"WebDAV · {auth.Credential.Label}");
         }
         catch (VaultValidationException ex)
         {
             return Results.Json(new ErrorResponse("invalid_vault", ex.Message), statusCode: StatusCodes.Status400BadRequest);
+        }
+        catch (VaultVersionException ex)
+        {
+            return VaultEndpoints.VersionFailed(context, ex);
         }
 
         if (result.Status == VaultWriteStatus.Success)

@@ -31,12 +31,14 @@ public static class AuditActions
     public const string VaultSaved = nameof(VaultSaved);
     public const string VaultConflictCopy = nameof(VaultConflictCopy);
     public const string VaultDownloaded = nameof(VaultDownloaded);
+    public const string VaultVersionRestored = nameof(VaultVersionRestored);
 
     public const string AppPasswordCreated = nameof(AppPasswordCreated);
     public const string AppPasswordRevoked = nameof(AppPasswordRevoked);
 
     public const string RateLimitsChanged = nameof(RateLimitsChanged);
     public const string AuditRetentionChanged = nameof(AuditRetentionChanged);
+    public const string VersionSettingsChanged = nameof(VersionSettingsChanged);
 
     /// <summary>Every known tag with its category, in the order shown in the admin console's filter.</summary>
     public static readonly IReadOnlyList<AuditActionDto> All =
@@ -47,8 +49,9 @@ public static class AuditActions
         new(UserPasswordReset, "user"), new(UserDeleted, "user"),
         new(VaultUploaded, "vault"), new(VaultRenamed, "vault"), new(VaultDeleted, "vault"), new(VaultRestored, "vault"),
         new(VaultPermissionsChanged, "vault"), new(VaultSaved, "vault"), new(VaultConflictCopy, "vault"), new(VaultDownloaded, "vault"),
+        new(VaultVersionRestored, "vault"),
         new(AppPasswordCreated, "webdav"), new(AppPasswordRevoked, "webdav"),
-        new(RateLimitsChanged, "settings"), new(AuditRetentionChanged, "settings")
+        new(RateLimitsChanged, "settings"), new(AuditRetentionChanged, "settings"), new(VersionSettingsChanged, "settings")
     ];
 
     private static readonly Dictionary<string, string> Categories = All.ToDictionary(/* Tag. */ a => a.Action, /* Category. */ a => a.Category);

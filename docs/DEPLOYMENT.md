@@ -496,6 +496,7 @@ KeePort keeps everything in `/data`. **Admin → Settings → Data storage** sho
 |---|---|
 | `keeport.db` | Users, sessions, vault metadata, permissions, WebDAV credential hashes, settings, WebDAV logs |
 | `vault/` | The encrypted `.kdbx` files |
+| `vault-versions/` | Earlier versions of each vault, kept on every save (by default 30 per vault, at most 90 days; **Admin → Settings → Vault versions**). Plan for up to 30 times the size of your vaults — usually only a few MB. |
 | `tls/` | The admin console's self-signed certificate |
 
 - **Data in a folder** (`KEEPORT_DATA=/path`): back up that folder with your usual tool — Hyper Backup, Hybrid Backup Sync, restic, borg — ideally while KeePort is stopped.

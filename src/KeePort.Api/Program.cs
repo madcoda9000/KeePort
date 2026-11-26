@@ -43,6 +43,7 @@ builder.Services.AddSingleton<VaultService>();
 builder.Services.AddSingleton<WebDavStagingStore>();
 builder.Services.AddSingleton<RateLimitSettingsService>();
 builder.Services.AddSingleton<AuditLog>();
+builder.Services.AddHostedService<VersionCleanupService>();
 builder.Services.AddSingleton<IFaviconFetcher, FaviconFetcher>();
 
 // Registers the credential and WebDAV limits and their rejection response.

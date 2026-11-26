@@ -139,11 +139,15 @@ public static class VaultEndpoints
             VaultWriteResult result;
             try
             {
-                result = await vault.WriteContentAsync(file.Id, content, expectedETag, user, "rest", cancellationToken);
+                result = await vault.WriteContentAsync(file.Id, content, expectedETag, user, "rest", cancellationToken, "Web vault");
             }
             catch (VaultValidationException ex)
             {
                 return Results.Json(new ErrorResponse("invalid_vault", ex.Message), statusCode: StatusCodes.Status400BadRequest);
+            }
+            catch (VaultVersionException ex)
+            {
+                return VersionFailed(context, ex);
             }
 
             RecordSave(context, result, file, user, "Web vault");
@@ -162,6 +166,15 @@ public static class VaultEndpoints
                 _ => throw new InvalidOperationException("Unexpected vault write status.")
             };
         });
+    }
+
+    /// <summary>Answers 507 when the previous version could not be kept, and notes the cause in the container log.</summary>
+    /// <param name="context">The request that tried to save.</param>
+    /// <param name="ex">The failure.</param>
+    internal static IResult VersionFailed(HttpContext context, VaultVersionException ex)
+    {
+        context.RequestServices.GetService<ILoggerFactory>()?.CreateLogger("KeePort.Api").LogError(ex.InnerException, "Could not keep the previous vault version; the save was refused.");
+        return Results.Json(new ErrorResponse("version_failed", ex.Message), statusCode: StatusCodes.Status507InsufficientStorage);
     }
 
     /// <summary>Records a saved revision or a conflict copy in the audit log; other outcomes are not logged.</summary>

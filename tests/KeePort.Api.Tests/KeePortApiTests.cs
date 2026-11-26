@@ -926,6 +926,103 @@ public class KeePortApiTests : IDisposable
         Assert.Equal(3, logged.GetProperty("total").GetInt64());
     }
 
+    /// <summary>
+    /// Checks that every save keeps the previous content as a version (web vault and WebDAV, not conflicts), that admins
+    /// can download and restore versions, that a restore is a new revision, and that the retention settings prune.
+    /// </summary>
+    [Fact]
+    public async Task Vault_Versions_Are_Kept_Restored_And_Pruned()
+    {
+        var adminCsrf = await SetupAdminAsync(_admin);
+        var (aliceId, _) = await CreateUserAsync(_admin, adminCsrf, "alice", "user");
+        var vault = await UploadVaultAsync(_admin, adminCsrf, "family.kdbx", "v1");
+        await SetPermissionsAsync(_admin, adminCsrf, vault.Id, aliceId, "read-write");
+        var webDav = await CreateWebDavCredentialAsync(_admin, adminCsrf, aliceId);
+        var (aliceCsrf, _) = await LoginAsync(_user, "alice", "User passphrase 123");
+
+        using var save2 = await SendAsync(_user, HttpMethod.Put, $"/api/vault/files/{vault.Id}/content", bytes: KdbxBytes("v2"), csrf: aliceCsrf, etag: vault.ETag);
+        save2.EnsureSuccessStatusCode();
+        using var save3 = await SendAsync(_user, HttpMethod.Put, "/webdav/family.kdbx", bytes: KdbxBytes("v3"), basic: webDav.BasicAuth, etag: save2.Headers.ETag!.Tag);
+        Assert.True(save3.IsSuccessStatusCode);
+        using var stale = await SendAsync(_user, HttpMethod.Put, $"/api/vault/files/{vault.Id}/content", bytes: KdbxBytes("stale"), csrf: aliceCsrf, etag: vault.ETag);
+        Assert.Equal(HttpStatusCode.Conflict, stale.StatusCode);
+
+        var list = await GetJsonAsync(_admin, $"/api/admin/files/{vault.Id}/versions");
+        Assert.Equal(3, list.GetProperty("current").GetProperty("revision").GetInt64());
+        Assert.StartsWith("WebDAV · ", list.GetProperty("current").GetProperty("source").GetString());
+        var versions = list.GetProperty("versions").EnumerateArray().ToList();
+        Assert.Equal(new long[] { 2, 1 }, versions.Select(/* Revision. */ v => v.GetProperty("revision").GetInt64()).ToArray());
+        Assert.Equal("Web vault", versions[0].GetProperty("source").GetString());
+        Assert.Equal("alice", versions[0].GetProperty("savedBy").GetString());
+        Assert.Equal("Upload", versions[1].GetProperty("source").GetString());
+
+        using (var download = await _admin.GetAsync($"/api/admin/files/{vault.Id}/versions/1/content"))
+        {
+            download.EnsureSuccessStatusCode();
+            Assert.Equal(KdbxBytes("v1"), await download.Content.ReadAsByteArrayAsync());
+            Assert.Equal("family-r1.kdbx", download.Content.Headers.ContentDisposition!.FileNameStar ?? download.Content.Headers.ContentDisposition.FileName);
+        }
+        Assert.Equal(HttpStatusCode.NotFound, (await _admin.GetAsync($"/api/admin/files/{vault.Id}/versions/3/content")).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await _user.GetAsync($"/api/admin/files/{vault.Id}/versions")).StatusCode);
+
+        using (var restore = await SendAsync(_admin, HttpMethod.Post, $"/api/admin/files/{vault.Id}/versions/1/restore", csrf: adminCsrf))
+        {
+            restore.EnsureSuccessStatusCode();
+            Assert.Equal(4, (await restore.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("revision").GetInt64());
+        }
+        using (var read = await SendAsync(_user, HttpMethod.Get, $"/api/vault/files/{vault.Id}/content", csrf: aliceCsrf))
+        {
+            Assert.Equal(KdbxBytes("v1"), await read.Content.ReadAsByteArrayAsync());
+        }
+        var afterRestore = await GetJsonAsync(_admin, $"/api/admin/files/{vault.Id}/versions");
+        Assert.Equal("Restore of revision 1", afterRestore.GetProperty("current").GetProperty("source").GetString());
+        Assert.Equal(new long[] { 3, 2, 1 }, afterRestore.GetProperty("versions").EnumerateArray().Select(/* Revision. */ v => v.GetProperty("revision").GetInt64()).ToArray());
+        Assert.Equal(1, (await GetJsonAsync(_admin, "/api/admin/logs/audit?action=VaultVersionRestored")).GetProperty("total").GetInt64());
+
+        using (var invalid = await SendAsync(_admin, HttpMethod.Put, "/api/admin/settings/versions", json: new { maxCount = 1001, maxDays = 90 }, csrf: adminCsrf))
+        {
+            Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+        }
+        using (var fewer = await SendAsync(_admin, HttpMethod.Put, "/api/admin/settings/versions", json: new { maxCount = 2, maxDays = 90 }, csrf: adminCsrf))
+        {
+            fewer.EnsureSuccessStatusCode();
+        }
+        var pruned = await GetJsonAsync(_admin, $"/api/admin/files/{vault.Id}/versions");
+        Assert.Equal(new long[] { 3, 2 }, pruned.GetProperty("versions").EnumerateArray().Select(/* Revision. */ v => v.GetProperty("revision").GetInt64()).ToArray());
+        Assert.False(File.Exists(Path.Combine(_dataDir, "vault-versions", vault.Id, "1.kdbx")));
+        Assert.True((await GetJsonAsync(_admin, "/api/admin/settings/versions")).GetProperty("usedBytes").GetInt64() > 0);
+
+        using (var off = await SendAsync(_admin, HttpMethod.Put, "/api/admin/settings/versions", json: new { maxCount = 0, maxDays = 90 }, csrf: adminCsrf))
+        {
+            off.EnsureSuccessStatusCode();
+        }
+        Assert.Empty((await GetJsonAsync(_admin, $"/api/admin/files/{vault.Id}/versions")).GetProperty("versions").EnumerateArray());
+        var current = (await GetJsonAsync(_admin, $"/api/admin/files/{vault.Id}/versions")).GetProperty("current");
+        Assert.Equal(4, current.GetProperty("revision").GetInt64());
+    }
+
+    /// <summary>Checks that a save is refused, and the vault left unchanged, when the previous version cannot be kept.</summary>
+    [Fact]
+    public async Task Save_Is_Refused_When_The_Previous_Version_Cannot_Be_Kept()
+    {
+        var adminCsrf = await SetupAdminAsync(_admin);
+        var (aliceId, _) = await CreateUserAsync(_admin, adminCsrf, "alice", "user");
+        var vault = await UploadVaultAsync(_admin, adminCsrf, "family.kdbx", "v1");
+        await SetPermissionsAsync(_admin, adminCsrf, vault.Id, aliceId, "read-write");
+        var (aliceCsrf, _) = await LoginAsync(_user, "alice", "User passphrase 123");
+
+        // A file where the vault's version folder should be makes creating the version fail, like a full or read-only disk.
+        Directory.CreateDirectory(Path.Combine(_dataDir, "vault-versions"));
+        await File.WriteAllTextAsync(Path.Combine(_dataDir, "vault-versions", vault.Id), "blocks the folder");
+
+        using var save = await SendAsync(_user, HttpMethod.Put, $"/api/vault/files/{vault.Id}/content", bytes: KdbxBytes("v2"), csrf: aliceCsrf, etag: vault.ETag);
+        Assert.Equal(HttpStatusCode.InsufficientStorage, save.StatusCode);
+        Assert.Equal("version_failed", (await save.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("error").GetString());
+        using var read = await SendAsync(_user, HttpMethod.Get, $"/api/vault/files/{vault.Id}/content", csrf: aliceCsrf);
+        Assert.Equal(KdbxBytes("v1"), await read.Content.ReadAsByteArrayAsync());
+        Assert.Equal(1, (await GetJsonAsync(_admin, $"/api/admin/files/{vault.Id}/versions")).GetProperty("current").GetProperty("revision").GetInt64());
+    }
+
     /// <summary>Completes first-run setup and returns the administrator's CSRF token.</summary>
     /// <param name="client">The test client connected to the Admin API.</param>
     private async Task<string> SetupAdminAsync(HttpClient client)

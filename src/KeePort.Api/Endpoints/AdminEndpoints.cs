@@ -537,6 +537,125 @@ public static class AdminEndpoints
         // Lists WebDAV credential metadata for administrators.
         // <param name="context">The current HTTP request and response context.</param>
         // <param name="db">The SQLite store for KeePort metadata.</param>
+        // Lists the current revision and the kept earlier versions of a vault.
+        // <param name="id">The vault file ID.</param>
+        // <param name="context">The current HTTP request and response context.</param>
+        // <param name="vault">The service that keeps and lists versions.</param>
+        group.MapGet("/files/{id}/versions", (string id, HttpContext context, VaultService vault) =>
+        {
+            if (ApiAuth.RequireAdmin(context) is { } forbidden)
+            {
+                return forbidden;
+            }
+            var file = vault.Get(id, includeDeleted: true);
+            return file is null
+                ? Results.NotFound(new ErrorResponse("not_found", "Vault file not found."))
+                : Results.Ok(vault.ListVersions(file));
+        });
+
+        // Downloads one kept earlier version, named e.g. family-r37.kdbx.
+        // <param name="id">The vault file ID.</param>
+        // <param name="revision">The revision number.</param>
+        // <param name="context">The current HTTP request and response context.</param>
+        // <param name="vault">The service that keeps versions.</param>
+        // <param name="audit">The audit log that records the download.</param>
+        group.MapGet("/files/{id}/versions/{revision:long}/content", (string id, long revision, HttpContext context, VaultService vault, AuditLog audit) =>
+        {
+            if (ApiAuth.RequireAdmin(context) is { } forbidden)
+            {
+                return forbidden;
+            }
+            var file = vault.Get(id, includeDeleted: true);
+            var path = file is null ? null : vault.GetVersionPath(file.Id, revision);
+            if (file is null || revision >= file.Revision || !System.IO.File.Exists(path))
+            {
+                return Results.NotFound(new ErrorResponse("not_found", "Version not found."));
+            }
+            audit.Record(context, AuditActions.VaultDownloaded, targetType: "vault", targetId: file.Id, targetName: file.Name,
+                details: $"Earlier version, revision {revision}");
+            var baseName = file.Name.EndsWith(".kdbx", StringComparison.OrdinalIgnoreCase) ? file.Name[..^5] : file.Name;
+            return Results.File(path!, "application/octet-stream", $"{baseName}-r{revision}.kdbx", enableRangeProcessing: false);
+        });
+
+        // Restores an earlier version as a new revision; the state before stays available as a version.
+        // <param name="id">The vault file ID.</param>
+        // <param name="revision">The revision to restore.</param>
+        // <param name="context">The current HTTP request and response context.</param>
+        // <param name="vault">The service that keeps and restores versions.</param>
+        // <param name="audit">The audit log that records the restore.</param>
+        // <param name="cancellationToken">A token that cancels the operation.</param>
+        group.MapPost("/files/{id}/versions/{revision:long}/restore", async (string id, long revision, HttpContext context, VaultService vault, AuditLog audit, CancellationToken cancellationToken) =>
+        {
+            if (ApiAuth.RequireAdmin(context) is { } forbidden)
+            {
+                return forbidden;
+            }
+            var before = vault.Get(id);
+            if (before is null)
+            {
+                return Results.NotFound(new ErrorResponse("not_found", "Vault file not found."));
+            }
+            try
+            {
+                var restored = await vault.RestoreVersionAsync(id, revision, ApiAuth.GetUser(context)!, cancellationToken);
+                if (restored is null)
+                {
+                    return Results.NotFound(new ErrorResponse("not_found", "Version not found."));
+                }
+                audit.Record(context, AuditActions.VaultVersionRestored, targetType: "vault", targetId: restored.Id, targetName: restored.Name,
+                    details: $"Revision {revision} restored as revision {restored.Revision}");
+                return Results.Ok(ToAdminFileDto(restored));
+            }
+            catch (VaultValidationException ex)
+            {
+                return BadRequest("invalid_vault", ex.Message);
+            }
+            catch (VaultVersionException ex)
+            {
+                return VaultEndpoints.VersionFailed(context, ex);
+            }
+        });
+
+        // Returns how many earlier versions are kept and how much space they use.
+        // <param name="context">The current HTTP request and response context.</param>
+        // <param name="db">The SQLite store for KeePort metadata.</param>
+        group.MapGet("/settings/versions", (HttpContext context, KeePortDb db) =>
+        {
+            if (ApiAuth.RequireAdmin(context) is { } forbidden)
+            {
+                return forbidden;
+            }
+            var (maxCount, maxDays) = db.GetVersionSettings();
+            return Results.Ok(new VersionSettingsDto(maxCount, maxDays, db.GetArchivedRevisionBytes()));
+        });
+
+        // Changes how many earlier versions are kept; versions beyond the new limits are removed right away.
+        // <param name="request">The new limits.</param>
+        // <param name="context">The current HTTP request and response context.</param>
+        // <param name="db">The SQLite store for KeePort metadata.</param>
+        // <param name="vault">The service that removes versions beyond the limits.</param>
+        // <param name="audit">The audit log that records the change.</param>
+        group.MapPut("/settings/versions", (VersionSettingsDto request, HttpContext context, KeePortDb db, VaultService vault, AuditLog audit) =>
+        {
+            if (ApiAuth.RequireAdmin(context) is { } forbidden)
+            {
+                return forbidden;
+            }
+            if (request.MaxCount is < 0 or > 1000 || request.MaxDays is < 0 or > 3650)
+            {
+                return BadRequest("invalid_versions", "Keep 0 to 1000 versions for 0 to 3650 days (0 days: no age limit).");
+            }
+            var (beforeCount, beforeDays) = db.GetVersionSettings();
+            db.SetVersionSettings(request.MaxCount, request.MaxDays);
+            vault.PruneAllVersions();
+            if (beforeCount != request.MaxCount || beforeDays != request.MaxDays)
+            {
+                audit.Record(context, AuditActions.VersionSettingsChanged, targetType: "settings", targetName: "Vault versions",
+                    details: $"{beforeCount} → {request.MaxCount} versions, {beforeDays} → {request.MaxDays} days");
+            }
+            return Results.Ok(new VersionSettingsDto(request.MaxCount, request.MaxDays, db.GetArchivedRevisionBytes()));
+        });
+
         // Lists one page of the audit log with its headline counts and the known action tags.
         // <param name="context">The current HTTP request, carrying the filters as query parameters.</param>
         // <param name="db">The SQLite store for KeePort metadata.</param>

@@ -104,7 +104,8 @@ public sealed class VaultService
     /// <param name="content">The encrypted file bytes to validate or write.</param>
     /// <param name="user">The account recorded as the vault creator.</param>
     /// <param name="cancellationToken">A token that cancels the operation when the caller no longer needs it.</param>
-    public async Task<VaultFileRecord> CreateAsync(string name, byte[] content, UserRecord user, CancellationToken cancellationToken)
+    /// <param name="source">How the vault was created, e.g. "Upload" or "Conflict copy", for the version list.</param>
+    public async Task<VaultFileRecord> CreateAsync(string name, byte[] content, UserRecord user, CancellationToken cancellationToken, string source = "Upload")
     {
         var cleanName = ValidateName(name);
         ValidateKdbxContent(content);
@@ -144,6 +145,7 @@ public sealed class VaultService
             TryDelete(path);
             throw;
         }
+        _db.RecordRevision(new VaultRevisionRecord(record.Id, 1, record.Size, sha256, now, user.Id, user.Username, source, Archived: false));
         return record;
     }
 
@@ -179,13 +181,16 @@ public sealed class VaultService
     /// <param name="user">The account recorded as the writer of the revision or conflict copy.</param>
     /// <param name="client">The source label used to identify any conflict copy created for this write.</param>
     /// <param name="cancellationToken">A token that cancels the operation when the caller no longer needs it.</param>
+    /// <param name="source">How the content was saved, e.g. "Web vault" or "WebDAV · Pixel 8", for the version list.</param>
+    /// <exception cref="VaultVersionException">The current content could not be kept as a version; nothing was saved.</exception>
     public async Task<VaultWriteResult> WriteContentAsync(
         string fileId,
         byte[] content,
         string? expectedETag,
         UserRecord user,
         string client,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? source = null)
     {
         var writeLock = _writeLocks[(uint)StringComparer.Ordinal.GetHashCode(fileId) % _writeLocks.Length];
         await writeLock.WaitAsync(cancellationToken);
@@ -206,34 +211,170 @@ public sealed class VaultService
             }
             if (!ETagMatches(expectedETag, file.ETag))
             {
-                await CreateAsync(ConflictCopyName(file.Name, client), content, user, cancellationToken);
+                await CreateAsync(ConflictCopyName(file.Name, client), content, user, cancellationToken, "Conflict copy");
                 return new VaultWriteResult(VaultWriteStatus.Conflict, file, file.ETag);
             }
 
             ValidateKdbxContent(content);
-            var path = GetContentPath(file);
-            Directory.CreateDirectory(_db.VaultDirectory);
-            await WriteAtomicAsync(path, content, cancellationToken);
-
-            var sha256 = ComputeSha256(content);
-            var revision = file.Revision + 1;
-            var etag = BuildETag(sha256, revision);
-            _db.UpdateVaultFileContent(file.Id, content.LongLength, sha256, revision, etag, user.Id);
-
-            var updated = file with
-            {
-                Size = content.LongLength,
-                Sha256 = sha256,
-                Revision = revision,
-                ETag = etag,
-                UpdatedAt = DateTimeOffset.UtcNow,
-                UpdatedBy = user.Id
-            };
+            var updated = await ReplaceContentLockedAsync(file, content, user, source ?? client, cancellationToken);
             return new VaultWriteResult(VaultWriteStatus.Success, updated, null);
         }
         finally
         {
             writeLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// Replaces a vault's content while its write lock is held: keeps the current content as an earlier version (when
+    /// versions are on), writes the new content atomically and records the new revision.
+    /// </summary>
+    /// <param name="file">The vault as it is now.</param>
+    /// <param name="content">The validated new encrypted content.</param>
+    /// <param name="user">The account that saves.</param>
+    /// <param name="source">How the content was saved, for the version list.</param>
+    /// <param name="cancellationToken">A token that cancels the operation.</param>
+    /// <exception cref="VaultVersionException">The current content could not be kept; nothing was saved.</exception>
+    private async Task<VaultFileRecord> ReplaceContentLockedAsync(VaultFileRecord file, byte[] content, UserRecord user, string source, CancellationToken cancellationToken)
+    {
+        var (maxCount, _) = _db.GetVersionSettings();
+        if (maxCount > 0)
+        {
+            await ArchiveCurrentAsync(file, cancellationToken);
+        }
+
+        var path = GetContentPath(file);
+        Directory.CreateDirectory(_db.VaultDirectory);
+        await WriteAtomicAsync(path, content, cancellationToken);
+
+        var sha256 = ComputeSha256(content);
+        var revision = file.Revision + 1;
+        var etag = BuildETag(sha256, revision);
+        var now = DateTimeOffset.UtcNow;
+        _db.UpdateVaultFileContent(file.Id, content.LongLength, sha256, revision, etag, user.Id);
+        _db.RecordRevision(new VaultRevisionRecord(file.Id, revision, content.LongLength, sha256, now, user.Id, user.Username, source, Archived: false));
+        PruneVersions(file.Id);
+
+        return file with
+        {
+            Size = content.LongLength,
+            Sha256 = sha256,
+            Revision = revision,
+            ETag = etag,
+            UpdatedAt = now,
+            UpdatedBy = user.Id
+        };
+    }
+
+    /// <summary>The folder that holds the kept earlier versions, one subfolder per vault.</summary>
+    public string VersionDirectory => Path.Combine(_db.DataDir, "vault-versions");
+
+    /// <summary>Returns the file path of one kept version.</summary>
+    /// <param name="fileId">The vault's ID.</param>
+    /// <param name="revision">The revision number.</param>
+    public string GetVersionPath(string fileId, long revision)
+        => Path.Combine(VersionDirectory, fileId, revision.ToString(CultureInfo.InvariantCulture) + ".kdbx");
+
+    /// <summary>
+    /// Copies the current content into the version folder and marks the revision as kept. Copying, not moving, keeps the
+    /// vault readable the whole time. A failure is reported as <see cref="VaultVersionException"/>.
+    /// </summary>
+    /// <param name="file">The vault as it is now.</param>
+    /// <param name="cancellationToken">A token that cancels the operation.</param>
+    private async Task ArchiveCurrentAsync(VaultFileRecord file, CancellationToken cancellationToken)
+    {
+        var target = GetVersionPath(file.Id, file.Revision);
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+            var content = await File.ReadAllBytesAsync(GetContentPath(file), cancellationToken);
+            await WriteAtomicAsync(target, content, cancellationToken);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            throw new VaultVersionException("The previous version could not be kept, so nothing was saved. Check the free disk space on the server.", ex);
+        }
+
+        var known = _db.GetRevision(file.Id, file.Revision);
+        _db.RecordRevision(known is null
+            ? new VaultRevisionRecord(file.Id, file.Revision, file.Size, file.Sha256, file.UpdatedAt, file.UpdatedBy,
+                file.UpdatedBy is null ? null : _db.GetUserById(file.UpdatedBy)?.Username, null, Archived: true)
+            : known with { Archived = true });
+    }
+
+    /// <summary>Lists the current revision and the kept earlier versions of a vault, newest first.</summary>
+    /// <param name="file">The vault.</param>
+    public VaultVersionsDto ListVersions(VaultFileRecord file)
+    {
+        var current = _db.GetRevision(file.Id, file.Revision);
+        var currentDto = new VaultVersionDto(file.Revision, file.Size, current?.SavedAt ?? file.UpdatedAt,
+            current?.SavedByName ?? (file.UpdatedBy is null ? null : _db.GetUserById(file.UpdatedBy)?.Username), current?.Source);
+        var versions = _db.ListArchivedRevisions(file.Id)
+            .Where(/* Only versions whose file still exists. */ r => File.Exists(GetVersionPath(file.Id, r.Revision)))
+            .Select(/* Converts one record. */ r => new VaultVersionDto(r.Revision, r.Size, r.SavedAt, r.SavedByName, r.Source))
+            .ToList();
+        return new VaultVersionsDto(currentDto, versions);
+    }
+
+    /// <summary>
+    /// Restores an earlier version as a new revision: the old content is saved on top, so every KeePass app sees a new
+    /// ETag and reloads, and the state before the restore stays available as a version.
+    /// </summary>
+    /// <param name="fileId">The vault's ID.</param>
+    /// <param name="revision">The earlier revision to restore.</param>
+    /// <param name="user">The administrator who restores.</param>
+    /// <param name="cancellationToken">A token that cancels the operation.</param>
+    /// <returns>The vault after the restore, or null when the vault or version does not exist.</returns>
+    /// <exception cref="VaultVersionException">The current content could not be kept; nothing was changed.</exception>
+    public async Task<VaultFileRecord?> RestoreVersionAsync(string fileId, long revision, UserRecord user, CancellationToken cancellationToken)
+    {
+        var writeLock = _writeLocks[(uint)StringComparer.Ordinal.GetHashCode(fileId) % _writeLocks.Length];
+        await writeLock.WaitAsync(cancellationToken);
+        try
+        {
+            var file = Get(fileId);
+            var path = GetVersionPath(fileId, revision);
+            if (file is null || revision >= file.Revision || !File.Exists(path))
+            {
+                return null;
+            }
+            var content = await File.ReadAllBytesAsync(path, cancellationToken);
+            ValidateKdbxContent(content);
+            return await ReplaceContentLockedAsync(file, content, user, $"Restore of revision {revision.ToString(CultureInfo.InvariantCulture)}", cancellationToken);
+        }
+        finally
+        {
+            writeLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// Deletes kept versions of one vault beyond the configured count or age; with versions turned off, all of them.
+    /// </summary>
+    /// <param name="fileId">The vault's ID.</param>
+    public void PruneVersions(string fileId)
+    {
+        var (maxCount, maxDays) = _db.GetVersionSettings();
+        var cutoff = maxDays > 0 ? DateTimeOffset.UtcNow.AddDays(-maxDays) : DateTimeOffset.MinValue;
+        var kept = 0;
+        foreach (var version in _db.ListArchivedRevisions(fileId))
+        {
+            if (kept < maxCount && version.SavedAt >= cutoff)
+            {
+                kept++;
+                continue;
+            }
+            TryDelete(GetVersionPath(fileId, version.Revision));
+            _db.DeleteRevision(fileId, version.Revision);
+        }
+    }
+
+    /// <summary>Applies the retention to the kept versions of every vault, e.g. daily and after a settings change.</summary>
+    public void PruneAllVersions()
+    {
+        foreach (var fileId in _db.ListFilesWithArchivedRevisions())
+        {
+            PruneVersions(fileId);
         }
     }
 
@@ -389,6 +530,11 @@ public sealed class VaultService
 /// <summary>Indicates that a vault name or its submitted bytes failed validation.</summary>
 /// <param name="message">The human-readable description of the failure.</param>
 public sealed class VaultValidationException(string message) : Exception(message);
+
+/// <summary>Indicates that the current content of a vault could not be kept as a version, so nothing was saved.</summary>
+/// <param name="message">The human-readable description of the failure.</param>
+/// <param name="inner">The file system error.</param>
+public sealed class VaultVersionException(string message, Exception inner) : Exception(message, inner);
 
 /// <summary>Indicates that a vault operation conflicts with existing state.</summary>
 /// <param name="message">The human-readable description of the failure.</param>

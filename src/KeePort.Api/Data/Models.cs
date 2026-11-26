@@ -459,3 +459,43 @@ public sealed record AuditSettingsDto(int RetentionDays);
 /// <param name="RemoteIp">The client IP address as seen by KeePort, if known.</param>
 /// <param name="UserAgent">The browser that signed in, shortened, if known.</param>
 public sealed record SignInDto(DateTimeOffset OccurredAt, bool Success, string? Channel, string? RemoteIp, string? UserAgent);
+
+/// <summary>Who saved one revision of a vault, how, and whether an earlier version's file is kept.</summary>
+/// <param name="FileId">The vault's ID.</param>
+/// <param name="Revision">The revision number.</param>
+/// <param name="Size">The encrypted size in bytes.</param>
+/// <param name="Sha256">The SHA-256 of the encrypted content.</param>
+/// <param name="SavedAt">When the revision was saved.</param>
+/// <param name="SavedBy">The ID of the account that saved it, if known.</param>
+/// <param name="SavedByName">That account's username at the time, if known.</param>
+/// <param name="Source">How it was saved, e.g. "Web vault", "WebDAV · Pixel 8", "Upload", "Restore of revision 37".</param>
+/// <param name="Archived">Whether the revision is kept as an earlier version file.</param>
+public sealed record VaultRevisionRecord(
+    string FileId,
+    long Revision,
+    long Size,
+    string Sha256,
+    DateTimeOffset SavedAt,
+    string? SavedBy,
+    string? SavedByName,
+    string? Source,
+    bool Archived);
+
+/// <summary>One earlier version of a vault for the admin console.</summary>
+/// <param name="Revision">The revision number.</param>
+/// <param name="Size">The encrypted size in bytes.</param>
+/// <param name="SavedAt">When the revision was saved.</param>
+/// <param name="SavedBy">Who saved it, if known.</param>
+/// <param name="Source">How it was saved, if known.</param>
+public sealed record VaultVersionDto(long Revision, long Size, DateTimeOffset SavedAt, string? SavedBy, string? Source);
+
+/// <summary>The current revision and the kept earlier versions of a vault.</summary>
+/// <param name="Current">The current revision.</param>
+/// <param name="Versions">The kept earlier versions, newest first.</param>
+public sealed record VaultVersionsDto(VaultVersionDto Current, IReadOnlyList<VaultVersionDto> Versions);
+
+/// <summary>How many earlier versions of each vault are kept, and how much space they use.</summary>
+/// <param name="MaxCount">Versions kept per vault, 0 to 1000; 0 turns versions off.</param>
+/// <param name="MaxDays">Days a version is kept, 0 to 3650; 0 keeps them regardless of age.</param>
+/// <param name="UsedBytes">Space used by all kept versions; ignored when saving.</param>
+public sealed record VersionSettingsDto(int MaxCount, int MaxDays, long UsedBytes = 0);

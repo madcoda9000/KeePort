@@ -6,6 +6,9 @@ import { defineMessages, translate } from '../core.ts';
  */
 const serverErrors = defineMessages({
   en: {
+    'The previous version could not be kept, so nothing was saved. Check the free disk space on the server.': 'The previous version could not be kept, so nothing was saved. Check the free disk space on the server.',
+    'Version not found.': 'Version not found.',
+    'Keep 0 to 1000 versions for 0 to 3650 days (0 days: no age limit).': 'Keep 0 to 1000 versions for 0 to 3650 days (0 days: no age limit).',
     'Request failed': 'Request failed',
     'You cannot delete your own account.': 'You cannot delete your own account.',
     'Vault content is missing on the server.': 'Vault content is missing on the server.',
@@ -55,6 +58,9 @@ const serverErrors = defineMessages({
     'The vault changed on the server. Your submitted version was saved as a conflict copy for an administrator.': 'The vault changed on the server. Your submitted version was saved as a conflict copy for an administrator.'
   },
   de: {
+    'The previous version could not be kept, so nothing was saved. Check the free disk space on the server.': 'Der vorherige Stand konnte nicht aufbewahrt werden, deshalb wurde nichts gespeichert. Prüfe den freien Speicherplatz auf dem Server.',
+    'Version not found.': 'Version nicht gefunden.',
+    'Keep 0 to 1000 versions for 0 to 3650 days (0 days: no age limit).': 'Es lassen sich 0 bis 1000 Versionen für 0 bis 3650 Tage aufbewahren (0 Tage: ohne Altersgrenze).',
     'Request failed': 'Anfrage fehlgeschlagen',
     'You cannot delete your own account.': 'Du kannst dein eigenes Konto nicht löschen.',
     'Vault content is missing on the server.': 'Der Inhalt des Tresors fehlt auf dem Server.',
@@ -104,6 +110,9 @@ const serverErrors = defineMessages({
     'The vault changed on the server. Your submitted version was saved as a conflict copy for an administrator.': 'Der Tresor wurde inzwischen auf dem Server geändert. Deine Version wurde als Konfliktkopie für einen Administrator gespeichert.'
   },
   fr: {
+    'The previous version could not be kept, so nothing was saved. Check the free disk space on the server.': 'L’état précédent n’a pas pu être conservé, rien n’a donc été enregistré. Vérifiez l’espace disque libre sur le serveur.',
+    'Version not found.': 'Version introuvable.',
+    'Keep 0 to 1000 versions for 0 to 3650 days (0 days: no age limit).': 'Conservez de 0 à 1000 versions pendant 0 à 3650 jours (0 jour : sans limite d’âge).',
     'Request failed': 'La requête a échoué',
     'You cannot delete your own account.': 'Vous ne pouvez pas supprimer votre propre compte.',
     'Vault content is missing on the server.': 'Le contenu du coffre-fort est introuvable sur le serveur.',

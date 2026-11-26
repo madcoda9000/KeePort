@@ -52,6 +52,7 @@ KeePass files are great: open format, strong encryption, dozens of apps. Keeping
 | 📱 **WebDAV for mobile apps** | Works with KeePass2Android and KeePassium, including transactional saves, conflict-safe sync and merging. |
 | 👥 **Users & per-vault ACLs** | `read` or `read-write` per vault, enforced the same way in the API, web vault and WebDAV. |
 | 🛡️ **No silent overwrites** | Every write is checked against the version the client last saw. Stale saves are kept as admin-only conflict copies. |
+| ⏪ **Vault versions** | Every save keeps the previous state on the server; administrators can download or restore any of the last 30 versions (configurable) with one click. |
 | 🧰 **Admin console** | A dashboard with status, storage, sign-ins and sync activity; manage vault files, users, permissions, WebDAV app passwords and rate limits; inspect WebDAV request logs. |
 | 📜 **Audit log** | Who signed in and who changed users, vaults, permissions and settings — with colour-coded action tags, filters, CSV export and configurable retention. Users see their own recent sign-ins. |
 | 💾 **Crash-safe storage** | Atomic writes (temp file → fsync → rename), soft delete with restore, plain files in a host folder or Docker volume. |

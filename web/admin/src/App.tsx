@@ -28,6 +28,8 @@ import { RateLimitSettingsPanel } from '@/components/rate-limit-settings';
 import { WebDavLogsPanel } from '@/components/webdav-logs';
 import { AuditLogPanel } from '@/components/audit-log';
 import { AuditSettingsPanel } from '@/components/audit-settings';
+import { VaultVersionsButton } from '@/components/vault-versions';
+import { VersionSettingsPanel } from '@/components/version-settings';
 import { applyAccountLanguage } from '@shared/i18n/language-select';
 import { formatDateTime, formatNumber, translate } from '@shared/i18n/core';
 import { useT } from '@shared/i18n/react';
@@ -488,6 +490,7 @@ function FileRow({
               {t('permissions')}
             </Button>
           )}
+          <VaultVersionsButton file={file} onChanged={onChanged} onMessage={setMessage} disabled={busy} />
           {!file.deletedAt && (
             <Dialog open={renameOpen} onOpenChange={setRenameOpen}>
               <DialogTrigger asChild>
@@ -1165,6 +1168,7 @@ export default function App() {
           {tab === 'settings' && (
             <>
               <RateLimitSettingsPanel />
+              <VersionSettingsPanel />
               <AuditSettingsPanel />
               <DataStoragePanel storage={storage} />
             </>
