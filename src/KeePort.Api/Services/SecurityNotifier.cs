@@ -69,6 +69,17 @@ public sealed partial class SecurityNotifier(EmailQueue queue, KeePortDb db, ILo
         }
     }
 
+    /// <summary>Notifies that a second factor was added, removed or reset; this cannot be turned off.</summary>
+    /// <param name="user">The account.</param>
+    /// <param name="kind">MfaEnabled, MfaDisabled or MfaReset from <see cref="EmailTemplates.Kinds"/>.</param>
+    public void MfaChanged(UserRecord user, string kind)
+    {
+        if (CanNotify(user))
+        {
+            Try(() => queue.Enqueue(kind, user.Email!, user.Language, new Dictionary<string, string> { ["username"] = user.Username }));
+        }
+    }
+
     /// <summary>Notifies that an administrator created a WebDAV app password for the account.</summary>
     /// <param name="user">The account.</param>
     /// <param name="label">The app password's label.</param>

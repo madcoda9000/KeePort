@@ -17,7 +17,7 @@ public class EmailTemplatesTests
     public void Every_Template_Renders_In_Every_Language()
     {
         var kinds = typeof(EmailTemplates.Kinds).GetFields().Select(/* Template name. */ f => (string)f.GetValue(null)!).ToList();
-        Assert.Equal(14, kinds.Count);
+        Assert.Equal(18, kinds.Count);
         foreach (var language in new[] { "en", "de", "fr" })
         {
             foreach (var kind in kinds)

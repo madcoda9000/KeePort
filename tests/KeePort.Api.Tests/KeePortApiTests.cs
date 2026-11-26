@@ -1187,6 +1187,200 @@ public class KeePortApiTests : IDisposable
         Assert.Equal(mail.Id, OutboxMail(AdminEmail, "warnFailedSignIns").Id);
     }
 
+    /// <summary>
+    /// Sets up an authenticator app and checks the sign-in with it: challenge without session, wrong and right codes,
+    /// no reuse of a code, recovery codes once only, five wrong codes end the sign-in, and the admin's reset.
+    /// </summary>
+    [Fact]
+    public async Task Totp_Setup_Sign_In_Recovery_And_Reset()
+    {
+        var adminCsrf = await SetupAdminAsync(_admin);
+        // This test signs in more often than the default limit of 10 per minute allows.
+        (await SendAsync(_admin, HttpMethod.Put, RateLimitsPath, json: new { authPerMinute = 1000, webDavPerMinute = 1000 }, csrf: adminCsrf)).EnsureSuccessStatusCode();
+        var anna = await CreateUserAsync(_admin, adminCsrf, "anna", "user");
+        var (csrf, _) = await LoginAsync(_user, "anna", "User passphrase 123");
+
+        using (var wrongPassword = await SendAsync(_user, HttpMethod.Post, "/api/auth/mfa/totp/start", json: new { password = "wrong" }, csrf: csrf))
+        {
+            Assert.Equal(HttpStatusCode.Forbidden, wrongPassword.StatusCode);
+        }
+        string secret;
+        using (var start = await SendAsync(_user, HttpMethod.Post, "/api/auth/mfa/totp/start", json: new { password = "User passphrase 123" }, csrf: csrf))
+        {
+            start.EnsureSuccessStatusCode();
+            var json = await start.Content.ReadFromJsonAsync<JsonElement>();
+            secret = json.GetProperty("secret").GetString()!;
+            Assert.StartsWith("otpauth://totp/KeePort:anna?secret=" + secret, json.GetProperty("uri").GetString());
+        }
+        var bytes = Totp.FromBase32(secret);
+        var step = Totp.StepAt(DateTimeOffset.UtcNow);
+        using (var wrong = await SendAsync(_user, HttpMethod.Post, "/api/auth/mfa/totp/confirm", json: new { code = "000000" == Totp.Compute(bytes, step) ? "111111" : "000000" }, csrf: csrf))
+        {
+            Assert.Equal(HttpStatusCode.BadRequest, wrong.StatusCode);
+        }
+        string[] recovery;
+        using (var confirm = await SendAsync(_user, HttpMethod.Post, "/api/auth/mfa/totp/confirm", json: new { code = Totp.Compute(bytes, step) }, csrf: csrf))
+        {
+            confirm.EnsureSuccessStatusCode();
+            var json = await confirm.Content.ReadFromJsonAsync<JsonElement>();
+            recovery = json.GetProperty("recoveryCodes").EnumerateArray().Select(/* Code. */ c => c.GetString()!).ToArray();
+            Assert.Equal(10, recovery.Length);
+            Assert.Matches("^[a-z2-9]{4}-[a-z2-9]{4}-[a-z2-9]{4}-[a-z2-9]{4}$", recovery[0]);
+            Assert.Equal(10, json.GetProperty("status").GetProperty("recoveryCodesLeft").GetInt32());
+            Assert.True(json.GetProperty("status").GetProperty("active").GetBoolean());
+        }
+        Assert.True((await GetJsonAsync(_admin, "/api/admin/users")).EnumerateArray().Single(/* Anna. */ u => u.GetProperty("username").GetString() == "anna").GetProperty("twoFactor").GetBoolean());
+
+        // The password alone gives no session, only a challenge.
+        using var other = _factory.CreateClient();
+        var challenge = await (await other.PostAsJsonAsync("/api/auth/login", new { username = "anna", password = "User passphrase 123" })).Content.ReadFromJsonAsync<JsonElement>();
+        Assert.True(challenge.GetProperty("mfaRequired").GetBoolean());
+        Assert.Equal(["totp"], challenge.GetProperty("methods").EnumerateArray().Select(/* Method. */ m => m.GetString()).ToArray());
+        var token = challenge.GetProperty("mfaToken").GetString();
+        Assert.Equal(HttpStatusCode.Unauthorized, (await other.GetAsync("/api/auth/me")).StatusCode);
+        // A vault token does not work in the admin console.
+        Assert.Equal(HttpStatusCode.Unauthorized, (await other.PostAsJsonAsync($"{AdminAuthPath}/login/mfa", new { mfaToken = token, method = "totp", code = Totp.Compute(bytes, step + 1) })).StatusCode);
+        // The code that confirmed the setup cannot be used again.
+        Assert.Equal(HttpStatusCode.Unauthorized, (await other.PostAsJsonAsync("/api/auth/login/mfa", new { mfaToken = token, method = "totp", code = Totp.Compute(bytes, step) })).StatusCode);
+        var signedIn = await other.PostAsJsonAsync("/api/auth/login/mfa", new { mfaToken = token, method = "totp", code = Totp.Compute(bytes, step + 1) });
+        signedIn.EnsureSuccessStatusCode();
+        Assert.Equal("anna", (await GetJsonAsync(other, "/api/auth/me")).GetProperty("username").GetString());
+        // The pending sign-in is used up.
+        Assert.Equal(HttpStatusCode.Unauthorized, (await other.PostAsJsonAsync("/api/auth/login/mfa", new { mfaToken = token, method = "recovery", code = recovery[1] })).StatusCode);
+
+        // A recovery code works once, written without dashes and in capitals too.
+        async Task<HttpResponseMessage> RecoverAsync(string code)
+        {
+            var next = await (await _factory.CreateClient().PostAsJsonAsync("/api/auth/login", new { username = "anna", password = "User passphrase 123" })).Content.ReadFromJsonAsync<JsonElement>();
+            return await _factory.CreateClient().PostAsJsonAsync("/api/auth/login/mfa", new { mfaToken = next.GetProperty("mfaToken").GetString(), method = "recovery", code });
+        }
+        Assert.Equal(HttpStatusCode.OK, (await RecoverAsync(recovery[0].Replace("-", "").ToUpperInvariant())).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await RecoverAsync(recovery[0])).StatusCode);
+        Assert.Equal(9, (await GetJsonAsync(_user, "/api/auth/mfa")).GetProperty("recoveryCodesLeft").GetInt32());
+
+        // Five wrong codes end the pending sign-in.
+        var tries = await (await other.PostAsJsonAsync("/api/auth/login", new { username = "anna", password = "User passphrase 123" })).Content.ReadFromJsonAsync<JsonElement>();
+        var triesToken = tries.GetProperty("mfaToken").GetString();
+        for (var i = 0; i < MfaService.MaxAttempts; i++)
+        {
+            Assert.Equal(HttpStatusCode.Unauthorized, (await other.PostAsJsonAsync("/api/auth/login/mfa", new { mfaToken = triesToken, method = "recovery", code = "aaaa-aaaa-aaaa-aaaa" })).StatusCode);
+        }
+        var afterTries = await other.PostAsJsonAsync("/api/auth/login/mfa", new { mfaToken = triesToken, method = "recovery", code = recovery[2] });
+        Assert.Equal("mfa_expired", (await afterTries.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("error").GetString());
+        Assert.True((await GetJsonAsync(_admin, "/api/admin/logs/audit?action=LoginFailed")).GetProperty("total").GetInt64() >= 5);
+
+        // Turning it off needs the password and a code.
+        using (var noCode = await SendAsync(_user, HttpMethod.Post, "/api/auth/mfa/totp/disable", json: new { password = "User passphrase 123", method = "totp", code = "123" }, csrf: csrf))
+        {
+            Assert.Equal(HttpStatusCode.BadRequest, noCode.StatusCode);
+        }
+
+        // The admin's reset turns it off and signs the account out.
+        using (var reset = await SendAsync(_admin, HttpMethod.Post, $"/api/admin/users/{anna.Id}/reset-mfa", csrf: adminCsrf))
+        {
+            Assert.Equal(HttpStatusCode.NoContent, reset.StatusCode);
+        }
+        Assert.Equal(HttpStatusCode.Unauthorized, (await _user.GetAsync("/api/auth/me")).StatusCode);
+        var plain = await (await _user.PostAsJsonAsync("/api/auth/login", new { username = "anna", password = "User passphrase 123" })).Content.ReadFromJsonAsync<JsonElement>();
+        Assert.False(plain.GetProperty("user").GetProperty("twoFactor").GetBoolean());
+        Assert.Equal(1, (await GetJsonAsync(_admin, "/api/admin/logs/audit?action=MfaReset")).GetProperty("total").GetInt64());
+    }
+
+    /// <summary>
+    /// Checks e-mail codes as second factor: allowed for users but not admins by default, need a confirmed address,
+    /// codes are throttled, and the address cannot be changed while they are on.
+    /// </summary>
+    [Fact]
+    public async Task Email_Codes_As_Second_Factor()
+    {
+        var adminCsrf = await SetupAdminAsync(_admin);
+        await ConfigureEmailAsync(adminCsrf);
+        await CreateUserAsync(_admin, adminCsrf, "carl", "user");
+        var (csrf, carlId) = await LoginAsync(_user, "carl", "User passphrase 123");
+        var db = _factory.Services.GetRequiredService<KeePortDb>();
+
+        using (var unverified = await SendAsync(_user, HttpMethod.Post, "/api/auth/mfa/email/enable", json: new { password = "User passphrase 123" }, csrf: csrf))
+        {
+            Assert.Equal(HttpStatusCode.BadRequest, unverified.StatusCode);
+        }
+        db.SetEmailVerified(carlId, DateTimeOffset.UtcNow);
+        using (var enable = await SendAsync(_user, HttpMethod.Post, "/api/auth/mfa/email/enable", json: new { password = "User passphrase 123" }, csrf: csrf))
+        {
+            enable.EnsureSuccessStatusCode();
+            Assert.Equal(10, (await enable.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("recoveryCodes").GetArrayLength());
+        }
+        Assert.NotNull(OutboxMail("carl@example.test", "mfaEnabled"));
+        using (var change = await SendAsync(_user, HttpMethod.Put, "/api/auth/email", json: new { email = "evil@example.test" }, csrf: csrf))
+        {
+            Assert.Equal(HttpStatusCode.Conflict, change.StatusCode);
+        }
+
+        using var other = _factory.CreateClient();
+        var challenge = await (await other.PostAsJsonAsync("/api/auth/login", new { username = "carl", password = "User passphrase 123" })).Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("c…@example.test", challenge.GetProperty("emailHint").GetString());
+        var token = challenge.GetProperty("mfaToken").GetString();
+        Assert.Equal(HttpStatusCode.NoContent, (await other.PostAsJsonAsync("/api/auth/login/mfa/email", new { mfaToken = token })).StatusCode);
+        Assert.Equal(HttpStatusCode.TooManyRequests, (await other.PostAsJsonAsync("/api/auth/login/mfa/email", new { mfaToken = token })).StatusCode);
+        var code = System.Text.RegularExpressions.Regex.Match(OutboxMail("carl@example.test", "mfaCode").TextBody, @"\b(\d{6})\b").Groups[1].Value;
+        Assert.Equal(HttpStatusCode.BadRequest, (await other.PostAsJsonAsync("/api/auth/login/mfa", new { mfaToken = token, method = "totp", code })).StatusCode);
+        (await other.PostAsJsonAsync("/api/auth/login/mfa", new { mfaToken = token, method = "email", code })).EnsureSuccessStatusCode();
+
+        // When the admin no longer allows e-mail codes for users, they stop counting as second factor.
+        using (var settings = await SendAsync(_admin, HttpMethod.Put, "/api/admin/settings/mfa", json: new { requireForAdmins = false, requireForUsers = false, emailForAdmins = false, emailForUsers = false }, csrf: adminCsrf))
+        {
+            settings.EnsureSuccessStatusCode();
+        }
+        var plain = await (await other.PostAsJsonAsync("/api/auth/login", new { username = "carl", password = "User passphrase 123" })).Content.ReadFromJsonAsync<JsonElement>();
+        Assert.False(plain.TryGetProperty("mfaRequired", out _));
+
+        // Admins may not use e-mail codes by default.
+        Assert.False((await GetJsonAsync(_admin, $"{AdminAuthPath}/mfa")).GetProperty("emailAllowed").GetBoolean());
+    }
+
+    /// <summary>
+    /// Checks the rule that requires a second factor: until it is set up only the setup works, and the last factor
+    /// cannot be turned off. Also checks that a password reset link needs a code from the app.
+    /// </summary>
+    [Fact]
+    public async Task Required_Two_Factor_And_Reset_Link_With_Code()
+    {
+        var adminCsrf = await SetupAdminAsync(_admin);
+        await ConfigureEmailAsync(adminCsrf);
+        using (var settings = await SendAsync(_admin, HttpMethod.Put, "/api/admin/settings/mfa", json: new { requireForAdmins = false, requireForUsers = true, emailForAdmins = false, emailForUsers = true }, csrf: adminCsrf))
+        {
+            settings.EnsureSuccessStatusCode();
+        }
+        await CreateUserAsync(_admin, adminCsrf, "dora", "user");
+        var login = await (await _user.PostAsJsonAsync("/api/auth/login", new { username = "dora", password = "User passphrase 123" })).Content.ReadFromJsonAsync<JsonElement>();
+        Assert.True(login.GetProperty("user").GetProperty("mfaSetupRequired").GetBoolean());
+        var csrf = login.GetProperty("csrfToken").GetString()!;
+        var blocked = await _user.GetAsync("/api/vault/files");
+        Assert.Equal(HttpStatusCode.Forbidden, blocked.StatusCode);
+        Assert.Equal("mfa_setup_required", (await blocked.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("error").GetString());
+        Assert.True((await GetJsonAsync(_user, "/api/auth/mfa")).GetProperty("required").GetBoolean());
+
+        var start = await (await SendAsync(_user, HttpMethod.Post, "/api/auth/mfa/totp/start", json: new { password = "User passphrase 123" }, csrf: csrf)).Content.ReadFromJsonAsync<JsonElement>();
+        var bytes = Totp.FromBase32(start.GetProperty("secret").GetString()!);
+        var step = Totp.StepAt(DateTimeOffset.UtcNow);
+        var confirm = await (await SendAsync(_user, HttpMethod.Post, "/api/auth/mfa/totp/confirm", json: new { code = Totp.Compute(bytes, step) }, csrf: csrf)).Content.ReadFromJsonAsync<JsonElement>();
+        var recovery = confirm.GetProperty("recoveryCodes")[0].GetString();
+        Assert.Equal(HttpStatusCode.OK, (await _user.GetAsync("/api/vault/files")).StatusCode);
+        Assert.False((await GetJsonAsync(_user, "/api/auth/me")).GetProperty("mfaSetupRequired").GetBoolean());
+        using (var disable = await SendAsync(_user, HttpMethod.Post, "/api/auth/mfa/totp/disable", json: new { password = "User passphrase 123", method = "totp", code = Totp.Compute(bytes, step + 1) }, csrf: csrf))
+        {
+            Assert.Equal(HttpStatusCode.Conflict, disable.StatusCode);
+        }
+
+        // A reset link alone is not enough for an account with an authenticator app.
+        var doraId = (await GetJsonAsync(_user, "/api/auth/me")).GetProperty("id").GetString()!;
+        _factory.Services.GetRequiredService<KeePortDb>().SetEmailVerified(doraId, DateTimeOffset.UtcNow);
+        Assert.Equal(HttpStatusCode.NoContent, (await _admin.PostAsJsonAsync("/api/auth/password-reset", new { identifier = "dora" })).StatusCode);
+        var resetToken = TokenFrom(OutboxMail("dora@example.test", "reset"));
+        Assert.True((await (await _admin.PostAsJsonAsync("/api/auth/token", new { token = resetToken })).Content.ReadFromJsonAsync<JsonElement>()).GetProperty("mfaRequired").GetBoolean());
+        Assert.Equal(HttpStatusCode.BadRequest, (await _admin.PostAsJsonAsync("/api/auth/set-password", new { token = resetToken, password = "Dora fresh passphrase 1" })).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await _admin.PostAsJsonAsync("/api/auth/set-password", new { token = resetToken, password = "Dora fresh passphrase 1", method = "recovery", code = recovery })).StatusCode);
+    }
+
     /// <summary>Stores SMTP settings that point at a closed local port, so e-mails are queued but never delivered.</summary>
     /// <param name="adminCsrf">The admin's CSRF token.</param>
     /// <param name="password">An SMTP password to store, or null to keep the stored one.</param>

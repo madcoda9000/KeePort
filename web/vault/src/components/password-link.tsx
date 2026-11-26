@@ -34,6 +34,7 @@ export function PasswordLink({
   const [state, setState] = useState<LinkState>({ status: 'loading' });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [useRecovery, setUseRecovery] = useState(false);
 
   /** Checks the link once when the page appears. */
   useEffect(() => {
@@ -75,7 +76,8 @@ export function PasswordLink({
     setBusy(true);
     setError(null);
     try {
-      await api.setPasswordWithLink(token, password);
+      const code = String(data.get('mfaCode') ?? '').trim();
+      await api.setPasswordWithLink(token, password, state.info.mfaRequired ? { method: useRecovery ? 'recovery' : 'totp', code } : undefined);
       onDone(state.info.username);
     } catch (reason) {
       if (reason instanceof ApiError && reason.status === 404) setState({ status: 'invalid', purpose: state.info.purpose });
@@ -146,6 +148,20 @@ export function PasswordLink({
           <FieldLabel htmlFor="link-confirm-password">{t('confirmPassword')}</FieldLabel>
           <Input id="link-confirm-password" name="confirmPassword" type="password" autoComplete="new-password" minLength={10} required />
         </Field>
+        {state.info.mfaRequired && (
+          <Field>
+            <FieldLabel htmlFor="link-mfa-code">{useRecovery ? t('mfaRecovery') : t('mfaCode')}</FieldLabel>
+            {useRecovery ? (
+              <Input key="recovery" id="link-mfa-code" name="mfaCode" autoComplete="off" className="font-mono" required aria-describedby="link-mfa-hint" />
+            ) : (
+              <Input key="totp" id="link-mfa-code" name="mfaCode" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} className="w-44 font-mono tracking-[0.3em]" required aria-describedby="link-mfa-hint" />
+            )}
+            <FieldDescription id="link-mfa-hint">{t('mfaHint')}</FieldDescription>
+            <Button type="button" variant="link" className="justify-self-start px-0" onClick={/** Switches between app code and recovery code. */ () => setUseRecovery(!useRecovery)}>
+              {useRecovery ? t('useApp') : t('useRecovery')}
+            </Button>
+          </Field>
+        )}
       </FieldGroup>
       <Button type="submit" disabled={busy}>
         {busy ? t('saving') : t('save')}

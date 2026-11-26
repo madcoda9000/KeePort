@@ -437,6 +437,32 @@ Click **Send test e-mail** to check the settings; the server's answer is shown i
 
 Users confirm their address in the web vault under **Profile**; administrators in the admin console under **Profile**. Only confirmed addresses get notifications, warnings and reset links.
 
+## 🔐 Two-factor sign-in
+
+Every account can protect its sign-in with a second factor under **Profile → Two-factor sign-in**:
+
+- **Authenticator app** (TOTP): scan the QR code with Aegis, 2FAS, Google Authenticator, KeePassXC or a similar app, then enter one code to turn it on.
+- **Codes by e-mail**: a 6-digit code goes to the confirmed address at each sign-in. Needs [e-mail](#-e-mail-optional). E-mail is weaker than an app, so by default only users may use it, not administrators.
+- **10 recovery codes** are shown once when the first factor is turned on. Each works once; new ones can be created in the profile.
+
+WebDAV is not affected: KeePass apps keep signing in with their app passwords.
+
+**Admin → Settings → Two-factor sign-in** sets the rules: whether administrators and/or users **must** set up a second factor (accounts without one see only the setup after signing in), and who may use codes by e-mail. **Users** shows who uses two-factor sign-in; **Reset 2FA** turns it off for an account that lost its phone and signs it out everywhere.
+
+A user who forgot the password and uses an authenticator app needs a code from it (or a recovery code) as well as the reset link.
+
+### Locked out as the only administrator
+
+If the only administrator lost both the phone and the recovery codes, turn two-factor sign-in off from the container's command line:
+
+```bash
+docker compose exec keeport keeport-admin reset-mfa <username>
+# or, without the compose folder (e.g. Synology over SSH):
+sudo docker exec keeport keeport-admin reset-mfa <username>
+```
+
+The account is signed out everywhere and can sign in with the password alone; the reset appears in the audit log. Set up a second factor again right away.
+
 ## 📱 Connect KeePass apps
 
 | Setting | Value |
@@ -521,7 +547,7 @@ KeePort keeps everything in `/data`. **Admin → Settings → Data storage** sho
 | `vault/` | The encrypted `.kdbx` files |
 | `vault-versions/` | Earlier versions of each vault, kept on every save (by default 30 per vault, at most 90 days; **Admin → Settings → Vault versions**). Plan for up to 30 times the size of your vaults — usually only a few MB. |
 | `tls/` | The admin console's self-signed certificate |
-| `keys/` | The key that encrypts the stored SMTP password. Without it, enter the SMTP password again after a restore. |
+| `keys/` | The key that encrypts the stored SMTP password and the authenticator app secrets. Without it, enter the SMTP password again after a restore, and accounts with an authenticator app must sign in with a recovery code (or an administrator resets their two-factor sign-in). |
 
 - **Data in a folder** (`KEEPORT_DATA=/path`): back up that folder with your usual tool — Hyper Backup, Hybrid Backup Sync, restic, borg — ideally while KeePort is stopped.
 - **Data in the Docker volume** (default): stop the container and archive the volume:
@@ -616,6 +642,7 @@ Limits apply per client address. Behind a reverse proxy, [trust the proxy](#-tru
 | `429 Too Many Requests` | Wait for `Retry-After`. If all devices show the same address in the WebDAV log, [trust your reverse proxy](#-trust-your-reverse-proxy); otherwise raise the limits in **Admin → Settings**. |
 | All devices show the same Client IP in the WebDAV log | That is your reverse proxy. Set `KEEPORT_TRUSTED_PROXIES=gateway` if it runs on the same host, otherwise add its address ([how](#-trust-your-reverse-proxy)). |
 | Devices in your Wi-Fi show your own public IP in the WebDAV log | Your router sends the requests back in (NAT reflection) and replaces the address. Set up local DNS for the public name ([how](#devices-at-home-show-your-own-public-ip)). |
+| Lost phone, no recovery codes left | An administrator clicks **Reset 2FA** in **Users**. If you are the only administrator, run `keeport-admin reset-mfa <username>` in the container ([how](#locked-out-as-the-only-administrator)). |
 | `KeePort cannot start: invalid KEEPORT_TRUSTED_PROXIES` | Fix the named entry: use `gateway` (only inside Docker), single IPs or CIDR networks such as `10.10.0.0/16`; catch-all entries like `0.0.0.0/0` are refused. |
 
 ## 🔍 What the server can and cannot see

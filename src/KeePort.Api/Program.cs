@@ -34,6 +34,12 @@ catch (Exception ex)
     throw;
 }
 
+// "keeport-admin reset-mfa <username>" in the container runs an emergency command instead of the server.
+if (AdminCommands.IsCommand(args))
+{
+    Environment.Exit(AdminCommands.Run(args, builder.Configuration, Console.Out));
+}
+
 // Where /data comes from (host folder, Docker volume or not mounted), detected once at startup.
 var dataStorage = DataLocation.DetectCurrent(dataDir);
 builder.Services.AddSingleton(dataStorage);
@@ -51,6 +57,7 @@ builder.Services.AddDataProtection()
 builder.Services.AddSingleton<EmailSettingsService>();
 builder.Services.AddSingleton<EmailQueue>();
 builder.Services.AddSingleton<AccountTokens>();
+builder.Services.AddSingleton<MfaService>();
 builder.Services.AddSingleton<SecurityNotifier>();
 builder.Services.AddHostedService<EmailWorker>();
 builder.Services.AddHostedService<AdminWarningService>();
@@ -273,6 +280,7 @@ app.UseRateLimiter();
 app.UseCors("KeePortCors");
 app.UseKeePortSession(sessions, secureCookies);
 app.UseKeePortCsrf(sessions);
+app.UseKeePortMfaSetup();
 app.UseWebDavAuthentication(db, hasher);
 
 // Reports process health with the current UTC time.
@@ -282,6 +290,7 @@ app.MapAuthEndpoints();
 app.MapVaultEndpoints();
 app.MapAdminEndpoints();
 app.MapEmailEndpoints();
+app.MapMfaEndpoints();
 app.MapWebDavEndpoints();
 
 app.UseDefaultFiles();

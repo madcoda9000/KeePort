@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { UserRoundIcon } from 'lucide-react';
-import { api, type User } from '@/lib/api';
+import { api, mfaApi, type User } from '@/lib/api';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
@@ -16,6 +16,7 @@ import languageMessages from '@shared/i18n/messages/language';
 import { applyPreference, type LanguagePreference } from '@shared/i18n/core';
 import { LanguageSetting } from '@shared/i18n/language-select';
 import { useT } from '@shared/i18n/react';
+import { TwoFactorSettings } from '@shared/two-factor';
 
 type ProfileMessage = { kind: 'notice' | 'error'; text: string };
 
@@ -212,6 +213,11 @@ export function AdminProfile({ user, onUpdate }: { user: User; onUpdate: (user: 
                   {busy === 'password' ? t('changing') : t('changePassword')}
                 </Button>
               </form>
+              <Separator />
+              <TwoFactorSettings username={user.username} api={mfaApi} onChange={/**
+               * Shows the new two-factor state in the account.
+               * @param status - The new state.
+               */ (status) => onUpdate({ ...user, twoFactor: status.active })} />
             </DialogContent>
           </Dialog>
         </SidebarMenuItem>

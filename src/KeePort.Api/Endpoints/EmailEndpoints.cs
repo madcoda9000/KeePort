@@ -124,6 +124,11 @@ public static class EmailEndpoints
         });
     }
 
+    /// <summary>Whether setting a password with this link also needs a code from the authenticator app.</summary>
+    /// <param name="record">The link's token.</param>
+    /// <param name="user">The account.</param>
+    private static bool ResetNeedsCode(AccountTokenRecord record, UserRecord user) => record.Purpose == "reset" && user.MfaTotpEnabledAt is not null;
+
     /// <summary>
     /// Sends an invitation link to a user account. Returns an error result when the account or the e-mail setup does
     /// not allow it, otherwise null.
@@ -280,7 +285,8 @@ public static class EmailEndpoints
             return Results.NoContent();
         }).RequireRateLimiting(AuthEndpoints.CredentialRateLimitPolicy);
 
-        // Tells the web vault what a link is for (invitation or reset) and for which account, before the password form.
+        // Tells the web vault what a link is for (invitation or reset), for which account, and whether a code from the
+        // authenticator app is needed too, before the password form.
         // Not rate-limited like sign-ins: the token has 256 random bits, so guessing is hopeless.
         // <param name="request">The token from the link.</param>
         // <param name="db">The SQLite store for KeePort metadata.</param>
@@ -291,11 +297,13 @@ public static class EmailEndpoints
             var user = record is null ? null : db.GetUserById(record.UserId);
             return record is null || user is null || user.Disabled
                 ? Results.NotFound(new ErrorResponse("invalid_link", "This link is invalid or has expired."))
-                : Results.Ok(new AccountTokenInfoDto(record.Purpose, user.Username));
+                : Results.Ok(new AccountTokenInfoDto(record.Purpose, user.Username, ResetNeedsCode(record, user)));
         });
 
         // Sets the account password with a link from an invitation or reset e-mail. A reset signs the account out
-        // everywhere; both confirm the e-mail address, because the link arrived there.
+        // everywhere; both confirm the e-mail address, because the link arrived there. When the account uses an
+        // authenticator app, a reset also needs a code from it or a recovery code; e-mail codes would add nothing,
+        // because the link already proves access to the mailbox.
         // <param name="request">The token and the new password.</param>
         // <param name="context">The current HTTP request and response context.</param>
         // <param name="db">The SQLite store for KeePort metadata.</param>
@@ -314,6 +322,23 @@ public static class EmailEndpoints
             if (PasswordPolicy.Validate(request.Password, user.Username) is { } passwordError)
             {
                 return Results.Json(new ErrorResponse("invalid_password", passwordError), statusCode: StatusCodes.Status400BadRequest);
+            }
+            if (ResetNeedsCode(record, user))
+            {
+                var mfa = context.RequestServices.GetRequiredService<MfaService>();
+                var method = request.Method == MfaMethods.Recovery ? MfaMethods.Recovery : MfaMethods.Totp;
+                if (mfa.Check(user, method, request.Code) != MfaCheck.Valid)
+                {
+                    // Wrong codes use up the link, so it cannot be used to guess codes.
+                    db.CountAccountTokenAttempt(record.TokenHash);
+                    if (record.Attempts + 1 >= 5)
+                    {
+                        tokens.Use(record);
+                    }
+                    audit.Record(context, AuditActions.PasswordResetCompleted, success: false, actor: user, targetType: "user", targetId: user.Id,
+                        targetName: user.Username, details: "Wrong two-factor code");
+                    return Results.Json(new ErrorResponse("wrong_code", "The code is wrong."), statusCode: StatusCodes.Status400BadRequest);
+                }
             }
             tokens.Use(record);
             db.UpdateUserPassword(user.Id, hasher.Hash(request.Password!));

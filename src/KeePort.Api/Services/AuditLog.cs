@@ -46,6 +46,11 @@ public static class AuditActions
     public const string EmailVerified = nameof(EmailVerified);
     public const string AuditRetentionChanged = nameof(AuditRetentionChanged);
     public const string VersionSettingsChanged = nameof(VersionSettingsChanged);
+    public const string MfaEnabled = nameof(MfaEnabled);
+    public const string MfaDisabled = nameof(MfaDisabled);
+    public const string MfaRecoveryCodesCreated = nameof(MfaRecoveryCodesCreated);
+    public const string MfaReset = nameof(MfaReset);
+    public const string MfaSettingsChanged = nameof(MfaSettingsChanged);
 
     /// <summary>Every known tag with its category, in the order shown in the admin console's filter.</summary>
     public static readonly IReadOnlyList<AuditActionDto> All =
@@ -53,14 +58,15 @@ public static class AuditActions
         new(LoginSucceeded, "auth"), new(LoginFailed, "auth"), new(Logout, "auth"), new(SetupCompleted, "auth"),
         new(InvitationAccepted, "auth"), new(PasswordResetRequested, "auth"), new(PasswordResetCompleted, "auth"),
         new(PasswordChanged, "account"), new(EmailChanged, "account"), new(SettingsChanged, "account"), new(EmailVerified, "account"),
+        new(MfaEnabled, "account"), new(MfaDisabled, "account"), new(MfaRecoveryCodesCreated, "account"),
         new(UserCreated, "user"), new(UserRoleChanged, "user"), new(UserDisabled, "user"), new(UserEnabled, "user"),
-        new(UserPasswordReset, "user"), new(UserDeleted, "user"), new(InvitationSent, "user"),
+        new(UserPasswordReset, "user"), new(UserDeleted, "user"), new(InvitationSent, "user"), new(MfaReset, "user"),
         new(VaultUploaded, "vault"), new(VaultRenamed, "vault"), new(VaultDeleted, "vault"), new(VaultRestored, "vault"),
         new(VaultPermissionsChanged, "vault"), new(VaultSaved, "vault"), new(VaultConflictCopy, "vault"), new(VaultDownloaded, "vault"),
         new(VaultVersionRestored, "vault"),
         new(AppPasswordCreated, "webdav"), new(AppPasswordRevoked, "webdav"),
         new(RateLimitsChanged, "settings"), new(AuditRetentionChanged, "settings"), new(VersionSettingsChanged, "settings"),
-        new(EmailSettingsChanged, "settings"), new(TestEmailSent, "settings")
+        new(EmailSettingsChanged, "settings"), new(TestEmailSent, "settings"), new(MfaSettingsChanged, "settings")
     ];
 
     private static readonly Dictionary<string, string> Categories = All.ToDictionary(/* Tag. */ a => a.Action, /* Category. */ a => a.Category);

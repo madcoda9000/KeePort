@@ -33,6 +33,10 @@ public static class EmailTemplates
         public const string WarnCertificate = "warnCertificate";
         public const string WarnStorage = "warnStorage";
         public const string WarnDiskSpace = "warnDiskSpace";
+        public const string MfaCode = "mfaCode";
+        public const string MfaEnabled = "mfaEnabled";
+        public const string MfaDisabled = "mfaDisabled";
+        public const string MfaReset = "mfaReset";
     }
 
     private const string NotYou = "notYou";
@@ -72,6 +76,15 @@ public static class EmailTemplates
             ["emailChanged.body"] = "The e-mail address of your account {username} was changed to {email}. E-mails from KeePort now go there.",
             ["appPassword.subject"] = "New WebDAV app password for your KeePort account",
             ["appPassword.body"] = "An administrator created the WebDAV app password \"{label}\" for your account {username}. KeePass apps can use it to sync your vaults.",
+            ["mfaCode.subject"] = "Your KeePort sign-in code",
+            ["mfaCode.body"] = "Enter this code to finish signing in to KeePort. It is valid for 10 minutes and works once.",
+            ["mfaCode.notYou"] = "If you are not signing in right now, someone knows your account password. Change it right away and tell your administrator.",
+            ["mfaEnabled.subject"] = "Two-factor sign-in was turned on",
+            ["mfaEnabled.body"] = "A second factor was added to your account {username}. Signing in now needs a code in addition to your password.",
+            ["mfaDisabled.subject"] = "A second factor was removed",
+            ["mfaDisabled.body"] = "A second factor was turned off for your account {username}.",
+            ["mfaReset.subject"] = "Two-factor sign-in was reset",
+            ["mfaReset.body"] = "An administrator turned off two-factor sign-in for your account {username} and signed you out everywhere. You can set it up again in your profile.",
             ["warnFailedSignIns.subject"] = "KeePort: many failed sign-ins",
             ["warnFailedSignIns.body"] = "There were {count} failed sign-ins in the last {minutes} minutes. Check the audit log in the admin console (Logs → Audit log) for names and IP addresses.",
             ["warnCertificate.subject"] = "KeePort: admin certificate expires soon",
@@ -114,6 +127,15 @@ public static class EmailTemplates
             ["emailChanged.body"] = "Die E-Mail-Adresse deines Kontos {username} wurde in {email} geändert. E-Mails von KeePort gehen jetzt dorthin.",
             ["appPassword.subject"] = "Neues WebDAV-App-Passwort für dein KeePort-Konto",
             ["appPassword.body"] = "Ein Administrator hat für dein Konto {username} das WebDAV-App-Passwort „{label}“ angelegt. KeePass-Apps können damit deine Tresore synchronisieren.",
+            ["mfaCode.subject"] = "Dein KeePort-Anmeldecode",
+            ["mfaCode.body"] = "Gib diesen Code ein, um die Anmeldung bei KeePort abzuschließen. Er gilt 10 Minuten und nur einmal.",
+            ["mfaCode.notYou"] = "Wenn du dich gerade nicht anmeldest, kennt jemand dein Konto-Passwort. Ändere es sofort und sag deinem Administrator Bescheid.",
+            ["mfaEnabled.subject"] = "Zwei-Faktor-Anmeldung wurde eingeschaltet",
+            ["mfaEnabled.body"] = "Für dein Konto {username} wurde ein zweiter Faktor eingerichtet. Zur Anmeldung brauchst du jetzt zusätzlich zum Passwort einen Code.",
+            ["mfaDisabled.subject"] = "Ein zweiter Faktor wurde entfernt",
+            ["mfaDisabled.body"] = "Für dein Konto {username} wurde ein zweiter Faktor ausgeschaltet.",
+            ["mfaReset.subject"] = "Zwei-Faktor-Anmeldung wurde zurückgesetzt",
+            ["mfaReset.body"] = "Ein Administrator hat die Zwei-Faktor-Anmeldung für dein Konto {username} ausgeschaltet und dich überall abgemeldet. Du kannst sie in deinem Profil neu einrichten.",
             ["warnFailedSignIns.subject"] = "KeePort: viele fehlgeschlagene Anmeldungen",
             ["warnFailedSignIns.body"] = "In den letzten {minutes} Minuten gab es {count} fehlgeschlagene Anmeldungen. Namen und IP-Adressen findest du im Audit-Log der Admin-Konsole (Logs → Audit-Log).",
             ["warnCertificate.subject"] = "KeePort: Admin-Zertifikat läuft bald ab",
@@ -156,6 +178,15 @@ public static class EmailTemplates
             ["emailChanged.body"] = "L’adresse e-mail de votre compte {username} a été changée en {email}. Les e-mails de KeePort y sont désormais envoyés.",
             ["appPassword.subject"] = "Nouveau mot de passe d’application WebDAV pour votre compte KeePort",
             ["appPassword.body"] = "Un administrateur a créé le mot de passe d’application WebDAV « {label} » pour votre compte {username}. Les applications KeePass peuvent l’utiliser pour synchroniser vos coffres-forts.",
+            ["mfaCode.subject"] = "Votre code de connexion KeePort",
+            ["mfaCode.body"] = "Saisissez ce code pour terminer la connexion à KeePort. Il est valable 10 minutes et ne fonctionne qu’une fois.",
+            ["mfaCode.notYou"] = "Si vous n’êtes pas en train de vous connecter, quelqu’un connaît le mot de passe de votre compte. Changez-le immédiatement et prévenez votre administrateur.",
+            ["mfaEnabled.subject"] = "La connexion à deux facteurs a été activée",
+            ["mfaEnabled.body"] = "Un second facteur a été ajouté à votre compte {username}. La connexion demande désormais un code en plus de votre mot de passe.",
+            ["mfaDisabled.subject"] = "Un second facteur a été supprimé",
+            ["mfaDisabled.body"] = "Un second facteur a été désactivé pour votre compte {username}.",
+            ["mfaReset.subject"] = "La connexion à deux facteurs a été réinitialisée",
+            ["mfaReset.body"] = "Un administrateur a désactivé la connexion à deux facteurs de votre compte {username} et vous a déconnecté partout. Vous pouvez la configurer à nouveau dans votre profil.",
             ["warnFailedSignIns.subject"] = "KeePort : nombreuses connexions échouées",
             ["warnFailedSignIns.body"] = "Il y a eu {count} connexions échouées au cours des {minutes} dernières minutes. Les noms et adresses IP figurent dans le journal d’audit de la console d’administration (Journaux → Journal d’audit).",
             ["warnCertificate.subject"] = "KeePort : le certificat d’administration expire bientôt",
@@ -231,6 +262,8 @@ public static class EmailTemplates
         Kinds.PasswordChangedSelf or Kinds.PasswordChangedAdmin or Kinds.PasswordChangedReset => [kind + ".body", NotYou],
         Kinds.EmailChanged => ["emailChanged.body", NotYou],
         Kinds.AppPassword => ["appPassword.body", NotYou],
+        Kinds.MfaCode => ["mfaCode.body", "mfaCode.notYou"],
+        Kinds.MfaEnabled or Kinds.MfaDisabled or Kinds.MfaReset => [kind + ".body", NotYou],
         _ => [kind + ".body"]
     };
 

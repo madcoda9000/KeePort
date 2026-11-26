@@ -30,7 +30,9 @@ COPY --from=api-build /app/publish ./
 RUN addgroup -S keeport -g 1000 \
     && adduser -S keeport -u 1000 -G keeport \
     && mkdir -p /data \
-    && chown -R keeport:keeport /data /app
+    && chown -R keeport:keeport /data /app \
+    && printf '#!/bin/sh\n# Emergency commands, e.g. keeport-admin reset-mfa <username>\nexec dotnet /app/KeePort.Api.dll "$@"\n' > /usr/local/bin/keeport-admin \
+    && chmod 755 /usr/local/bin/keeport-admin
 ENV ASPNETCORE_URLS=http://+:8080 \
     KeePort__DataDir=/data \
     KeePort__CookieSecure=true

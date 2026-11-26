@@ -3,6 +3,11 @@ import { defineMessages } from '../../../shared/i18n/core.ts';
 /** Texts of the page that sets the account password from an invitation or reset link. */
 export default defineMessages({
   en: {
+    mfaCode: 'Code from your authenticator app',
+    mfaRecovery: 'Recovery code',
+    mfaHint: 'Your account uses an authenticator app, so the reset needs a code from it as well.',
+    useRecovery: 'Use a recovery code instead',
+    useApp: 'Use a code from the app instead',
     checking: 'Checking the link…',
     inviteTitle: 'Welcome to KeePort',
     inviteIntro: 'Choose a password for your account {username}.',
@@ -23,6 +28,11 @@ export default defineMessages({
     forgotPassword: 'Forgot password?'
   },
   de: {
+    mfaCode: 'Code aus deiner Authenticator-App',
+    mfaRecovery: 'Wiederherstellungscode',
+    mfaHint: 'Dein Konto verwendet eine Authenticator-App, deshalb braucht das Zurücksetzen auch einen Code daraus.',
+    useRecovery: 'Stattdessen Wiederherstellungscode verwenden',
+    useApp: 'Stattdessen Code aus der App verwenden',
     checking: 'Link wird geprüft…',
     inviteTitle: 'Willkommen bei KeePort',
     inviteIntro: 'Wähle ein Passwort für dein Konto {username}.',
@@ -43,6 +53,11 @@ export default defineMessages({
     forgotPassword: 'Passwort vergessen?'
   },
   fr: {
+    mfaCode: 'Code de votre application d’authentification',
+    mfaRecovery: 'Code de récupération',
+    mfaHint: 'Votre compte utilise une application d’authentification, la réinitialisation demande donc aussi un code de celle-ci.',
+    useRecovery: 'Utiliser plutôt un code de récupération',
+    useApp: 'Utiliser plutôt un code de l’application',
     checking: 'Vérification du lien…',
     inviteTitle: 'Bienvenue dans KeePort',
     inviteIntro: 'Choisissez un mot de passe pour votre compte {username}.',

@@ -44,6 +44,10 @@ Use these terms everywhere. German addresses the user with **du** (informal, low
 | rate limit | Anfragelimit | limite de requêtes |
 | dashboard | Dashboard | tableau de bord |
 | dark mode / light mode | Dunkler Modus / Heller Modus | Mode sombre / Mode clair |
+| two-factor sign-in | Zwei-Faktor-Anmeldung | connexion à deux facteurs |
+| second factor | zweiter Faktor | second facteur |
+| authenticator app | Authenticator-App | application d’authentification |
+| recovery code | Wiederherstellungscode | code de récupération |
 
 Keep as they are in every language: KeePort, KeePass, KeePassXC, KeePass2Android, KeePassium, WebDAV, TOTP, KDBX,
 ETag, CSRF, URL, HTTPS, Have I Been Pwned, the action tags of the audit log (e.g. `LoginFailed`), file names and

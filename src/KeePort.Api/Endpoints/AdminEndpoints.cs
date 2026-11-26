@@ -119,13 +119,14 @@ public static class AdminEndpoints
         // Lists accounts for an authenticated administrator.
         // <param name="context">The current HTTP request and response context.</param>
         // <param name="db">The SQLite store for KeePort metadata.</param>
-        group.MapGet("/users", (HttpContext context, KeePortDb db) =>
+        // <param name="mfa">Adds whether each account uses two-factor sign-in.</param>
+        group.MapGet("/users", (HttpContext context, KeePortDb db, MfaService mfa) =>
         {
             if (ApiAuth.RequireAdmin(context) is { } forbidden)
             {
                 return forbidden;
             }
-            return Results.Ok(db.ListUsers().Select(AuthEndpoints.ToDto).ToArray());
+            return Results.Ok(db.ListUsers().Select(/* With two-factor state. */ user => mfa.Describe(AuthEndpoints.ToDto(user), user)).ToArray());
         });
 
         // Validates the supplied account details and creates the user with a hashed password.

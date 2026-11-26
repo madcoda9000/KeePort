@@ -1,4 +1,5 @@
 import { translateServerMessage } from '@shared/i18n/messages/server-errors';
+import { createMfaApi, isMfaChallenge, type MfaChallenge } from '@shared/two-factor-api';
 export interface User {
   id: string;
   username: string;
@@ -15,6 +16,18 @@ export interface User {
   notifySignIn: boolean;
   /** Whether the account gets an e-mail when an app password is created for it. */
   notifyAppPassword: boolean;
+  /** Whether signing in needs a second factor. */
+  twoFactor: boolean;
+  /** Whether the administrator requires a second factor that is not set up yet; only the setup works until then. */
+  mfaSetupRequired: boolean;
+}
+
+/** The administrator's two-factor rules. */
+export interface MfaSettings {
+  requireForAdmins: boolean;
+  requireForUsers: boolean;
+  emailForAdmins: boolean;
+  emailForUsers: boolean;
 }
 
 /** How KeePort sends e-mail and which admin warnings it sends. */
@@ -224,16 +237,20 @@ export interface WebDavCredential {
 
 export class ApiError extends Error {
   status: number;
+  /** The server's machine-readable error code, e.g. "mfa_expired". */
+  code?: string;
 
   /**
    * Creates an API error carrying the server's HTTP status.
    * @param message - The message extracted from the failed response.
    * @param status - The failure HTTP status code.
+   * @param code - The server's error code, if available.
    */
-  constructor(message: string, status: number) {
+  constructor(message: string, status: number, code?: string) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
+    this.code = code;
   }
 }
 
@@ -270,15 +287,17 @@ function buildHeaders(init: RequestInit): Headers {
 async function parseError(response: Response): Promise<ApiError> {
   const text = await response.text();
   let message = response.statusText || 'Request failed';
+  let code: string | undefined;
   if (text) {
     try {
       const data = JSON.parse(text) as { message?: string; error?: string };
       message = data.message || data.error || message;
+      code = data.error;
     } catch {
       message = text.slice(0, 200) || message;
     }
   }
-  return new ApiError(translateServerMessage(message), response.status);
+  return new ApiError(translateServerMessage(message), response.status, code);
 }
 
 /**
@@ -295,8 +314,12 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 }
 
 const AUTH_PATH = '/api/admin/auth';
+const MFA_SETTINGS_PATH = '/api/admin/settings/mfa';
 const RATE_LIMITS_PATH = '/api/admin/settings/rate-limits';
 const EMAIL_SETTINGS_PATH = '/api/admin/settings/email';
+
+/** The two-factor calls of the admin console. */
+export const mfaApi = createMfaApi(AUTH_PATH, request);
 
 export const api = {
   /** Checks whether an administrator needs to complete first-run setup. */
@@ -313,12 +336,12 @@ export const api = {
     return result;
   },
   /**
-   * Signs in to the Admin API and stores the issued CSRF token.
+   * Signs in to the Admin API and stores the issued CSRF token; with a second factor the answer is a challenge instead.
    * @param payload - The username and password to verify for this application.
    */
-  async login(payload: { username: string; password: string }) {
-    const result = await request<AuthResponse>(`${AUTH_PATH}/login`, { method: 'POST', body: JSON.stringify(payload) });
-    setCsrfToken(result.csrfToken);
+  async login(payload: { username: string; password: string }): Promise<AuthResponse | MfaChallenge> {
+    const result = await request<AuthResponse | MfaChallenge>(`${AUTH_PATH}/login`, { method: 'POST', body: JSON.stringify(payload) });
+    if (!isMfaChallenge(result)) setCsrfToken(result.csrfToken);
     return result;
   },
   /** Ends the administrator session and clears the stored CSRF token. */
@@ -393,6 +416,21 @@ export const api = {
   },
 
   /**
+   * Loads the two-factor rules.
+   * @param signal - An optional signal for aborting the request.
+   */
+  async getMfaSettings(signal?: AbortSignal) {
+    return request<MfaSettings>(MFA_SETTINGS_PATH, { signal });
+  },
+  /**
+   * Saves the two-factor rules.
+   * @param settings - The new rules.
+   */
+  async updateMfaSettings(settings: MfaSettings) {
+    return request<MfaSettings>(MFA_SETTINGS_PATH, { method: 'PUT', body: JSON.stringify(settings) });
+  },
+
+  /**
    * Loads the current login and WebDAV limits.
    * @param signal - An optional signal for aborting the settings request.
    */
@@ -432,6 +470,13 @@ export const api = {
    */
   async updateUser(id: string, payload: { role?: 'admin' | 'user'; disabled?: boolean; password?: string }) {
     return request<User>(`/api/admin/users/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(payload) });
+  },
+  /**
+   * Turns off every second factor of an account and signs it out everywhere.
+   * @param id - The ID of the account.
+   */
+  async resetUserMfa(id: string) {
+    await request<void>(`/api/admin/users/${encodeURIComponent(id)}/reset-mfa`, { method: 'POST' });
   },
   /**
    * Deletes the account identified by its ID.

@@ -17,7 +17,7 @@ export default defineConfig({
       '@': fileURLToPath(new URL('./src', import.meta.url)),
       '@shared': fileURLToPath(new URL('../shared', import.meta.url))
     },
-    dedupe: ['react', 'react-dom', 'lucide-react']
+    dedupe: ['react', 'react-dom', 'lucide-react', 'uqr']
   },
   server: { fs: { allow: [fileURLToPath(new URL('.', import.meta.url)), fileURLToPath(new URL('../shared', import.meta.url))] } },
 })

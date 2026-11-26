@@ -46,6 +46,10 @@ public sealed class UserRecord
     public bool NotifySignIn { get; init; } = true;
     /// <summary>Whether the account gets an e-mail when a WebDAV app password is created for it.</summary>
     public bool NotifyAppPassword { get; init; } = true;
+    /// <summary>When codes from an authenticator app (TOTP) were turned on, or null while they are off.</summary>
+    public DateTimeOffset? MfaTotpEnabledAt { get; init; }
+    /// <summary>When codes by e-mail were turned on as second factor, or null while they are off.</summary>
+    public DateTimeOffset? MfaEmailEnabledAt { get; init; }
 }
 
 public sealed record SessionRecord
@@ -118,6 +122,8 @@ public sealed class WebDavCredentialRecord
 /// <param name="EmailVerified">Whether the e-mail address was confirmed.</param>
 /// <param name="NotifySignIn">Whether the account gets e-mails about sign-ins from a new browser or device.</param>
 /// <param name="NotifyAppPassword">Whether the account gets e-mails about new WebDAV app passwords.</param>
+/// <param name="TwoFactor">Whether the account has a usable second factor for signing in.</param>
+/// <param name="MfaSetupRequired">Whether two-factor sign-in is required for the account but not set up yet; until it is, only the setup works.</param>
 public sealed record UserDto(
     string Id,
     string Username,
@@ -133,7 +139,9 @@ public sealed record UserDto(
     string? Language = null,
     bool EmailVerified = false,
     bool NotifySignIn = true,
-    bool NotifyAppPassword = true);
+    bool NotifyAppPassword = true,
+    bool TwoFactor = false,
+    bool MfaSetupRequired = false);
 
 /// <summary>Represents vault file metadata without the encrypted file contents.</summary>
 /// <param name="Id">The stable identifier for this resource.</param>
@@ -595,9 +603,63 @@ public sealed record AccountTokenRequest(string? Token);
 /// <summary>Sets a password with a one-time token from an invitation or reset link.</summary>
 /// <param name="Token">The token from the link.</param>
 /// <param name="Password">The new password.</param>
-public sealed record SetPasswordRequest(string? Token, string? Password);
+/// <param name="Method">For a reset of an account with an authenticator app: totp or recovery.</param>
+/// <param name="Code">For a reset of an account with an authenticator app: the code.</param>
+public sealed record SetPasswordRequest(string? Token, string? Password, string? Method = null, string? Code = null);
 
 /// <summary>What a one-time link is for, shown before the password form.</summary>
 /// <param name="Purpose">invite or reset.</param>
 /// <param name="Username">The account's username.</param>
-public sealed record AccountTokenInfoDto(string Purpose, string Username);
+/// <param name="MfaRequired">Whether a code from the authenticator app (or a recovery code) is needed as well.</param>
+public sealed record AccountTokenInfoDto(string Purpose, string Username, bool MfaRequired = false);
+
+/// <summary>Answers a correct password when the account needs a second factor; no session exists yet.</summary>
+/// <param name="MfaRequired">Always true; tells the app to show the second step.</param>
+/// <param name="MfaToken">The one-time token for the second step, valid for 10 minutes.</param>
+/// <param name="Methods">The second factors the account can use: totp and/or email.</param>
+/// <param name="EmailHint">The masked address e-mail codes go to, if e-mail codes can be used.</param>
+public sealed record MfaChallengeResponse(bool MfaRequired, string MfaToken, IReadOnlyList<string> Methods, string? EmailHint);
+
+/// <summary>The second step of a sign-in.</summary>
+/// <param name="MfaToken">The token from the first step.</param>
+/// <param name="Method">totp, email or recovery.</param>
+/// <param name="Code">The code.</param>
+public sealed record MfaLoginRequest(string? MfaToken, string? Method, string? Code);
+
+/// <summary>Asks for a sign-in code by e-mail during the second step.</summary>
+/// <param name="MfaToken">The token from the first step.</param>
+public sealed record MfaEmailCodeRequest(string? MfaToken);
+
+/// <summary>The two-factor state of the signed-in account, for its profile.</summary>
+/// <param name="TotpEnabledAt">When the authenticator app was set up, or null.</param>
+/// <param name="EmailEnabledAt">When e-mail codes were turned on, or null.</param>
+/// <param name="EmailAllowed">Whether the administrator allows e-mail codes for this account.</param>
+/// <param name="EmailVerified">Whether the account's address is confirmed, which e-mail codes need.</param>
+/// <param name="RecoveryCodesLeft">How many unused recovery codes are left.</param>
+/// <param name="Required">Whether the administrator requires a second factor for this account.</param>
+/// <param name="Active">Whether signing in needs a second factor right now.</param>
+public sealed record MfaStatusDto(DateTimeOffset? TotpEnabledAt, DateTimeOffset? EmailEnabledAt, bool EmailAllowed, bool EmailVerified, int RecoveryCodesLeft, bool Required, bool Active);
+
+/// <summary>A request that needs the account password.</summary>
+/// <param name="Password">The account password.</param>
+public sealed record MfaPasswordRequest(string? Password);
+
+/// <summary>Turns off the authenticator app; needs the password and a code from the app or a recovery code.</summary>
+/// <param name="Password">The account password.</param>
+/// <param name="Method">totp or recovery.</param>
+/// <param name="Code">The code.</param>
+public sealed record MfaDisableRequest(string? Password, string? Method, string? Code);
+
+/// <summary>A code from the authenticator app, to finish its setup.</summary>
+/// <param name="Code">The 6-digit code.</param>
+public sealed record MfaCodeRequest(string? Code);
+
+/// <summary>A new TOTP secret for the authenticator app.</summary>
+/// <param name="Secret">The secret as Base32 text for typing it in.</param>
+/// <param name="Uri">The otpauth:// link shown as QR code.</param>
+public sealed record MfaTotpSetupDto(string Secret, string Uri);
+
+/// <summary>The profile's two-factor state after a change, with new recovery codes if any were created.</summary>
+/// <param name="Status">The new state.</param>
+/// <param name="RecoveryCodes">New recovery codes to show once; empty when the old ones stay valid.</param>
+public sealed record MfaChangeDto(MfaStatusDto Status, IReadOnlyList<string> RecoveryCodes);

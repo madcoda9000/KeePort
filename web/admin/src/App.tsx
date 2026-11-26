@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
-import { api, ApiError } from './lib/api';
-import type { AdminFile, DataStorage, User, WebDavCredential } from './lib/api';
+import { api, ApiError, mfaApi, setCsrfToken } from './lib/api';
+import type { AdminFile, AuthResponse, DataStorage, User, WebDavCredential } from './lib/api';
+import { isMfaChallenge, type MfaChallenge } from '@shared/two-factor-api';
+import { MfaChallengeForm, MfaSetupRequired } from '@shared/two-factor';
+import { EmailConfirmation } from '@shared/email-account';
 import { createKdbxBytes } from './lib/kdbx';
 import { getTheme, toggleTheme } from './theme';
 import {
@@ -29,6 +32,7 @@ import { DashboardPanel } from '@/components/dashboard';
 import { DataStorageBanner, DataStoragePanel } from '@/components/data-storage';
 import { RateLimitSettingsPanel } from '@/components/rate-limit-settings';
 import { EmailSettingsPanel } from '@/components/email-settings';
+import { MfaSettingsPanel } from '@/components/mfa-settings';
 import { WebDavLogsPanel } from '@/components/webdav-logs';
 import { AuditLogPanel } from '@/components/audit-log';
 import { AuditSettingsPanel } from '@/components/audit-settings';
@@ -176,6 +180,11 @@ function accountColumns(): readonly TableColumn<User>[] {
      * @param account - The account row supplying the displayed fields.
      */
     { id: 'disabled', label: translate(usersText, 'disabled'), sortValue: (account) => Number(account.disabled) },
+    /**
+     * Sorts accounts without a second factor first in ascending order.
+     * @param account - The account row supplying the displayed fields.
+     */
+    { id: 'twoFactor', label: translate(usersText, 'twoFactor'), sortValue: (account) => Number(account.twoFactor) },
     { id: 'newPassword', label: translate(usersText, 'newPassword') },
     /**
      * Sorts by the last sign-in time, leaving missing dates distinct.
@@ -327,6 +336,21 @@ function UserRow({
     }
   }
 
+  /** Turns off the account's second factors and refreshes the list. */
+  async function resetMfa() {
+    setBusy(true);
+    setMessage(null);
+    try {
+      await api.resetUserMfa(user.id);
+      setMessage({ kind: 'notice', text: t('mfaReset', { name: user.username }) });
+      await onChanged();
+    } catch (error) {
+      setMessage({ kind: 'error', text: errorText(error, t('resetMfaFailed')) });
+    } finally {
+      setBusy(false);
+    }
+  }
+
   /** Deletes the account and refreshes the relevant lists. */
   async function remove() {
     setBusy(true);
@@ -383,6 +407,26 @@ function UserRow({
            * @param checked - The checkbox state indicating whether to disable the account.
            */ (checked) => setDisabled(checked === true)}
         />
+      </TableCell>
+      <TableCell>
+        {user.twoFactor ? (
+          <div className="flex items-center gap-1">
+            <Badge variant="outline" className={cn('gap-1', ACCENTS.emerald.badge)}>
+              <ShieldCheckIcon /> {t('twoFactorOn')}
+            </Badge>
+            <ConfirmAction
+              label={t('resetMfa')}
+              title={t('resetMfaTitle', { name: user.username })}
+              description={t('resetMfaDescription')}
+              disabled={busy}
+              onConfirm={/** Resets the second factors after confirmation. */ () => {
+                void resetMfa();
+              }}
+            />
+          </div>
+        ) : (
+          <Badge variant="outline" className="text-muted-foreground">{t('twoFactorOff')}</Badge>
+        )}
       </TableCell>
       <TableCell>
         <Input
@@ -736,6 +780,8 @@ function PermissionPanel({
 export default function App() {
   const [ready, setReady] = useState(false);
   const [setupRequired, setSetupRequired] = useState(false);
+  const [challenge, setChallenge] = useState<MfaChallenge | null>(null);
+  const [mfaSetup, setMfaSetup] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [tab, setTab] = useState<Tab>('dashboard');
   const [users, setUsers] = useState<User[]>([]);
@@ -812,6 +858,10 @@ export default function App() {
         await api.csrf();
         setUser(me);
         applyAccountLanguage(me.language);
+        if (me.mfaSetupRequired) {
+          setMfaSetup(true);
+          return;
+        }
         await refreshAll();
       } catch (error) {
         if (!cancelled && !(error instanceof ApiError && error.status === 401)) {
@@ -859,6 +909,12 @@ export default function App() {
     setUser(result.user);
     applyAccountLanguage(result.user.language);
     setSetupRequired(false);
+    setChallenge(null);
+    if (result.user.mfaSetupRequired) {
+      // Until a second factor is set up, the server only answers the setup requests.
+      setMfaSetup(true);
+      return;
+    }
     await refreshAll();
   }
 
@@ -877,8 +933,12 @@ export default function App() {
         username: String(data.get('username') ?? ''),
         password: String(data.get('password') ?? '')
       });
-      await afterAuth(result);
       form.reset();
+      if (isMfaChallenge(result)) {
+        setChallenge(result);
+        return;
+      }
+      await afterAuth(result);
     } catch (error) {
       setMessage({ kind: 'error', text: errorText(error, ta('loginFailed')) });
     } finally {
@@ -932,8 +992,19 @@ export default function App() {
      */ (item) => item.id === updated.id ? updated : item));
   }
 
+  /**
+   * Continues after the second factor was accepted.
+   * @param result - The session's account and CSRF token.
+   */
+  async function afterMfa(result: AuthResponse) {
+    setCsrfToken(result.csrfToken);
+    await afterAuth(result);
+  }
+
   /** Clears local admin state and ends the server session if it still exists. */
   async function handleLogout() {
+    setMfaSetup(false);
+    setChallenge(null);
     setMessage(null);
     setNewEmail('');
     setNewPassword('');
@@ -1087,6 +1158,48 @@ export default function App() {
     </Button>
   );
 
+  if (challenge && !user) {
+    return (
+      <AuthLayout area="Admin" themeAction={themeAction}>
+        <MfaChallengeForm<AuthResponse>
+          challenge={challenge}
+          api={mfaApi}
+          onSignedIn={afterMfa}
+          onCancel={/** Returns to the sign-in form. */ () => setChallenge(null)}
+        />
+      </AuthLayout>
+    );
+  }
+
+  if (user && mfaSetup) {
+    return (
+      <AuthLayout area="Admin" themeAction={themeAction}>
+        <MfaSetupRequired
+          username={user.username}
+          api={mfaApi}
+          onDone={/** Opens the console now that a second factor is set up. */ () => {
+            setMfaSetup(false);
+            setUser({ ...user, twoFactor: true, mfaSetupRequired: false });
+            void refreshAll();
+          }}
+          onSignOut={/** Signs out instead. */ () => void handleLogout()}
+          emailVerified={user.emailVerified}
+          emailConfirmation={
+            <EmailConfirmation
+              email={user.email}
+              verified={user.emailVerified}
+              onRequestCode={/** Sends a confirmation code to the admin's address. */ () => api.requestEmailVerification()}
+              onVerify={/**
+               * Confirms the address and shows the updated account.
+               * @param code - The 6-digit code.
+               */ async (code) => setUser(await api.verifyEmail(code))}
+            />
+          }
+        />
+      </AuthLayout>
+    );
+  }
+
   if (!ready || setupRequired || !user) {
     return (
       <AuthLayout area="Admin" themeAction={themeAction}>
@@ -1215,6 +1328,7 @@ export default function App() {
           {tab === 'settings' && (
             <>
               <EmailSettingsPanel />
+              <MfaSettingsPanel />
               <RateLimitSettingsPanel />
               <VersionSettingsPanel />
               <AuditSettingsPanel />

@@ -3,6 +3,14 @@ import { defineMessages } from '../../../shared/i18n/core.ts';
 /** Texts of the users page: creating accounts and editing roles, status and passwords. */
 export default defineMessages({
   en: {
+    twoFactor: '2FA',
+    twoFactorOn: 'On',
+    twoFactorOff: 'Off',
+    resetMfa: 'Reset 2FA',
+    resetMfaTitle: 'Reset two-factor sign-in of {name}?',
+    resetMfaDescription: 'This turns off the authenticator app, e-mail codes and recovery codes of the account and signs it out everywhere. Afterwards the password alone is enough to sign in until a second factor is set up again.',
+    mfaReset: 'Two-factor sign-in of {name} was reset.',
+    resetMfaFailed: 'Unable to reset two-factor sign-in.',
     createTitle: 'Create a user',
     createDescription: 'Choose an account role; grant access to individual vaults separately.',
     username: 'Username',
@@ -42,6 +50,14 @@ export default defineMessages({
     emailNotConfirmed: 'Not confirmed'
   },
   de: {
+    twoFactor: '2FA',
+    twoFactorOn: 'An',
+    twoFactorOff: 'Aus',
+    resetMfa: '2FA zurücksetzen',
+    resetMfaTitle: 'Zwei-Faktor-Anmeldung von {name} zurücksetzen?',
+    resetMfaDescription: 'Das schaltet Authenticator-App, E-Mail-Codes und Wiederherstellungscodes des Kontos aus und meldet es überall ab. Danach reicht das Passwort zur Anmeldung, bis wieder ein zweiter Faktor eingerichtet ist.',
+    mfaReset: 'Die Zwei-Faktor-Anmeldung von {name} wurde zurückgesetzt.',
+    resetMfaFailed: 'Die Zwei-Faktor-Anmeldung konnte nicht zurückgesetzt werden.',
     createTitle: 'Benutzer anlegen',
     createDescription: 'Wähle eine Kontorolle; den Zugriff auf einzelne Tresore vergibst du separat.',
     username: 'Benutzername',
@@ -81,6 +97,14 @@ export default defineMessages({
     emailNotConfirmed: 'Nicht bestätigt'
   },
   fr: {
+    twoFactor: '2FA',
+    twoFactorOn: 'Activée',
+    twoFactorOff: 'Désactivée',
+    resetMfa: 'Réinitialiser la 2FA',
+    resetMfaTitle: 'Réinitialiser la connexion à deux facteurs de {name} ?',
+    resetMfaDescription: 'Cela désactive l’application d’authentification, les codes par e-mail et les codes de récupération du compte et le déconnecte partout. Le mot de passe seul suffit ensuite pour se connecter jusqu’à ce qu’un second facteur soit à nouveau configuré.',
+    mfaReset: 'La connexion à deux facteurs de {name} a été réinitialisée.',
+    resetMfaFailed: 'Impossible de réinitialiser la connexion à deux facteurs.',
     createTitle: 'Créer un utilisateur',
     createDescription: 'Choisissez le rôle du compte ; l’accès aux coffres-forts s’accorde séparément pour chacun.',
     username: 'Nom d’utilisateur',

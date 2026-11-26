@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.20.0] - 2026-11-26
+
+### Added
+
+- **Two-factor sign-in** for the web vault and the admin console, under **Profile → Two-factor sign-in**:
+  - **Authenticator app** (TOTP, RFC 6238): a QR code and the key to type in; it is turned on only after a correct code. Codes from one step before or after are accepted, and each code works only once.
+  - **Codes by e-mail** to the confirmed address (6 digits, valid 10 minutes, at most one per minute and five per hour). By default users may use them and administrators may not. While they are on, the e-mail address cannot be changed.
+  - **10 recovery codes**, shown once with copy and download as `.txt`; new ones can be created with the account password.
+  - Turning a factor on or off needs the account password (turning off the app also needs a code). The owner gets an e-mail about every change.
+- **Second sign-in step:** after a correct password, accounts with a second factor enter a code from the app, by e-mail or a recovery code. Five wrong codes or 10 minutes end the attempt. Wrong codes count as failed sign-ins on the dashboard and in the audit log.
+- **Admin → Settings → Two-factor sign-in:** require a second factor for administrators and/or users (off by default). Accounts without one see only the setup after signing in, and the server refuses every other request until it is done. A second setting decides who may use codes by e-mail.
+- **Admin → Users:** a **2FA** column, and **Reset 2FA** turns off every factor of an account and signs it out everywhere.
+- **Emergency reset** for the only administrator: `keeport-admin reset-mfa <username>` in the container.
+- A password reset link for an account with an authenticator app also asks for a code from it or a recovery code.
+- Audit log: `MfaEnabled`, `MfaDisabled`, `MfaRecoveryCodesCreated`, `MfaReset`, `MfaSettingsChanged`; successful sign-ins name the second factor used.
+- Accounts returned by the API have `twoFactor` and `mfaSetupRequired`. New endpoints: `POST …/auth/login/mfa`, `POST …/auth/login/mfa/email`, `GET …/auth/mfa`, `POST …/auth/mfa/totp/start`, `…/totp/confirm`, `…/totp/disable`, `…/email/enable`, `…/email/disable`, `…/recovery-codes`, `GET`/`PUT /api/admin/settings/mfa`, `POST /api/admin/users/{id}/reset-mfa`. With a second factor, `POST …/auth/login` answers `{ mfaRequired, mfaToken, methods, emailHint }` instead of a session.
+
+### Security
+
+- TOTP secrets are encrypted with ASP.NET Core Data Protection (key in `/data/keys`). Recovery codes (80 random bits each), e-mail codes and the token of a pending sign-in are stored only as SHA-256 hashes.
+- WebDAV is not affected: KeePass apps keep using their app passwords.
+- New dependency **uqr 0.1.3** (npm, MIT, no dependencies) draws the QR code in the browser; the secret never leaves KeePort.
+
 ## [0.19.0] - 2026-11-26
 
 ### Added
@@ -437,6 +460,7 @@ First beta release.
 - Login and setup share a configurable per-IP rate limit; session checks and sign-out are exempt. WebDAV has a separate configurable limit applied before authentication.
 - Admin accounts can only sign in to the Admin console; Vault and WebDAV require a separate user account. Admin sessions are scoped to the Admin API, so existing admins need to sign in again after updating.
 
+[0.20.0]: https://github.com/madcoda9000/KeePort/compare/v0.19.0...v0.20.0
 [0.19.0]: https://github.com/madcoda9000/KeePort/compare/v0.18.0...v0.19.0
 [0.18.0]: https://github.com/madcoda9000/KeePort/compare/v0.17.0...v0.18.0
 [0.17.0]: https://github.com/madcoda9000/KeePort/compare/v0.16.0...v0.17.0

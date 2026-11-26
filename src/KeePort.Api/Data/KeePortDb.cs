@@ -181,6 +181,7 @@ public sealed partial class KeePortDb : IDisposable
         EnsureColumn("users", "language", "TEXT NULL");
         EnsureRevisionSchema(connection);
         EnsureEmailSchema(connection);
+        EnsureMfaSchema(connection);
         Execute(connection, "INSERT INTO app_state (key, value) VALUES ('login_stats_since', @now) ON CONFLICT(key) DO NOTHING;",
             new SqliteParameter("@now", DateTimeOffset.UtcNow.ToString("O")));
         EnsureSetupToken();
@@ -294,7 +295,7 @@ public sealed partial class KeePortDb : IDisposable
         connection.Open();
         using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT id, username, password_hash, role, disabled, created_at, last_login_at, auto_lock_minutes, email, show_favicons, clipboard_clear_seconds, check_breaches, language, email_verified_at, notify_sign_in, notify_app_password
+            SELECT id, username, password_hash, role, disabled, created_at, last_login_at, auto_lock_minutes, email, show_favicons, clipboard_clear_seconds, check_breaches, language, email_verified_at, notify_sign_in, notify_app_password, mfa_totp_enabled_at, mfa_email_enabled_at
             FROM users WHERE username = @username COLLATE NOCASE;
             """;
         command.Parameters.AddWithValue("@username", username);
@@ -310,7 +311,7 @@ public sealed partial class KeePortDb : IDisposable
         connection.Open();
         using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT id, username, password_hash, role, disabled, created_at, last_login_at, auto_lock_minutes, email, show_favicons, clipboard_clear_seconds, check_breaches, language, email_verified_at, notify_sign_in, notify_app_password
+            SELECT id, username, password_hash, role, disabled, created_at, last_login_at, auto_lock_minutes, email, show_favicons, clipboard_clear_seconds, check_breaches, language, email_verified_at, notify_sign_in, notify_app_password, mfa_totp_enabled_at, mfa_email_enabled_at
             FROM users WHERE id = @id;
             """;
         command.Parameters.AddWithValue("@id", id);
@@ -325,7 +326,7 @@ public sealed partial class KeePortDb : IDisposable
         connection.Open();
         using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT id, username, password_hash, role, disabled, created_at, last_login_at, auto_lock_minutes, email, show_favicons, clipboard_clear_seconds, check_breaches, language, email_verified_at, notify_sign_in, notify_app_password
+            SELECT id, username, password_hash, role, disabled, created_at, last_login_at, auto_lock_minutes, email, show_favicons, clipboard_clear_seconds, check_breaches, language, email_verified_at, notify_sign_in, notify_app_password, mfa_totp_enabled_at, mfa_email_enabled_at
             FROM users ORDER BY username COLLATE NOCASE;
             """;
         var users = new List<UserRecord>();
@@ -513,7 +514,7 @@ public sealed partial class KeePortDb : IDisposable
         using var command = connection.CreateCommand();
         command.CommandText = """
             SELECT s.id, s.user_id, s.token_hash, s.csrf_token, s.created_at, s.expires_at, s.last_seen_at, s.user_agent, s.ip_address,
-                   u.id, u.username, u.password_hash, u.role, u.disabled, u.created_at, u.last_login_at, u.auto_lock_minutes, u.email, u.show_favicons, u.clipboard_clear_seconds, u.check_breaches, u.language, u.email_verified_at, u.notify_sign_in, u.notify_app_password
+                   u.id, u.username, u.password_hash, u.role, u.disabled, u.created_at, u.last_login_at, u.auto_lock_minutes, u.email, u.show_favicons, u.clipboard_clear_seconds, u.check_breaches, u.language, u.email_verified_at, u.notify_sign_in, u.notify_app_password, u.mfa_totp_enabled_at, u.mfa_email_enabled_at
             FROM sessions s
             JOIN users u ON u.id = s.user_id
             WHERE s.token_hash = @tokenHash;
@@ -855,7 +856,7 @@ public sealed partial class KeePortDb : IDisposable
         using var command = connection.CreateCommand();
         command.CommandText = """
             SELECT c.id, c.user_id, c.username, c.label, c.password_hash, c.created_at, c.last_used_at, c.revoked_at,
-                   u.id, u.username, u.password_hash, u.role, u.disabled, u.created_at, u.last_login_at, u.auto_lock_minutes, u.email, u.show_favicons, u.clipboard_clear_seconds, u.check_breaches, u.language, u.email_verified_at, u.notify_sign_in, u.notify_app_password
+                   u.id, u.username, u.password_hash, u.role, u.disabled, u.created_at, u.last_login_at, u.auto_lock_minutes, u.email, u.show_favicons, u.clipboard_clear_seconds, u.check_breaches, u.language, u.email_verified_at, u.notify_sign_in, u.notify_app_password, u.mfa_totp_enabled_at, u.mfa_email_enabled_at
             FROM webdav_credentials c
             JOIN users u ON u.id = c.user_id
             WHERE c.username = @username COLLATE NOCASE;
@@ -890,7 +891,7 @@ public sealed partial class KeePortDb : IDisposable
         using var command = connection.CreateCommand();
         command.CommandText = """
             SELECT c.id, c.user_id, c.username, c.label, c.password_hash, c.created_at, c.last_used_at, c.revoked_at,
-                   u.id, u.username, u.password_hash, u.role, u.disabled, u.created_at, u.last_login_at, u.auto_lock_minutes, u.email, u.show_favicons, u.clipboard_clear_seconds, u.check_breaches, u.language, u.email_verified_at, u.notify_sign_in, u.notify_app_password
+                   u.id, u.username, u.password_hash, u.role, u.disabled, u.created_at, u.last_login_at, u.auto_lock_minutes, u.email, u.show_favicons, u.clipboard_clear_seconds, u.check_breaches, u.language, u.email_verified_at, u.notify_sign_in, u.notify_app_password, u.mfa_totp_enabled_at, u.mfa_email_enabled_at
             FROM webdav_credentials c
             JOIN users u ON u.id = c.user_id
             ORDER BY c.created_at DESC;
@@ -1249,7 +1250,9 @@ public sealed partial class KeePortDb : IDisposable
             Language = reader.IsDBNull(offset + 12) ? null : reader.GetString(offset + 12),
             EmailVerifiedAt = reader.IsDBNull(offset + 13) ? null : ParseDate(reader.GetString(offset + 13)),
             NotifySignIn = reader.IsDBNull(offset + 14) || reader.GetInt32(offset + 14) != 0,
-            NotifyAppPassword = reader.IsDBNull(offset + 15) || reader.GetInt32(offset + 15) != 0
+            NotifyAppPassword = reader.IsDBNull(offset + 15) || reader.GetInt32(offset + 15) != 0,
+            MfaTotpEnabledAt = reader.IsDBNull(offset + 16) ? null : ParseDate(reader.GetString(offset + 16)),
+            MfaEmailEnabledAt = reader.IsDBNull(offset + 17) ? null : ParseDate(reader.GetString(offset + 17))
         };
     }
 

@@ -1,4 +1,5 @@
 import { translateServerMessage } from '@shared/i18n/messages/server-errors';
+import { createMfaApi, isMfaChallenge, type MfaChallenge } from '@shared/two-factor-api';
 /** One sign-in attempt on the user's own account. */
 export interface SignIn {
   occurredAt: string;
@@ -31,12 +32,18 @@ export interface User {
   notifySignIn: boolean;
   /** Whether the account gets an e-mail when an app password is created for it. */
   notifyAppPassword: boolean;
+  /** Whether signing in needs a second factor. */
+  twoFactor: boolean;
+  /** Whether the administrator requires a second factor that is not set up yet; only the setup works until then. */
+  mfaSetupRequired: boolean;
 }
 
 /** What an invitation or password reset link is for, and for which account. */
 export interface PasswordLinkInfo {
   purpose: 'invite' | 'reset';
   username: string;
+  /** Whether a reset also needs a code from the authenticator app or a recovery code. */
+  mfaRequired: boolean;
 }
 
 export interface VaultFile {
@@ -58,18 +65,22 @@ export interface AuthResponse {
 export class ApiError extends Error {
   status: number;
   currentETag?: string;
+  /** The server's machine-readable error code, e.g. "mfa_expired". */
+  code?: string;
 
   /**
    * Creates an API error carrying the HTTP status and optional current ETag.
    * @param message - The message extracted from the failed response.
    * @param status - The failure HTTP status code.
    * @param currentETag - The current entity tag returned by the server, if available.
+   * @param code - The server's error code, if available.
    */
-  constructor(message: string, status: number, currentETag?: string) {
+  constructor(message: string, status: number, currentETag?: string, code?: string) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
     this.currentETag = currentETag;
+    this.code = code;
   }
 }
 
@@ -112,16 +123,18 @@ async function parseError(response: Response): Promise<ApiError> {
   const text = await response.text();
   let message = response.statusText || 'Request failed';
   let currentETag: string | undefined;
+  let code: string | undefined;
   if (text) {
     try {
       const data = JSON.parse(text) as { message?: string; error?: string; currentETag?: string };
       message = data.message || data.error || message;
       currentETag = data.currentETag;
+      code = data.error;
     } catch {
       message = text.slice(0, 200) || message;
     }
   }
-  return new ApiError(translateServerMessage(message), response.status, currentETag);
+  return new ApiError(translateServerMessage(message), response.status, currentETag, code);
 }
 
 /**
@@ -145,17 +158,20 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return (text ? JSON.parse(text) : undefined) as T;
 }
 
+/** The two-factor calls of the web vault. */
+export const mfaApi = createMfaApi('/api/auth', request);
+
 export const api = {
   /**
-   * Signs in to the Vault API and stores the issued CSRF token.
+   * Signs in to the Vault API and stores the issued CSRF token; with a second factor the answer is a challenge instead.
    * @param payload - The username and password to verify for this application.
    */
-  async login(payload: { username: string; password: string }) {
-    const result = await request<AuthResponse>('/api/auth/login', {
+  async login(payload: { username: string; password: string }): Promise<AuthResponse | MfaChallenge> {
+    const result = await request<AuthResponse | MfaChallenge>('/api/auth/login', {
       method: 'POST',
       body: JSON.stringify(payload)
     });
-    setCsrfToken(result.csrfToken);
+    if (!isMfaChallenge(result)) setCsrfToken(result.csrfToken);
     return result;
   },
   /** Ends the vault session and clears the stored CSRF token. */
@@ -240,9 +256,10 @@ export const api = {
    * Sets the account password with an invitation or reset link.
    * @param token - The token from the link's URL fragment.
    * @param password - The new account password.
+   * @param second - For a reset of an account with an authenticator app: the method and the code.
    */
-  async setPasswordWithLink(token: string, password: string) {
-    await request<void>('/api/auth/set-password', { method: 'POST', body: JSON.stringify({ token, password }) });
+  async setPasswordWithLink(token: string, password: string, second?: { method: 'totp' | 'recovery'; code: string }) {
+    await request<void>('/api/auth/set-password', { method: 'POST', body: JSON.stringify({ token, password, ...second }) });
   },
   /**
    * Saves the vault preferences and returns the updated profile; fields left out stay unchanged.

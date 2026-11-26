@@ -144,38 +144,34 @@ public static class AuthEndpoints
     /// <param name="role">The user role handled by this group.</param>
     private static void MapAccountEndpoints(RouteGroupBuilder group, UserRole role)
     {
-        // Checks credentials for the required role and issues that application's session cookie.
+        // Checks credentials for the required role. Without a second factor it issues that application's session cookie;
+        // with one it answers with a challenge and the session follows after the code (POST login/mfa).
         // <param name="request">The username and password submitted for sign-in.</param>
         // <param name="db">The SQLite store for KeePort metadata.</param>
         // <param name="hasher">The service for hashing and verifying passwords.</param>
-        // <param name="sessions">The service for managing sessions, cookies, and CSRF tokens.</param>
-        // <param name="configuration">The configuration used to select the session cookie security options.</param>
+        // <param name="mfa">Two-factor sign-in.</param>
         // <param name="context">The current HTTP request and response context.</param>
         // <param name="audit">The audit log that records the sign-in attempt.</param>
-        // <param name="notifier">Sends the "new sign-in" notification.</param>
-        group.MapPost("/login", (LoginRequest request, KeePortDb db, PasswordHasher hasher, SessionService sessions, IConfiguration configuration, HttpContext context, AuditLog audit, SecurityNotifier notifier) =>
+        group.MapPost("/login", (LoginRequest request, KeePortDb db, PasswordHasher hasher, MfaService mfa, HttpContext context, AuditLog audit) =>
         {
             var user = db.GetUserByUsername(request.Username ?? string.Empty);
-            var channel = role == UserRole.Admin ? "Admin console" : "Web vault";
             if (user is null || user.Role != role || user.Disabled || !hasher.Verify(request.Password ?? string.Empty, user.PasswordHash))
             {
-                CountLogin(db, context, role, success: false);
                 var reason = user is null ? "Unknown username"
                     : user.Role != role ? (role == UserRole.Admin ? "Not an administrator account" : "Administrator account")
                     : user.Disabled ? "Account disabled"
                     : "Wrong password";
-                audit.Record(context, AuditActions.LoginFailed, success: false, actor: user, actorName: request.Username,
-                    targetType: "session", targetName: channel, details: reason);
+                RecordFailedLogin(context, db, audit, role, user, request.Username, reason);
                 return Results.Json(new ErrorResponse("invalid_credentials", "Invalid username or password."), statusCode: StatusCodes.Status401Unauthorized);
             }
 
-            CountLogin(db, context, role, success: true);
-            notifier.SignedIn(user, context);
-            audit.Record(context, AuditActions.LoginSucceeded, actor: user, targetType: "session", targetName: channel);
-            db.UpdateLastLogin(user.Id, DateTimeOffset.UtcNow);
-            var (_, token, csrfToken) = sessions.CreateSession(user, context);
-            sessions.SetSessionCookie(context, token, role, ConfigFlags.CookieSecure(configuration) || context.Request.IsHttps);
-            return Results.Ok(new AuthResponse(ToDto(user), csrfToken));
+            var methods = mfa.Methods(user);
+            if (methods.Count > 0)
+            {
+                var hint = methods.Contains(MfaMethods.Email) ? MfaService.MaskEmail(user.Email!) : null;
+                return Results.Ok(new MfaChallengeResponse(true, mfa.CreatePending(user, role), methods, hint));
+            }
+            return CompleteSignIn(context, user, role, details: null);
         }).RequireRateLimiting(CredentialRateLimitPolicy);
 
         // Removes the current session and clears the cookie for the selected role.
@@ -197,14 +193,15 @@ public static class AuthEndpoints
 
         // Returns the signed-in user's account details.
         // <param name="context">The current HTTP request and response context.</param>
-        group.MapGet("/me", (HttpContext context) =>
+        // <param name="mfa">Adds the two-factor state.</param>
+        group.MapGet("/me", (HttpContext context, MfaService mfa) =>
         {
             if (ApiAuth.RequireAuthenticated(context) is { } unauthorized)
             {
                 return unauthorized;
             }
             var user = ApiAuth.GetUser(context)!;
-            return Results.Ok(ToDto(user));
+            return Results.Ok(mfa.Describe(ToDto(user), user));
         });
 
         // Returns the CSRF token for the current session.
@@ -293,6 +290,48 @@ public static class AuthEndpoints
         });
     }
 
+    /// <summary>
+    /// Finishes a successful sign-in: counts it, notifies about a new browser, writes the audit log and issues the
+    /// session cookie. Used after the password alone or after password and second factor.
+    /// </summary>
+    /// <param name="context">The sign-in request.</param>
+    /// <param name="user">The account.</param>
+    /// <param name="role">The area of the sign-in.</param>
+    /// <param name="details">Audit details, e.g. which second factor was used.</param>
+    internal static IResult CompleteSignIn(HttpContext context, UserRecord user, UserRole role, string? details)
+    {
+        var services = context.RequestServices;
+        var db = services.GetRequiredService<KeePortDb>();
+        var sessions = services.GetRequiredService<SessionService>();
+        var configuration = services.GetRequiredService<IConfiguration>();
+        CountLogin(db, context, role, success: true);
+        services.GetRequiredService<SecurityNotifier>().SignedIn(user, context);
+        services.GetRequiredService<AuditLog>().Record(context, AuditActions.LoginSucceeded, actor: user, targetType: "session", targetName: ChannelName(role), details: details);
+        db.UpdateLastLogin(user.Id, DateTimeOffset.UtcNow);
+        var (_, token, csrfToken) = sessions.CreateSession(user, context);
+        sessions.SetSessionCookie(context, token, role, ConfigFlags.CookieSecure(configuration) || context.Request.IsHttps);
+        return Results.Ok(new AuthResponse(services.GetRequiredService<MfaService>().Describe(ToDto(user), user), csrfToken));
+    }
+
+    /// <summary>Counts and records a failed sign-in (wrong password or wrong second factor).</summary>
+    /// <param name="context">The sign-in request.</param>
+    /// <param name="db">The SQLite store for KeePort metadata.</param>
+    /// <param name="audit">The audit log.</param>
+    /// <param name="role">The area of the sign-in.</param>
+    /// <param name="user">The account, if the username exists.</param>
+    /// <param name="username">The entered username.</param>
+    /// <param name="reason">Why the sign-in failed.</param>
+    internal static void RecordFailedLogin(HttpContext context, KeePortDb db, AuditLog audit, UserRole role, UserRecord? user, string? username, string reason)
+    {
+        CountLogin(db, context, role, success: false);
+        audit.Record(context, AuditActions.LoginFailed, success: false, actor: user, actorName: username ?? user?.Username,
+            targetType: "session", targetName: ChannelName(role), details: reason);
+    }
+
+    /// <summary>Names the area of a sign-in for the audit log.</summary>
+    /// <param name="role">The area's role.</param>
+    internal static string ChannelName(UserRole role) => role == UserRole.Admin ? "Admin console" : "Web vault";
+
     /// <summary>Validates and changes the authenticated account's contact email.</summary>
     /// <param name="request">The update containing the replacement contact email.</param>
     /// <param name="context">The current HTTP request and response context.</param>
@@ -311,6 +350,11 @@ public static class AuthEndpoints
             return Results.Json(new ErrorResponse("invalid_email", "Enter a valid email address."), statusCode: StatusCodes.Status400BadRequest);
         }
         var user = ApiAuth.GetUser(context)!;
+        if (user.MfaEmailEnabledAt is not null && !string.Equals(user.Email, email, StringComparison.OrdinalIgnoreCase))
+        {
+            // Otherwise anyone with a session could move the second factor to their own mailbox without the password.
+            return Results.Json(new ErrorResponse("email_mfa_on", "Turn off sign-in codes by e-mail before you change your e-mail address."), statusCode: StatusCodes.Status409Conflict);
+        }
         db.UpdateUserEmail(user.Id, email);
         if (!string.Equals(user.Email, email, StringComparison.OrdinalIgnoreCase))
         {

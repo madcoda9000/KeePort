@@ -5,7 +5,8 @@
       "@shared/*": ["../shared/*"],
       "react": ["./node_modules/@types/react"],
       "react/*": ["./node_modules/@types/react/*"],
-      "lucide-react": ["./node_modules/lucide-react/dist/lucide-react.d.ts"]
+      "lucide-react": ["./node_modules/lucide-react/dist/lucide-react.d.ts"],
+      "uqr": ["./node_modules/uqr/dist/index.d.ts"]
     },
     "strict": true,
     "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.app.tsbuildinfo",

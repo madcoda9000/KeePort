@@ -6,6 +6,15 @@ import { defineMessages, translate } from '../core.ts';
  */
 const serverErrors = defineMessages({
   en: {
+    'Turn off sign-in codes by e-mail before you change your e-mail address.': 'Turn off sign-in codes by e-mail before you change your e-mail address.',
+    'This method is not available for your account.': 'This method is not available for your account.',
+    'Too many wrong codes. Sign in again.': 'Too many wrong codes. Sign in again.',
+    'The sign-in has expired. Sign in again.': 'The sign-in has expired. Sign in again.',
+    'The authenticator app is already set up. Turn it off first to use another one.': 'The authenticator app is already set up. Turn it off first to use another one.',
+    'Your administrator does not allow sign-in codes by e-mail.': 'Your administrator does not allow sign-in codes by e-mail.',
+    'Confirm your e-mail address first.': 'Confirm your e-mail address first.',
+    'Set up two-factor sign-in first.': 'Set up two-factor sign-in first.',
+    'Your administrator requires two-factor sign-in. Set up another method before you turn this one off.': 'Your administrator requires two-factor sign-in. Set up another method before you turn this one off.',
     'Enter and save the SMTP server and sender address first.': 'Enter and save the SMTP server and sender address first.',
     'Add an e-mail address to your profile first.': 'Add an e-mail address to your profile first.',
     'Invitations are only for active user accounts with an e-mail address.': 'Invitations are only for active user accounts with an e-mail address.',
@@ -74,6 +83,15 @@ const serverErrors = defineMessages({
     'The vault changed on the server. Your submitted version was saved as a conflict copy for an administrator.': 'The vault changed on the server. Your submitted version was saved as a conflict copy for an administrator.'
   },
   de: {
+    'Turn off sign-in codes by e-mail before you change your e-mail address.': 'Schalte die Anmeldecodes per E-Mail aus, bevor du deine E-Mail-Adresse änderst.',
+    'This method is not available for your account.': 'Diese Methode ist für dein Konto nicht verfügbar.',
+    'Too many wrong codes. Sign in again.': 'Zu viele falsche Codes. Melde dich erneut an.',
+    'The sign-in has expired. Sign in again.': 'Die Anmeldung ist abgelaufen. Melde dich erneut an.',
+    'The authenticator app is already set up. Turn it off first to use another one.': 'Die Authenticator-App ist bereits eingerichtet. Schalte sie zuerst aus, um eine andere zu verwenden.',
+    'Your administrator does not allow sign-in codes by e-mail.': 'Dein Administrator erlaubt keine Anmeldecodes per E-Mail.',
+    'Confirm your e-mail address first.': 'Bestätige zuerst deine E-Mail-Adresse.',
+    'Set up two-factor sign-in first.': 'Richte zuerst die Zwei-Faktor-Anmeldung ein.',
+    'Your administrator requires two-factor sign-in. Set up another method before you turn this one off.': 'Dein Administrator verlangt die Zwei-Faktor-Anmeldung. Richte eine andere Methode ein, bevor du diese ausschaltest.',
     'Enter and save the SMTP server and sender address first.': 'Gib zuerst SMTP-Server und Absenderadresse ein und speichere sie.',
     'Add an e-mail address to your profile first.': 'Hinterlege zuerst eine E-Mail-Adresse in deinem Profil.',
     'Invitations are only for active user accounts with an e-mail address.': 'Einladungen gibt es nur für aktive Benutzerkonten mit E-Mail-Adresse.',
@@ -142,6 +160,15 @@ const serverErrors = defineMessages({
     'The vault changed on the server. Your submitted version was saved as a conflict copy for an administrator.': 'Der Tresor wurde inzwischen auf dem Server geändert. Deine Version wurde als Konfliktkopie für einen Administrator gespeichert.'
   },
   fr: {
+    'Turn off sign-in codes by e-mail before you change your e-mail address.': 'Désactivez les codes de connexion par e-mail avant de changer votre adresse e-mail.',
+    'This method is not available for your account.': 'Cette méthode n’est pas disponible pour votre compte.',
+    'Too many wrong codes. Sign in again.': 'Trop de codes incorrects. Reconnectez-vous.',
+    'The sign-in has expired. Sign in again.': 'La connexion a expiré. Reconnectez-vous.',
+    'The authenticator app is already set up. Turn it off first to use another one.': 'L’application d’authentification est déjà configurée. Désactivez-la d’abord pour en utiliser une autre.',
+    'Your administrator does not allow sign-in codes by e-mail.': 'Votre administrateur n’autorise pas les codes de connexion par e-mail.',
+    'Confirm your e-mail address first.': 'Confirmez d’abord votre adresse e-mail.',
+    'Set up two-factor sign-in first.': 'Configurez d’abord la connexion à deux facteurs.',
+    'Your administrator requires two-factor sign-in. Set up another method before you turn this one off.': 'Votre administrateur exige la connexion à deux facteurs. Configurez une autre méthode avant de désactiver celle-ci.',
     'Enter and save the SMTP server and sender address first.': 'Saisissez et enregistrez d’abord le serveur SMTP et l’adresse d’expéditeur.',
     'Add an e-mail address to your profile first.': 'Ajoutez d’abord une adresse e-mail à votre profil.',
     'Invitations are only for active user accounts with an e-mail address.': 'Les invitations sont réservées aux comptes utilisateur actifs avec une adresse e-mail.',

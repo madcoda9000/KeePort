@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import type { Kdbx } from 'kdbxweb';
-import { api, ApiError } from './lib/api';
-import type { User, VaultFile } from './lib/api';
+import { api, ApiError, mfaApi, setCsrfToken } from './lib/api';
+import type { AuthResponse, User, VaultFile } from './lib/api';
+import { isMfaChallenge, type MfaChallenge } from '@shared/two-factor-api';
+import { MfaChallengeForm, MfaSetupRequired, TwoFactorSettings } from '@shared/two-factor';
 import {
   clearVaultCredentials,
   entryMatches,
@@ -368,6 +370,8 @@ export default function App() {
   const [profileMessage, setProfileMessage] = useState<Message>(null);
   const [linkToken, setLinkToken] = useState<string | null>(/** Reads the token of an e-mail link the page was opened with. */ () => readLinkToken(location.hash));
   const [signInView, setSignInView] = useState<'signIn' | 'forgot'>('signIn');
+  const [challenge, setChallenge] = useState<MfaChallenge | null>(null);
+  const [mfaSetup, setMfaSetup] = useState(false);
   const [signInName, setSignInName] = useState('');
   const tEmail = useT(emailAccountMessages);
 
@@ -1195,12 +1199,12 @@ export default function App() {
     setMessage(null);
     try {
       const result = await api.login({ username, password: passwordValue });
-      setUser(result.user);
-      applyAccountLanguage(result.user.language);
-      setAutoLockMinutes(result.user.autoLockMinutes ?? DEFAULT_AUTO_LOCK_MINUTES);
-      await api.csrf();
-      await refreshFiles();
       form.reset();
+      if (isMfaChallenge(result)) {
+        setChallenge(result);
+        return;
+      }
+      await enterVault(result);
     } catch (error) {
       setMessage({ kind: 'error', text: errorText(error, tUnlock('loginFailed')) });
     } finally {
@@ -1208,8 +1212,27 @@ export default function App() {
     }
   }
 
+  /**
+   * Opens the vault after a finished sign-in; an account that must set up a second factor sees only that setup.
+   * @param result - The session's account and CSRF token.
+   */
+  async function enterVault(result: AuthResponse) {
+    setCsrfToken(result.csrfToken);
+    setChallenge(null);
+    setUser(result.user);
+    applyAccountLanguage(result.user.language);
+    setAutoLockMinutes(result.user.autoLockMinutes ?? DEFAULT_AUTO_LOCK_MINUTES);
+    if (result.user.mfaSetupRequired) {
+      setMfaSetup(true);
+      return;
+    }
+    await refreshFiles();
+  }
+
   /** Locks the vault, clears local session state, and ends the server session. */
   async function handleLogout() {
+    setMfaSetup(false);
+    setChallenge(null);
     lockVault(false);
     setMessage(null);
     setSelectedId(null);
@@ -1386,6 +1409,10 @@ export default function App() {
         setUser(me);
         applyAccountLanguage(me.language);
         setAutoLockMinutes(me.autoLockMinutes ?? DEFAULT_AUTO_LOCK_MINUTES);
+        if (me.mfaSetupRequired) {
+          setMfaSetup(true);
+          return;
+        }
         await refreshFiles();
       } catch (error) {
         if (!cancelled && !(error instanceof ApiError && error.status === 401)) {
@@ -1494,6 +1521,48 @@ export default function App() {
           onDone={finishPasswordLink}
           onCancel={/** Returns to the sign-in form or the open session. */ () => leavePasswordLink('signIn')}
           onForgot={/** Opens the form for a new reset link. */ () => leavePasswordLink('forgot')}
+        />
+      </AuthLayout>
+    );
+  }
+
+  if (challenge && !user) {
+    return (
+      <AuthLayout area="Vault" themeAction={themeAction}>
+        <MfaChallengeForm<AuthResponse>
+          challenge={challenge}
+          api={mfaApi}
+          onSignedIn={enterVault}
+          onCancel={/** Returns to the sign-in form. */ () => setChallenge(null)}
+        />
+      </AuthLayout>
+    );
+  }
+
+  if (user && mfaSetup) {
+    return (
+      <AuthLayout area="Vault" themeAction={themeAction}>
+        <MfaSetupRequired
+          username={user.username}
+          api={mfaApi}
+          onDone={/** Opens the vault now that a second factor is set up. */ () => {
+            setMfaSetup(false);
+            setUser({ ...user, twoFactor: true, mfaSetupRequired: false });
+            void refreshFiles();
+          }}
+          onSignOut={/** Signs out instead. */ () => void handleLogout()}
+          emailVerified={user.emailVerified}
+          emailConfirmation={
+            <EmailConfirmation
+              email={user.email}
+              verified={user.emailVerified}
+              onRequestCode={/** Sends a confirmation code to the account's address. */ () => api.requestEmailCode()}
+              onVerify={/**
+               * Confirms the address and shows the updated account.
+               * @param code - The 6-digit code.
+               */ async (code) => setUser(await api.verifyEmail(code))}
+            />
+          }
         />
       </AuthLayout>
     );
@@ -1780,6 +1849,11 @@ export default function App() {
                   {busy === 'password' ? tProfile('changing') : tProfile('changePassword')}
                 </Button>
               </form>
+              <Separator />
+              <TwoFactorSettings username={user.username} api={mfaApi} onChange={/**
+               * Shows the new two-factor state in the account.
+               * @param status - The new state.
+               */ (status) => setUser({ ...user, twoFactor: status.active })} />
               <Separator />
               <RecentSignIns />
             </DialogContent>
