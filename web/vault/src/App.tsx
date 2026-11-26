@@ -78,6 +78,7 @@ import { faviconUrl, storeEntryIcon } from './lib/icons';
 import type { BreachCheckState } from '@/components/security-report';
 import { SecurityReportTiles } from '@/components/security-report';
 import { PasswordGenerator } from '@/components/password-generator';
+import { RecentSignIns } from '@/components/recent-sign-ins';
 import { openableUrl } from './lib/icons';
 import { deleteEntries, emptyRecycleBin } from './lib/entry-actions';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -1635,6 +1636,8 @@ export default function App() {
                   {busy === 'password' ? 'Changing…' : 'Change password'}
                 </Button>
               </form>
+              <Separator />
+              <RecentSignIns />
             </DialogContent>
           </Dialog>
         }

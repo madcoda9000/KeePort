@@ -146,6 +146,7 @@ public static class VaultEndpoints
                 return Results.Json(new ErrorResponse("invalid_vault", ex.Message), statusCode: StatusCodes.Status400BadRequest);
             }
 
+            RecordSave(context, result, file, user, "Web vault");
             return result.Status switch
             {
                 // The stored record does not know the caller's access level; return the real one so clients keep write access.
@@ -161,6 +162,31 @@ public static class VaultEndpoints
                 _ => throw new InvalidOperationException("Unexpected vault write status.")
             };
         });
+    }
+
+    /// <summary>Records a saved revision or a conflict copy in the audit log; other outcomes are not logged.</summary>
+    /// <param name="context">The request that saved the vault.</param>
+    /// <param name="result">The outcome of the write.</param>
+    /// <param name="file">The vault as it was before the write.</param>
+    /// <param name="user">The account that saved.</param>
+    /// <param name="client">Where the save came from, e.g. "Web vault" or "WebDAV · Pixel 8".</param>
+    internal static void RecordSave(HttpContext context, VaultWriteResult result, VaultFileRecord file, UserRecord user, string client)
+    {
+        var audit = context.RequestServices.GetService<AuditLog>();
+        if (audit is null)
+        {
+            return;
+        }
+        if (result.Status == VaultWriteStatus.Success)
+        {
+            audit.Record(context, AuditActions.VaultSaved, actor: user, targetType: "vault", targetId: file.Id, targetName: file.Name,
+                details: $"{client} · revision {result.File!.Revision}");
+        }
+        else if (result.Status == VaultWriteStatus.Conflict)
+        {
+            audit.Record(context, AuditActions.VaultConflictCopy, success: false, actor: user, targetType: "vault", targetId: file.Id, targetName: file.Name,
+                details: $"{client} · saved as a conflict copy, the vault changed in between");
+        }
     }
 
     /// <summary>Returns the saved file metadata with the matching ETag header.</summary>

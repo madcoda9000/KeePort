@@ -366,3 +366,88 @@ public sealed record DashboardDto(
     DashboardCountsDto? Counts,
     LoginStatsDto? Logins,
     IReadOnlyList<string> Errors);
+
+/// <summary>Describes one audit log entry: who did what, to which object, with which result.</summary>
+/// <param name="Id">The sequential log entry ID.</param>
+/// <param name="OccurredAt">The time of the event.</param>
+/// <param name="Category">The area of the event: auth, account, user, vault, webdav or settings.</param>
+/// <param name="Action">The action tag in PascalCase, e.g. LoginFailed or VaultPermissionsChanged.</param>
+/// <param name="Success">Whether the action succeeded.</param>
+/// <param name="ActorId">The ID of the acting account, or null for unknown accounts and the system.</param>
+/// <param name="ActorName">The acting account's username at the time of the event, or the name typed at a failed sign-in.</param>
+/// <param name="TargetType">The kind of object acted on: user, vault, appPassword or settings.</param>
+/// <param name="TargetId">The ID of the object acted on, if any.</param>
+/// <param name="TargetName">The name of the object acted on at the time of the event, if any.</param>
+/// <param name="Details">A short, secret-free description such as "Read → ReadWrite" or "Revision 41".</param>
+/// <param name="RemoteIp">The client IP address as seen by KeePort, if known.</param>
+/// <param name="UserAgent">The browser or app that sent the request, shortened, if known.</param>
+public sealed record AuditEntryDto(
+    long Id,
+    DateTimeOffset OccurredAt,
+    string Category,
+    string Action,
+    bool Success,
+    string? ActorId,
+    string? ActorName,
+    string? TargetType,
+    string? TargetId,
+    string? TargetName,
+    string? Details,
+    string? RemoteIp,
+    string? UserAgent);
+
+/// <summary>Filters for listing or exporting the audit log; null or empty values do not filter.</summary>
+/// <param name="Actor">Part of the acting account's name.</param>
+/// <param name="Action">One action tag.</param>
+/// <param name="Category">One category.</param>
+/// <param name="From">The earliest event time, inclusive.</param>
+/// <param name="To">The latest event time, exclusive.</param>
+/// <param name="FailedOnly">Whether to list only failed actions.</param>
+/// <param name="Search">Free text matched against action, accounts, target, details and IP address.</param>
+public sealed record AuditFilter(
+    string? Actor = null,
+    string? Action = null,
+    string? Category = null,
+    DateTimeOffset? From = null,
+    DateTimeOffset? To = null,
+    bool FailedOnly = false,
+    string? Search = null);
+
+/// <summary>Headline counts of the audit log for the admin console.</summary>
+/// <param name="Total">All retained entries.</param>
+/// <param name="Last24Hours">Entries of the last 24 hours.</param>
+/// <param name="Last7Days">Entries of the last 7 days.</param>
+/// <param name="FailedSignIns24Hours">Failed sign-ins of the last 24 hours.</param>
+public sealed record AuditStatsDto(long Total, long Last24Hours, long Last7Days, long FailedSignIns24Hours);
+
+/// <summary>One page of the audit log with the counts and the known action tags for the filters.</summary>
+/// <param name="Items">The entries of the page, newest first.</param>
+/// <param name="Total">The number of entries matching the filter.</param>
+/// <param name="Page">The 1-based page number.</param>
+/// <param name="PageSize">The number of entries per page.</param>
+/// <param name="Stats">The headline counts of the whole log.</param>
+/// <param name="Actions">All known action tags with their category, for the filter.</param>
+public sealed record AuditPageDto(
+    IReadOnlyList<AuditEntryDto> Items,
+    long Total,
+    int Page,
+    int PageSize,
+    AuditStatsDto Stats,
+    IReadOnlyList<AuditActionDto> Actions);
+
+/// <summary>One known action tag and the category it belongs to.</summary>
+/// <param name="Action">The action tag.</param>
+/// <param name="Category">The category of the tag.</param>
+public sealed record AuditActionDto(string Action, string Category);
+
+/// <summary>How long audit log entries are kept.</summary>
+/// <param name="RetentionDays">Days to keep entries, 1 to 3650.</param>
+public sealed record AuditSettingsDto(int RetentionDays);
+
+/// <summary>One sign-in attempt on the user's own account, shown in their profile.</summary>
+/// <param name="OccurredAt">The time of the attempt.</param>
+/// <param name="Success">Whether the sign-in succeeded.</param>
+/// <param name="Channel">"web vault" or "admin console".</param>
+/// <param name="RemoteIp">The client IP address as seen by KeePort, if known.</param>
+/// <param name="UserAgent">The browser that signed in, shortened, if known.</param>
+public sealed record SignInDto(DateTimeOffset OccurredAt, bool Success, string? Channel, string? RemoteIp, string? UserAgent);

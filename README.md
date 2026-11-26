@@ -53,6 +53,7 @@ KeePass files are great: open format, strong encryption, dozens of apps. Keeping
 | 👥 **Users & per-vault ACLs** | `read` or `read-write` per vault, enforced the same way in the API, web vault and WebDAV. |
 | 🛡️ **No silent overwrites** | Every write is checked against the version the client last saw. Stale saves are kept as admin-only conflict copies. |
 | 🧰 **Admin console** | A dashboard with status, storage, sign-ins and sync activity; manage vault files, users, permissions, WebDAV app passwords and rate limits; inspect WebDAV request logs. |
+| 📜 **Audit log** | Who signed in and who changed users, vaults, permissions and settings — with colour-coded action tags, filters, CSV export and configurable retention. Users see their own recent sign-ins. |
 | 💾 **Crash-safe storage** | Atomic writes (temp file → fsync → rename), soft delete with restore, plain files in a host folder or Docker volume. |
 | 🐳 **One container** | Single Docker image with a persistent `/data` folder and a separate admin port served over HTTPS. |
 
@@ -230,7 +231,7 @@ Setup instructions per client are in the [deployment guide](docs/DEPLOYMENT.md#-
 - **Hardened sessions:** `HttpOnly`/`SameSite` cookies, CSRF tokens, Argon2id password hashing and configurable per-IP rate limits for sign-in and WebDAV.
 - **Explicit proxy trust:** client addresses from `X-Forwarded-For` are only accepted from reverse proxies you list; catch-all entries are refused.
 - **Admin isolation:** admin endpoints only answer on the admin port, which is served over HTTPS with a self-signed certificate created on first start.
-- **Privacy-aware logging:** WebDAV logs record method, path, status and headers such as `If-Match` — never passwords or file contents.
+- **Privacy-aware logging:** WebDAV logs record method, path, status and headers such as `If-Match`; the audit log records who did what to which user, vault or setting — never passwords, tokens or file contents.
 - **Outside contact only on request:** website icons and the breach check are off until a user turns them on. Icon downloads by the server reach public HTTPS sites only — addresses in your network, loopback and reserved ranges are refused, also after redirects — and can be turned off with `KEEPORT_FAVICON_DOWNLOAD=false`.
 - **Browser hardening:** a strict Content-Security-Policy, copied secrets cleared from the clipboard after 30 seconds (configurable) and when the vault locks, and auto-lock when the tab stays in the background.
 

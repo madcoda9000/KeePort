@@ -458,6 +458,7 @@ public static class WebDavEndpoints
         {
             db.SetWebDavReadETag(auth.Credential.Id, file.Id, result.File!.ETag);
         }
+        VaultEndpoints.RecordSave(context, result, file, auth.User, $"WebDAV · {auth.Credential.Label}");
 
         return result.Status switch
         {

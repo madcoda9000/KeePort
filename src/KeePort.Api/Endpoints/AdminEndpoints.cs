@@ -99,7 +99,7 @@ public static class AdminEndpoints
         // <param name="request">The configured login/setup and WebDAV request limits.</param>
         // <param name="context">The current HTTP request and response context.</param>
         // <param name="settings">The service that reads or persists the active rate limits.</param>
-        group.MapPut("/settings/rate-limits", (RateLimitSettings request, HttpContext context, RateLimitSettingsService settings) =>
+        group.MapPut("/settings/rate-limits", (RateLimitSettings request, HttpContext context, RateLimitSettingsService settings, AuditLog audit) =>
         {
             if (ApiAuth.RequireAdmin(context) is { } forbidden)
             {
@@ -109,7 +109,10 @@ public static class AdminEndpoints
             {
                 return BadRequest("invalid_rate_limit", "Both limits must be positive whole numbers.");
             }
+            var before = settings.Current.Settings;
             settings.Update(request);
+            audit.Record(context, AuditActions.RateLimitsChanged, targetType: "settings", targetName: "Rate limits",
+                details: $"Sign-in {before.AuthPerMinute} → {request.AuthPerMinute}/min, WebDAV {before.WebDavPerMinute} → {request.WebDavPerMinute}/min");
             return Results.Ok(request);
         });
 
@@ -130,7 +133,7 @@ public static class AdminEndpoints
         // <param name="context">The current HTTP request and response context.</param>
         // <param name="db">The SQLite store for KeePort metadata.</param>
         // <param name="hasher">The service for hashing and verifying passwords.</param>
-        group.MapPost("/users", (CreateUserRequest request, HttpContext context, KeePortDb db, PasswordHasher hasher) =>
+        group.MapPost("/users", (CreateUserRequest request, HttpContext context, KeePortDb db, PasswordHasher hasher, AuditLog audit) =>
         {
             if (ApiAuth.RequireAdmin(context) is { } forbidden)
             {
@@ -172,6 +175,8 @@ public static class AdminEndpoints
                 CreatedAt = DateTimeOffset.UtcNow
             };
             db.CreateUser(user);
+            audit.Record(context, AuditActions.UserCreated, targetType: "user", targetId: user.Id, targetName: user.Username,
+                details: $"Role {user.Role}");
             return Results.Ok(AuthEndpoints.ToDto(user));
         });
 
@@ -181,7 +186,7 @@ public static class AdminEndpoints
         // <param name="context">The current HTTP request and response context.</param>
         // <param name="db">The SQLite store for KeePort metadata.</param>
         // <param name="hasher">The service for hashing and verifying passwords.</param>
-        group.MapPatch("/users/{id}", (string id, UpdateUserRequest request, HttpContext context, KeePortDb db, PasswordHasher hasher) =>
+        group.MapPatch("/users/{id}", (string id, UpdateUserRequest request, HttpContext context, KeePortDb db, PasswordHasher hasher, AuditLog audit) =>
         {
             if (ApiAuth.RequireAdmin(context) is { } forbidden)
             {
@@ -220,6 +225,17 @@ public static class AdminEndpoints
                 db.UpdateUserPassword(target.Id, hasher.Hash(request.Password));
                 // A reset password signs the account out everywhere; an admin resetting their own keeps this session.
                 db.DeleteSessionsForUser(target.Id, ApiAuth.GetSession(context)?.Id);
+                audit.Record(context, AuditActions.UserPasswordReset, targetType: "user", targetId: target.Id, targetName: target.Username,
+                    details: "Signed out everywhere");
+            }
+            if (role != target.Role)
+            {
+                audit.Record(context, AuditActions.UserRoleChanged, targetType: "user", targetId: target.Id, targetName: target.Username,
+                    details: $"{target.Role} → {role}");
+            }
+            if (disabled != target.Disabled)
+            {
+                audit.Record(context, disabled ? AuditActions.UserDisabled : AuditActions.UserEnabled, targetType: "user", targetId: target.Id, targetName: target.Username);
             }
 
             var updated = db.GetUserById(target.Id)!;
@@ -230,7 +246,7 @@ public static class AdminEndpoints
         // <param name="id">The route ID of the account to delete.</param>
         // <param name="context">The current HTTP request and response context.</param>
         // <param name="db">The SQLite store for KeePort metadata.</param>
-        group.MapDelete("/users/{id}", (string id, HttpContext context, KeePortDb db) =>
+        group.MapDelete("/users/{id}", (string id, HttpContext context, KeePortDb db, AuditLog audit) =>
         {
             if (ApiAuth.RequireAdmin(context) is { } forbidden)
             {
@@ -252,6 +268,8 @@ public static class AdminEndpoints
             }
 
             db.DeleteUser(target.Id);
+            audit.Record(context, AuditActions.UserDeleted, targetType: "user", targetId: target.Id, targetName: target.Username,
+                details: $"Role {target.Role}");
             return Results.NoContent();
         });
 
@@ -274,7 +292,7 @@ public static class AdminEndpoints
         // <param name="context">The current HTTP request and response context.</param>
         // <param name="vault">The service for checking vault access and reading or writing encrypted files.</param>
         // <param name="cancellationToken">A token that cancels the operation when the caller no longer needs it.</param>
-        group.MapPost("/files", async (IFormFile file, string? name, HttpContext context, VaultService vault, CancellationToken cancellationToken) =>
+        group.MapPost("/files", async (IFormFile file, string? name, HttpContext context, VaultService vault, AuditLog audit, CancellationToken cancellationToken) =>
         {
             if (ApiAuth.RequireAdmin(context) is { } forbidden)
             {
@@ -297,6 +315,8 @@ public static class AdminEndpoints
             {
                 var user = ApiAuth.GetUser(context)!;
                 var created = await vault.CreateAsync(displayName, content, user, cancellationToken);
+                audit.Record(context, AuditActions.VaultUploaded, targetType: "vault", targetId: created.Id, targetName: created.Name,
+                    details: $"{created.Size} bytes");
                 return Results.Ok(ToAdminFileDto(created));
             }
             catch (VaultValidationException ex)
@@ -313,7 +333,8 @@ public static class AdminEndpoints
         // <param name="id">The vault file ID.</param>
         // <param name="context">The current HTTP request and response context.</param>
         // <param name="vault">The service for checking vault access and reading or writing encrypted files.</param>
-        group.MapGet("/files/{id}/content", (string id, HttpContext context, VaultService vault) =>
+        // <param name="audit">The audit log that records the download.</param>
+        group.MapGet("/files/{id}/content", (string id, HttpContext context, VaultService vault, AuditLog audit) =>
         {
             if (ApiAuth.RequireAdmin(context) is { } forbidden)
             {
@@ -329,6 +350,8 @@ public static class AdminEndpoints
             {
                 return Results.NotFound(new ErrorResponse("content_missing", "Vault content is missing on the server."));
             }
+            audit.Record(context, AuditActions.VaultDownloaded, targetType: "vault", targetId: file.Id, targetName: file.Name,
+                details: $"Revision {file.Revision}");
             return Results.File(path, "application/octet-stream", file.Name, enableRangeProcessing: false);
         });
 
@@ -337,7 +360,7 @@ public static class AdminEndpoints
         // <param name="request">The request containing the desired vault filename.</param>
         // <param name="context">The current HTTP request and response context.</param>
         // <param name="vault">The service for checking vault access and reading or writing encrypted files.</param>
-        group.MapPatch("/files/{id}", (string id, RenameVaultFileRequest request, HttpContext context, VaultService vault) =>
+        group.MapPatch("/files/{id}", (string id, RenameVaultFileRequest request, HttpContext context, VaultService vault, AuditLog audit) =>
         {
             if (ApiAuth.RequireAdmin(context) is { } forbidden)
             {
@@ -352,6 +375,11 @@ public static class AdminEndpoints
             {
                 var user = ApiAuth.GetUser(context)!;
                 var renamed = vault.Rename(file, request.Name, user);
+                if (renamed.Name != file.Name)
+                {
+                    audit.Record(context, AuditActions.VaultRenamed, targetType: "vault", targetId: file.Id, targetName: renamed.Name,
+                        details: $"{file.Name} → {renamed.Name}");
+                }
                 return Results.Ok(ToAdminFileDto(renamed));
             }
             catch (VaultValidationException ex)
@@ -368,7 +396,7 @@ public static class AdminEndpoints
         // <param name="id">The vault file ID.</param>
         // <param name="context">The current HTTP request and response context.</param>
         // <param name="vault">The service for checking vault access and reading or writing encrypted files.</param>
-        group.MapDelete("/files/{id}", (string id, HttpContext context, VaultService vault) =>
+        group.MapDelete("/files/{id}", (string id, HttpContext context, VaultService vault, AuditLog audit) =>
         {
             if (ApiAuth.RequireAdmin(context) is { } forbidden)
             {
@@ -380,6 +408,7 @@ public static class AdminEndpoints
                 return Results.NotFound(new ErrorResponse("not_found", "Vault file not found."));
             }
             vault.SoftDelete(file);
+            audit.Record(context, AuditActions.VaultDeleted, targetType: "vault", targetId: file.Id, targetName: file.Name);
             return Results.NoContent();
         });
 
@@ -387,7 +416,7 @@ public static class AdminEndpoints
         // <param name="id">The vault file ID.</param>
         // <param name="context">The current HTTP request and response context.</param>
         // <param name="vault">The service for checking vault access and reading or writing encrypted files.</param>
-        group.MapPost("/files/{id}/restore", (string id, HttpContext context, VaultService vault) =>
+        group.MapPost("/files/{id}/restore", (string id, HttpContext context, VaultService vault, AuditLog audit) =>
         {
             if (ApiAuth.RequireAdmin(context) is { } forbidden)
             {
@@ -405,6 +434,7 @@ public static class AdminEndpoints
             try
             {
                 vault.Restore(file);
+                audit.Record(context, AuditActions.VaultRestored, targetType: "vault", targetId: file.Id, targetName: file.Name);
                 return Results.Ok(ToAdminFileDto(vault.Get(id)!));
             }
             catch (VaultConflictException ex)
@@ -443,7 +473,7 @@ public static class AdminEndpoints
         // <param name="context">The current HTTP request and response context.</param>
         // <param name="vault">The service for checking vault access and reading or writing encrypted files.</param>
         // <param name="db">The SQLite store for KeePort metadata.</param>
-        group.MapPut("/files/{id}/permissions", (string id, SetPermissionsRequest request, HttpContext context, VaultService vault, KeePortDb db) =>
+        group.MapPut("/files/{id}/permissions", (string id, SetPermissionsRequest request, HttpContext context, VaultService vault, KeePortDb db, AuditLog audit) =>
         {
             if (ApiAuth.RequireAdmin(context) is { } forbidden)
             {
@@ -456,6 +486,7 @@ public static class AdminEndpoints
             }
 
             var replacements = new List<(string UserId, VaultPermission Permission)>();
+            var names = new Dictionary<string, string>(StringComparer.Ordinal);
             foreach (var input in request.Permissions ?? Array.Empty<PermissionInput>())
             {
                 var user = db.GetUserById(input.UserId);
@@ -474,9 +505,16 @@ public static class AdminEndpoints
                     return BadRequest("invalid_permission", "Permission must be 'read' or 'read-write'.");
                 }
                 replacements.Add((user.Id, permission.Value));
+                names[user.Id] = user.Username;
             }
 
+            var before = vault.ListPermissions(file.Id);
             vault.ReplacePermissions(file.Id, replacements);
+            var changes = DescribePermissionChanges(before, replacements, names);
+            if (changes.Length > 0)
+            {
+                audit.Record(context, AuditActions.VaultPermissionsChanged, targetType: "vault", targetId: file.Id, targetName: file.Name, details: changes);
+            }
             return Results.Ok(vault.ListPermissions(file.Id)
                 .Select(/* Serializes the stored grants after replacing the access list.
                  * <param name="p">One permission record read back after saving.</param>
@@ -499,6 +537,79 @@ public static class AdminEndpoints
         // Lists WebDAV credential metadata for administrators.
         // <param name="context">The current HTTP request and response context.</param>
         // <param name="db">The SQLite store for KeePort metadata.</param>
+        // Lists one page of the audit log with its headline counts and the known action tags.
+        // <param name="context">The current HTTP request, carrying the filters as query parameters.</param>
+        // <param name="db">The SQLite store for KeePort metadata.</param>
+        group.MapGet("/logs/audit", (HttpContext context, KeePortDb db) =>
+        {
+            if (ApiAuth.RequireAdmin(context) is { } forbidden)
+            {
+                return forbidden;
+            }
+            if (ReadAuditFilter(context.Request.Query, out var filter) is { } invalid)
+            {
+                return invalid;
+            }
+            var page = Math.Max(1, ReadInt(context.Request.Query, "page", 1));
+            var pageSize = Math.Clamp(ReadInt(context.Request.Query, "pageSize", 25), 10, 200);
+            var (items, total) = db.QueryAudit(filter, page, pageSize);
+            return Results.Ok(new AuditPageDto(items, total, page, pageSize, db.GetAuditStats(DateTimeOffset.UtcNow), AuditActions.All));
+        });
+
+        // Exports the audit entries matching the filters as CSV.
+        // <param name="context">The current HTTP request, carrying the filters as query parameters.</param>
+        // <param name="db">The SQLite store for KeePort metadata.</param>
+        group.MapGet("/logs/audit.csv", (HttpContext context, KeePortDb db) =>
+        {
+            if (ApiAuth.RequireAdmin(context) is { } forbidden)
+            {
+                return forbidden;
+            }
+            if (ReadAuditFilter(context.Request.Query, out var filter) is { } invalid)
+            {
+                return invalid;
+            }
+            var csv = AuditCsv.Write(db.ListAudit(filter));
+            var fileName = $"keeport-audit-log-{DateTimeOffset.UtcNow:yyyy-MM-dd}.csv";
+            return Results.File(System.Text.Encoding.UTF8.GetPreamble().Concat(System.Text.Encoding.UTF8.GetBytes(csv)).ToArray(), "text/csv; charset=utf-8", fileName);
+        });
+
+        // Returns how long audit log entries are kept.
+        // <param name="context">The current HTTP request and response context.</param>
+        // <param name="audit">The audit log with its retention.</param>
+        group.MapGet("/settings/audit", (HttpContext context, AuditLog audit) =>
+        {
+            if (ApiAuth.RequireAdmin(context) is { } forbidden)
+            {
+                return forbidden;
+            }
+            return Results.Ok(new AuditSettingsDto(audit.RetentionDays));
+        });
+
+        // Changes how long audit log entries are kept; older entries are removed right away.
+        // <param name="request">The new retention in days.</param>
+        // <param name="context">The current HTTP request and response context.</param>
+        // <param name="audit">The audit log with its retention.</param>
+        group.MapPut("/settings/audit", (AuditSettingsDto request, HttpContext context, AuditLog audit) =>
+        {
+            if (ApiAuth.RequireAdmin(context) is { } forbidden)
+            {
+                return forbidden;
+            }
+            if (request.RetentionDays is < 1 or > 3650)
+            {
+                return BadRequest("invalid_retention", "Keep entries between 1 and 3650 days.");
+            }
+            var before = audit.RetentionDays;
+            audit.SetRetentionDays(request.RetentionDays);
+            if (before != request.RetentionDays)
+            {
+                audit.Record(context, AuditActions.AuditRetentionChanged, targetType: "settings", targetName: "Audit log",
+                    details: $"{before} → {request.RetentionDays} days");
+            }
+            return Results.Ok(new AuditSettingsDto(audit.RetentionDays));
+        });
+
         group.MapGet("/webdav-credentials", (HttpContext context, KeePortDb db) =>
         {
             if (ApiAuth.RequireAdmin(context) is { } forbidden)
@@ -513,7 +624,7 @@ public static class AdminEndpoints
         // <param name="context">The current HTTP request and response context.</param>
         // <param name="db">The SQLite store for KeePort metadata.</param>
         // <param name="hasher">The service for hashing and verifying passwords.</param>
-        group.MapPost("/webdav-credentials", (CreateWebDavCredentialRequest request, HttpContext context, KeePortDb db, PasswordHasher hasher) =>
+        group.MapPost("/webdav-credentials", (CreateWebDavCredentialRequest request, HttpContext context, KeePortDb db, PasswordHasher hasher, AuditLog audit) =>
         {
             if (ApiAuth.RequireAdmin(context) is { } forbidden)
             {
@@ -545,6 +656,8 @@ public static class AdminEndpoints
                 CreatedAt = DateTimeOffset.UtcNow
             };
             db.CreateWebDavCredential(credential);
+            audit.Record(context, AuditActions.AppPasswordCreated, targetType: "appPassword", targetId: credential.Id, targetName: credential.Username,
+                details: $"{credential.Label} for {user.Username}");
             return Results.Ok(ToWebDavDto(credential));
         });
 
@@ -552,20 +665,22 @@ public static class AdminEndpoints
         // <param name="id">The route ID of the credential to revoke.</param>
         // <param name="context">The current HTTP request and response context.</param>
         // <param name="db">The SQLite store for KeePort metadata.</param>
-        group.MapDelete("/webdav-credentials/{id}", (string id, HttpContext context, KeePortDb db) =>
+        group.MapDelete("/webdav-credentials/{id}", (string id, HttpContext context, KeePortDb db, AuditLog audit) =>
         {
             if (ApiAuth.RequireAdmin(context) is { } forbidden)
             {
                 return forbidden;
             }
-            var exists = db.ListWebDavCredentials().Any(/* Matches only unrevoked credentials with the requested ID.
+            var credential = db.ListWebDavCredentials().FirstOrDefault(/* Matches only unrevoked credentials with the requested ID.
              * <param name="c">A candidate WebDAV credential to check for a matching ID.</param>
              */ c => c.Id == id && c.RevokedAt is null);
-            if (!exists)
+            if (credential is null)
             {
                 return Results.NotFound(new ErrorResponse("not_found", "WebDAV credential not found."));
             }
             db.RevokeWebDavCredential(id, DateTimeOffset.UtcNow);
+            audit.Record(context, AuditActions.AppPasswordRevoked, targetType: "appPassword", targetId: credential.Id, targetName: credential.Username,
+                details: credential.Label);
             return Results.NoContent();
         });
     }
@@ -575,6 +690,78 @@ public static class AdminEndpoints
     private static int CountAdmins(KeePortDb db) => db.ListUsers().Count(/* Includes only enabled users with the admin role.
      * <param name="u">A stored account whose role and enabled state are checked.</param>
      */ u => u.Role == UserRole.Admin && !u.Disabled);
+
+    /// <summary>Reads the audit log filters from the query string.</summary>
+    /// <param name="query">The query parameters actor, action, category, from, to, failedOnly and search.</param>
+    /// <param name="filter">The filter that was read.</param>
+    /// <returns>An error result for an invalid date, otherwise null.</returns>
+    private static IResult? ReadAuditFilter(IQueryCollection query, out AuditFilter filter)
+    {
+        filter = new AuditFilter();
+        DateTimeOffset? from = null, to = null;
+        foreach (var (key, target) in new[] { ("from", 0), ("to", 1) })
+        {
+            var text = query[key].FirstOrDefault();
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                continue;
+            }
+            if (!DateTimeOffset.TryParse(text, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.AssumeUniversal, out var value))
+            {
+                return BadRequest("invalid_date", $"'{key}' must be a date and time such as 2026-11-26T00:00:00+01:00.");
+            }
+            if (target == 0) from = value; else to = value;
+        }
+        filter = new AuditFilter(
+            query["actor"].FirstOrDefault(),
+            query["action"].FirstOrDefault(),
+            query["category"].FirstOrDefault(),
+            from,
+            to,
+            string.Equals(query["failedOnly"].FirstOrDefault(), "true", StringComparison.OrdinalIgnoreCase),
+            query["search"].FirstOrDefault());
+        return null;
+    }
+
+    /// <summary>Reads a whole number from the query string, or a default when it is missing or invalid.</summary>
+    /// <param name="query">The query parameters.</param>
+    /// <param name="key">The parameter name.</param>
+    /// <param name="fallback">The value to use when the parameter is missing or invalid.</param>
+    private static int ReadInt(IQueryCollection query, string key, int fallback)
+        => int.TryParse(query[key].FirstOrDefault(), System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var value) ? value : fallback;
+
+    /// <summary>Describes how the permissions of a vault changed, e.g. "anna: none → read-write; ben: read → none".</summary>
+    /// <param name="before">The permissions before the change.</param>
+    /// <param name="after">The new permissions.</param>
+    /// <param name="names">Usernames of the accounts in <paramref name="after"/>.</param>
+    private static string DescribePermissionChanges(
+        IReadOnlyList<VaultPermissionRecord> before,
+        IReadOnlyList<(string UserId, VaultPermission Permission)> after,
+        IReadOnlyDictionary<string, string> names)
+    {
+        // Names a permission the way the admin console shows it.
+        static string Label(VaultPermission? permission) => permission switch
+        {
+            VaultPermission.Read => "read",
+            VaultPermission.ReadWrite => "read-write",
+            _ => "none"
+        };
+
+        var old = before.ToDictionary(/* Account. */ p => p.UserId, /* Grant. */ p => (Permission: (VaultPermission?)p.Permission, Name: p.Username ?? p.UserId));
+        var current = after.ToDictionary(/* Account. */ p => p.UserId, /* Grant. */ p => (VaultPermission?)p.Permission);
+        var changes = new List<string>();
+        foreach (var userId in old.Keys.Union(current.Keys).OrderBy(/* Stable order. */ id => names.GetValueOrDefault(id) ?? old.GetValueOrDefault(id).Name, StringComparer.OrdinalIgnoreCase))
+        {
+            var from = old.TryGetValue(userId, out var o) ? o.Permission : null;
+            var to = current.GetValueOrDefault(userId);
+            if (from != to)
+            {
+                var name = names.GetValueOrDefault(userId) ?? o.Name ?? userId;
+                changes.Add($"{name}: {Label(from)} → {Label(to)}");
+            }
+        }
+        return string.Join("; ", changes);
+    }
 
     /// <summary>Builds a structured HTTP 400 response with a KeePort error code.</summary>
     /// <param name="code">The stable error code clients can use to identify the failure.</param>

@@ -5,15 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.15.1] - 2026-11-26
+## [0.16.0] - 2026-11-26
 
 ### Added
 
+- **Audit log** in the admin console under **Logs → Audit log**: who signed in, and who changed users, vaults, permissions, WebDAV app passwords and settings, and when. Every event has an action tag such as `LoginFailed` or `VaultPermissionsChanged`, shown as a coloured badge (failed actions in red); a click on a badge filters by it. Headline counts (all entries, last 24 hours, last 7 days, failed sign-ins in 24 hours), filters for user, action, area, date range, failed actions and free text, paging on the server, and CSV export of the filtered entries.
+- Every saved vault revision is logged, from the web vault or a WebDAV app password, as are conflict copies, uploads, downloads, renames, deletions and restores of vaults, and permission changes with before and after (e.g. "anna: none → read-write").
+- **Settings → Audit log**: how many days entries are kept (default 365, at most 50,000 entries).
+- **Recent sign-ins** in the web vault's account settings: the last 20 successful and failed sign-in attempts on your own account, with browser and IP address.
+- `GET /api/admin/logs/audit`, `GET /api/admin/logs/audit.csv`, `GET`/`PUT /api/admin/settings/audit` and `GET /api/auth/sign-ins`.
 - DEPLOYMENT.md explains why devices in the home Wi-Fi show your own public IP in the WebDAV log (NAT reflection) and how local DNS fixes it, with a new troubleshooting entry.
 
 ### Changed
 
+- **Logs** in the admin sidebar opens the audit log first; the WebDAV logs are the second entry below it.
 - The screenshots in the README show the new violet look of 0.15.0.
+
+### Security
+
+- The CSV export protects against formula injection: cells starting with `=`, `+`, `-` or `@` (e.g. a username typed at a failed sign-in) get a leading apostrophe so spreadsheet programs do not run them.
 
 ## [0.15.0] - 2026-11-26
 
@@ -384,7 +394,7 @@ First beta release.
 - Login and setup share a configurable per-IP rate limit; session checks and sign-out are exempt. WebDAV has a separate configurable limit applied before authentication.
 - Admin accounts can only sign in to the Admin console; Vault and WebDAV require a separate user account. Admin sessions are scoped to the Admin API, so existing admins need to sign in again after updating.
 
-[0.15.1]: https://github.com/madcoda9000/KeePort/compare/v0.15.0...v0.15.1
+[0.16.0]: https://github.com/madcoda9000/KeePort/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/madcoda9000/KeePort/compare/v0.14.3...v0.15.0
 [0.14.3]: https://github.com/madcoda9000/KeePort/compare/v0.14.2...v0.14.3
 [0.14.2]: https://github.com/madcoda9000/KeePort/compare/v0.14.1...v0.14.2

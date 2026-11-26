@@ -4,7 +4,7 @@ using Microsoft.Data.Sqlite;
 
 namespace KeePort.Api.Data;
 
-public sealed class KeePortDb : IDisposable
+public sealed partial class KeePortDb : IDisposable
 {
     private readonly string _connectionString;
 
@@ -137,6 +137,26 @@ public sealed class KeePortDb : IDisposable
                 destination TEXT NULL,
                 overwrite TEXT NULL
             );
+
+            CREATE TABLE IF NOT EXISTS audit_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                occurred_at TEXT NOT NULL,
+                category TEXT NOT NULL,
+                action TEXT NOT NULL,
+                success INTEGER NOT NULL,
+                actor_id TEXT NULL,
+                actor_name TEXT NULL,
+                target_type TEXT NULL,
+                target_id TEXT NULL,
+                target_name TEXT NULL,
+                details TEXT NULL,
+                remote_ip TEXT NULL,
+                user_agent TEXT NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_audit_log_occurred ON audit_log(occurred_at);
+            CREATE INDEX IF NOT EXISTS idx_audit_log_action ON audit_log(action);
+            CREATE INDEX IF NOT EXISTS idx_audit_log_actor ON audit_log(actor_id, action);
 
             CREATE TABLE IF NOT EXISTS login_counters (
                 bucket TEXT NOT NULL,

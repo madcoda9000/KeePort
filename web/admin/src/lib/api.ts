@@ -93,6 +93,47 @@ export interface DashboardData {
   errors: string[];
 }
 
+/** The area an audit log entry belongs to. */
+export type AuditCategory = 'auth' | 'account' | 'user' | 'vault' | 'webdav' | 'settings';
+
+/** One audit log entry: who did what, to which object, with which result. */
+export interface AuditEntry {
+  id: number;
+  occurredAt: string;
+  category: AuditCategory;
+  action: string;
+  success: boolean;
+  actorId: string | null;
+  actorName: string | null;
+  targetType: string | null;
+  targetId: string | null;
+  targetName: string | null;
+  details: string | null;
+  remoteIp: string | null;
+  userAgent: string | null;
+}
+
+/** Filters for listing or exporting the audit log; empty values do not filter. */
+export interface AuditFilter {
+  actor?: string;
+  action?: string;
+  category?: string;
+  from?: string;
+  to?: string;
+  failedOnly?: boolean;
+  search?: string;
+}
+
+/** One page of the audit log with headline counts and the known action tags. */
+export interface AuditPage {
+  items: AuditEntry[];
+  total: number;
+  page: number;
+  pageSize: number;
+  stats: { total: number; last24Hours: number; last7Days: number; failedSignIns24Hours: number };
+  actions: { action: string; category: AuditCategory }[];
+}
+
 export interface WebDavRequestLogEntry {
   id: number;
   occurredAt: string;
@@ -406,5 +447,34 @@ export const api = {
    */
   async listWebDavLogs(signal?: AbortSignal) {
     return request<WebDavRequestLogEntry[]>('/api/admin/logs/webdav', { signal });
+  },
+
+  async listAudit(filter: AuditFilter, page: number, pageSize: number, signal?: AbortSignal) {
+    return request<AuditPage>(`/api/admin/logs/audit?${auditQuery(filter, { page: String(page), pageSize: String(pageSize) })}`, { signal });
+  },
+  async downloadAuditCsv(filter: AuditFilter): Promise<Blob> {
+    const response = await fetch(`/api/admin/logs/audit.csv?${auditQuery(filter)}`, { credentials: 'include' });
+    if (!response.ok) throw await parseError(response);
+    return response.blob();
+  },
+  async getAuditSettings(signal?: AbortSignal) {
+    return request<{ retentionDays: number }>('/api/admin/settings/audit', { signal });
+  },
+  async updateAuditSettings(retentionDays: number) {
+    return request<{ retentionDays: number }>('/api/admin/settings/audit', { method: 'PUT', body: JSON.stringify({ retentionDays }) });
   }
 };
+
+/**
+ * Builds the query string of the audit log endpoints, leaving out empty filters.
+ * @param filter - The filters to send.
+ * @param extra - Further parameters such as the page.
+ */
+function auditQuery(filter: AuditFilter, extra: Record<string, string> = {}) {
+  const query = new URLSearchParams(extra);
+  for (const [key, value] of Object.entries(filter)) {
+    if (value === undefined || value === '' || value === false) continue;
+    query.set(key, String(value));
+  }
+  return query.toString();
+}

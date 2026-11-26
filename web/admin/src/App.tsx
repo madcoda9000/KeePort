@@ -15,6 +15,7 @@ import {
   PlusIcon,
   RotateCcwIcon,
   SettingsIcon,
+  ShieldCheckIcon,
   SunIcon,
   UploadIcon,
   UsersIcon
@@ -25,6 +26,8 @@ import { DashboardPanel } from '@/components/dashboard';
 import { DataStorageBanner, DataStoragePanel } from '@/components/data-storage';
 import { RateLimitSettingsPanel } from '@/components/rate-limit-settings';
 import { WebDavLogsPanel } from '@/components/webdav-logs';
+import { AuditLogPanel } from '@/components/audit-log';
+import { AuditSettingsPanel } from '@/components/audit-settings';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
   AlertDialog,
@@ -78,7 +81,7 @@ import { DataTable, type TableColumn } from '@shared/data-table';
 import { matchesTableSearch, timestampSortValue } from '@shared/table-data';
 
 type Message = { kind: 'notice' | 'error'; text: string } | null;
-type Tab = 'dashboard' | 'vaults' | 'users' | 'webdav' | 'settings' | 'webdav-logs';
+type Tab = 'dashboard' | 'vaults' | 'users' | 'webdav' | 'settings' | 'audit-log' | 'webdav-logs';
 type PermissionValue = 'none' | 'read' | 'read-write';
 
 const ADMIN_SECTIONS = {
@@ -103,6 +106,11 @@ const ADMIN_SECTIONS = {
     description: 'Manage server-wide settings for KeePort.',
     icon: SettingsIcon
   },
+  'audit-log': {
+    title: 'Audit log',
+    description: 'Who signed in and who changed users, vaults, permissions and settings, and when.',
+    icon: ShieldCheckIcon
+  },
   'webdav-logs': {
     title: 'WebDAV logs',
     description: 'Review requests from KeePass clients to diagnose sync problems.',
@@ -113,7 +121,7 @@ const ADMIN_SECTIONS = {
 /** Sections listed directly under "Manage" in the navigation. */
 const MANAGE_TABS: readonly Tab[] = ['dashboard', 'vaults', 'users', 'webdav', 'settings'];
 /** Sections listed below the "Logs" navigation entry; the first one opens when "Logs" is selected. */
-const LOG_TABS: readonly Tab[] = ['webdav-logs'];
+const LOG_TABS: readonly Tab[] = ['audit-log', 'webdav-logs'];
 
 const VAULT_COLUMNS: readonly TableColumn<AdminFile>[] = [
   /**
@@ -1141,10 +1149,12 @@ export default function App() {
           {tab === 'settings' && (
             <>
               <RateLimitSettingsPanel />
+              <AuditSettingsPanel />
               <DataStoragePanel storage={storage} />
             </>
           )}
 
+          {tab === 'audit-log' && <AuditLogPanel />}
           {tab === 'webdav-logs' && <WebDavLogsPanel />}
 
           {tab === 'dashboard' && (

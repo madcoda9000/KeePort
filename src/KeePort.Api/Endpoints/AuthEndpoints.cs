@@ -11,6 +11,9 @@ public static class AuthEndpoints
 {
     public const string CredentialRateLimitPolicy = "auth-credentials";
 
+    /// <summary>How many of their own sign-in attempts a user sees in the profile.</summary>
+    public const int SignInListLimit = 20;
+
     /// <summary>Registers separate admin and vault authentication routes, plus setup and user preferences.</summary>
     /// <param name="app">The endpoint route builder on which to register the routes.</param>
     public static void MapAuthEndpoints(this IEndpointRouteBuilder app)
@@ -37,7 +40,8 @@ public static class AuthEndpoints
         // <param name="sessions">The service for managing sessions, cookies, and CSRF tokens.</param>
         // <param name="configuration">The configuration used to select the session cookie security options.</param>
         // <param name="context">The current HTTP request and response context.</param>
-        admin.MapPost("/setup", (SetupRequest request, KeePortDb db, PasswordHasher hasher, SessionService sessions, IConfiguration configuration, HttpContext context) =>
+        // <param name="audit">The audit log that records the completed setup.</param>
+        admin.MapPost("/setup", (SetupRequest request, KeePortDb db, PasswordHasher hasher, SessionService sessions, IConfiguration configuration, HttpContext context, AuditLog audit) =>
         {
             if (db.HasAdmin())
             {
@@ -83,6 +87,7 @@ public static class AuthEndpoints
             };
             db.CreateUser(user);
             db.ClearSetupToken();
+            audit.Record(context, AuditActions.SetupCompleted, actor: user, targetType: "user", targetId: user.Id, targetName: user.Username);
 
             var (_, token, csrfToken) = sessions.CreateSession(user, context);
             sessions.SetSessionCookie(context, token, UserRole.Admin, ConfigFlags.CookieSecure(configuration) || context.Request.IsHttps);
@@ -93,7 +98,8 @@ public static class AuthEndpoints
         // <param name="request">The update containing the auto-lock, website icon, clipboard and breach check preferences.</param>
         // <param name="context">The current HTTP request and response context.</param>
         // <param name="db">The SQLite store for KeePort metadata.</param>
-        vault.MapPut("/settings", (UpdateSettingsRequest request, HttpContext context, KeePortDb db) =>
+        // <param name="audit">The audit log that records which settings changed.</param>
+        vault.MapPut("/settings", (UpdateSettingsRequest request, HttpContext context, KeePortDb db, AuditLog audit) =>
         {
             if (ApiAuth.RequireAuthenticated(context) is { } unauthorized)
             {
@@ -124,6 +130,11 @@ public static class AuthEndpoints
             {
                 db.UpdateUserCheckBreaches(user.Id, checkBreaches);
             }
+            var changed = ChangedSettings(user, request);
+            if (changed.Count > 0)
+            {
+                audit.Record(context, AuditActions.SettingsChanged, targetType: "user", targetId: user.Id, targetName: user.Username, details: string.Join(", ", changed));
+            }
             return Results.Ok(ToDto(db.GetUserById(user.Id)!));
         });
     }
@@ -140,16 +151,25 @@ public static class AuthEndpoints
         // <param name="sessions">The service for managing sessions, cookies, and CSRF tokens.</param>
         // <param name="configuration">The configuration used to select the session cookie security options.</param>
         // <param name="context">The current HTTP request and response context.</param>
-        group.MapPost("/login", (LoginRequest request, KeePortDb db, PasswordHasher hasher, SessionService sessions, IConfiguration configuration, HttpContext context) =>
+        // <param name="audit">The audit log that records the sign-in attempt.</param>
+        group.MapPost("/login", (LoginRequest request, KeePortDb db, PasswordHasher hasher, SessionService sessions, IConfiguration configuration, HttpContext context, AuditLog audit) =>
         {
             var user = db.GetUserByUsername(request.Username ?? string.Empty);
+            var channel = role == UserRole.Admin ? "Admin console" : "Web vault";
             if (user is null || user.Role != role || user.Disabled || !hasher.Verify(request.Password ?? string.Empty, user.PasswordHash))
             {
                 CountLogin(db, context, role, success: false);
+                var reason = user is null ? "Unknown username"
+                    : user.Role != role ? (role == UserRole.Admin ? "Not an administrator account" : "Administrator account")
+                    : user.Disabled ? "Account disabled"
+                    : "Wrong password";
+                audit.Record(context, AuditActions.LoginFailed, success: false, actor: user, actorName: request.Username,
+                    targetType: "session", targetName: channel, details: reason);
                 return Results.Json(new ErrorResponse("invalid_credentials", "Invalid username or password."), statusCode: StatusCodes.Status401Unauthorized);
             }
 
             CountLogin(db, context, role, success: true);
+            audit.Record(context, AuditActions.LoginSucceeded, actor: user, targetType: "session", targetName: channel);
             db.UpdateLastLogin(user.Id, DateTimeOffset.UtcNow);
             var (_, token, csrfToken) = sessions.CreateSession(user, context);
             sessions.SetSessionCookie(context, token, role, ConfigFlags.CookieSecure(configuration) || context.Request.IsHttps);
@@ -161,10 +181,12 @@ public static class AuthEndpoints
         // <param name="db">The SQLite store for KeePort metadata.</param>
         // <param name="sessions">The service for managing sessions, cookies, and CSRF tokens.</param>
         // <param name="configuration">The configuration used to select the session cookie security options.</param>
-        group.MapPost("/logout", (HttpContext context, KeePortDb db, SessionService sessions, IConfiguration configuration) =>
+        // <param name="audit">The audit log that records the sign-out.</param>
+        group.MapPost("/logout", (HttpContext context, KeePortDb db, SessionService sessions, IConfiguration configuration, AuditLog audit) =>
         {
             if (ApiAuth.GetSession(context) is { } session)
             {
+                audit.Record(context, AuditActions.Logout, targetType: "session", targetName: role == UserRole.Admin ? "Admin console" : "Web vault");
                 db.DeleteSessionByTokenHash(session.TokenHash);
             }
             sessions.ClearSessionCookie(context, role, ConfigFlags.CookieSecure(configuration) || context.Request.IsHttps);
@@ -200,7 +222,8 @@ public static class AuthEndpoints
         // <param name="context">The current HTTP request and response context.</param>
         // <param name="db">The SQLite store for KeePort metadata.</param>
         // <param name="hasher">The service for hashing and verifying passwords.</param>
-        group.MapPost("/change-password", (ChangePasswordRequest request, HttpContext context, KeePortDb db, PasswordHasher hasher) =>
+        // <param name="audit">The audit log that records the change or the rejected attempt.</param>
+        group.MapPost("/change-password", (ChangePasswordRequest request, HttpContext context, KeePortDb db, PasswordHasher hasher, AuditLog audit) =>
         {
             if (ApiAuth.RequireAuthenticated(context) is { } unauthorized)
             {
@@ -209,6 +232,7 @@ public static class AuthEndpoints
             var user = ApiAuth.GetUser(context)!;
             if (string.IsNullOrEmpty(request.CurrentPassword) || !hasher.Verify(request.CurrentPassword, user.PasswordHash))
             {
+                audit.Record(context, AuditActions.PasswordChanged, success: false, targetType: "user", targetId: user.Id, targetName: user.Username, details: "Current password incorrect");
                 return Results.Json(new ErrorResponse("invalid_password", "Current password is incorrect."), statusCode: StatusCodes.Status403Forbidden);
             }
             var passwordError = PasswordPolicy.Validate(request.NewPassword, user.Username);
@@ -217,17 +241,34 @@ public static class AuthEndpoints
                 return Results.Json(new ErrorResponse("invalid_password", passwordError), statusCode: StatusCodes.Status400BadRequest);
             }
             db.UpdateUserPassword(user.Id, hasher.Hash(request.NewPassword));
+            audit.Record(context, AuditActions.PasswordChanged, targetType: "user", targetId: user.Id, targetName: user.Username);
             return Results.NoContent();
         });
 
         group.MapPut("/email", UpdateEmail);
+
+        // Lists the latest sign-in attempts on the signed-in account, so its owner can spot sign-ins that were not theirs.
+        // <param name="context">The current HTTP request and response context.</param>
+        // <param name="db">The SQLite store for KeePort metadata.</param>
+        group.MapGet("/sign-ins", (HttpContext context, KeePortDb db) =>
+        {
+            if (ApiAuth.RequireAuthenticated(context) is { } unauthorized)
+            {
+                return unauthorized;
+            }
+            var user = ApiAuth.GetUser(context)!;
+            var signIns = db.ListSignIns(user.Id, SignInListLimit).Select(/* Converts one audit entry. */ entry =>
+                new SignInDto(entry.OccurredAt, entry.Success, entry.TargetName, entry.RemoteIp, entry.UserAgent));
+            return Results.Ok(signIns);
+        });
     }
 
     /// <summary>Validates and changes the authenticated account's contact email.</summary>
     /// <param name="request">The update containing the replacement contact email.</param>
     /// <param name="context">The current HTTP request and response context.</param>
     /// <param name="db">The SQLite store for KeePort metadata.</param>
-    private static IResult UpdateEmail(UpdateEmailRequest request, HttpContext context, KeePortDb db)
+    /// <param name="audit">The audit log that records the change.</param>
+    private static IResult UpdateEmail(UpdateEmailRequest request, HttpContext context, KeePortDb db, AuditLog audit)
     {
         if (ApiAuth.RequireAuthenticated(context) is { } unauthorized)
         {
@@ -240,7 +281,37 @@ public static class AuthEndpoints
         }
         var user = ApiAuth.GetUser(context)!;
         db.UpdateUserEmail(user.Id, email);
+        if (!string.Equals(user.Email, email, StringComparison.OrdinalIgnoreCase))
+        {
+            audit.Record(context, AuditActions.EmailChanged, targetType: "user", targetId: user.Id, targetName: user.Username,
+                details: $"{user.Email ?? "none"} → {email}");
+        }
         return Results.Ok(ToDto(db.GetUserById(user.Id)!));
+    }
+
+    /// <summary>Names the preferences a settings update actually changes, for the audit log.</summary>
+    /// <param name="user">The account before the update.</param>
+    /// <param name="request">The requested changes.</param>
+    private static List<string> ChangedSettings(UserRecord user, UpdateSettingsRequest request)
+    {
+        var changed = new List<string>();
+        if (request.AutoLockMinutes is { } minutes && minutes != user.AutoLockMinutes)
+        {
+            changed.Add($"Auto-lock {user.AutoLockMinutes?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "default"} → {minutes} min");
+        }
+        if (request.ShowFavicons is { } favicons && favicons != user.ShowFavicons)
+        {
+            changed.Add($"Website icons {(favicons ? "on" : "off")}");
+        }
+        if (request.ClipboardClearSeconds is { } seconds && seconds != user.ClipboardClearSeconds)
+        {
+            changed.Add($"Clipboard clearing {seconds} s");
+        }
+        if (request.CheckBreaches is { } breaches && breaches != user.CheckBreaches)
+        {
+            changed.Add($"Breach check {(breaches ? "on" : "off")}");
+        }
+        return changed;
     }
 
     /// <summary>Converts a stored user into its public API representation without the password hash.</summary>

@@ -1,3 +1,12 @@
+/** One sign-in attempt on the user's own account. */
+export interface SignIn {
+  occurredAt: string;
+  success: boolean;
+  channel: string | null;
+  remoteIp: string | null;
+  userAgent: string | null;
+}
+
 export interface User {
   id: string;
   username: string;
@@ -153,6 +162,13 @@ export const api = {
    * Submits a login password change using the current password.
    * @param payload - The current login password and the requested replacement.
    */
+  /**
+   * Lists the latest sign-in attempts on the signed-in account, newest first.
+   * @param signal - Aborts the request when the list is no longer shown.
+   */
+  async listSignIns(signal?: AbortSignal) {
+    return request<SignIn[]>('/api/auth/sign-ins', { signal });
+  },
   async changePassword(payload: { currentPassword: string; newPassword: string }) {
     await request<void>('/api/auth/change-password', { method: 'POST', body: JSON.stringify(payload) });
   },

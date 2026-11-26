@@ -770,6 +770,129 @@ public class KeePortApiTests : IDisposable
         }
     }
 
+    /// <summary>
+    /// Checks that sign-ins, admin changes and vault saves land in the audit log with their action tags, that the
+    /// filters and counts work, that only admins can read it, and that no password ends up in it.
+    /// </summary>
+    [Fact]
+    public async Task Audit_Log_Records_Actions_With_Tags_And_Filters()
+    {
+        var adminCsrf = await SetupAdminAsync(_admin);
+        var (aliceId, _) = await CreateUserAsync(_admin, adminCsrf, "alice", "user");
+        var vault = await UploadVaultAsync(_admin, adminCsrf, "family.kdbx", "v1");
+        await SetPermissionsAsync(_admin, adminCsrf, vault.Id, aliceId, "read-write");
+        var webDav = await CreateWebDavCredentialAsync(_admin, adminCsrf, aliceId);
+
+        using (var unknown = await _user.PostAsJsonAsync("/api/auth/login", new { username = "mallory", password = "Guess passphrase 1" }))
+        {
+            Assert.Equal(HttpStatusCode.Unauthorized, unknown.StatusCode);
+        }
+        using (var wrong = await _user.PostAsJsonAsync("/api/auth/login", new { username = "alice", password = "Wrong passphrase 1" }))
+        {
+            Assert.Equal(HttpStatusCode.Unauthorized, wrong.StatusCode);
+        }
+        var (aliceCsrf, _) = await LoginAsync(_user, "alice", "User passphrase 123");
+
+        using var restSave = await SendAsync(_user, HttpMethod.Put, $"/api/vault/files/{vault.Id}/content", bytes: KdbxBytes("v2"), csrf: aliceCsrf, etag: vault.ETag);
+        restSave.EnsureSuccessStatusCode();
+        var restETag = restSave.Headers.ETag!.Tag;
+        using var webDavSave = await SendAsync(_user, HttpMethod.Put, "/webdav/family.kdbx", bytes: KdbxBytes("v3"), basic: webDav.BasicAuth, etag: restETag);
+        Assert.True(webDavSave.IsSuccessStatusCode);
+        using var stale = await SendAsync(_user, HttpMethod.Put, $"/api/vault/files/{vault.Id}/content", bytes: KdbxBytes("v4"), csrf: aliceCsrf, etag: restETag);
+        Assert.Equal(HttpStatusCode.Conflict, stale.StatusCode);
+
+        var all = await GetJsonAsync(_admin, "/api/admin/logs/audit?pageSize=200");
+        var actions = all.GetProperty("items").EnumerateArray().Select(/* Tag. */ e => e.GetProperty("action").GetString()).ToList();
+        foreach (var expected in new[] { "SetupCompleted", "UserCreated", "VaultUploaded", "VaultPermissionsChanged", "AppPasswordCreated", "LoginFailed", "LoginSucceeded", "VaultSaved", "VaultConflictCopy" })
+        {
+            Assert.Contains(expected, actions);
+        }
+        Assert.DoesNotContain("User passphrase 123", all.GetRawText());
+        Assert.DoesNotContain("Wrong passphrase 1", all.GetRawText());
+        Assert.DoesNotContain(webDav.BasicAuth, all.GetRawText());
+
+        var permissions = all.GetProperty("items").EnumerateArray().Single(/* Grant change. */ e => e.GetProperty("action").GetString() == "VaultPermissionsChanged");
+        Assert.Equal("alice: none → read-write", permissions.GetProperty("details").GetString());
+        Assert.Equal("family.kdbx", permissions.GetProperty("targetName").GetString());
+        Assert.Equal("admin", permissions.GetProperty("actorName").GetString());
+
+        var saves = await GetJsonAsync(_admin, "/api/admin/logs/audit?action=VaultSaved");
+        Assert.Equal(2, saves.GetProperty("total").GetInt64());
+        var saveDetails = saves.GetProperty("items").EnumerateArray().Select(/* Details. */ e => e.GetProperty("details").GetString()).ToList();
+        Assert.Contains("Web vault · revision 2", saveDetails);
+        Assert.Contains(saveDetails, /* WebDAV save. */ d => d!.StartsWith("WebDAV · ", StringComparison.Ordinal) && d.EndsWith("revision 3", StringComparison.Ordinal));
+
+        var failed = await GetJsonAsync(_admin, "/api/admin/logs/audit?failedOnly=true");
+        Assert.Equal(3, failed.GetProperty("total").GetInt64());
+        Assert.Equal(2, failed.GetProperty("stats").GetProperty("failedSignIns24Hours").GetInt64());
+        var unknownLogin = failed.GetProperty("items").EnumerateArray().Single(/* Unknown name. */ e => e.GetProperty("actorName").GetString() == "mallory");
+        Assert.Equal("Unknown username", unknownLogin.GetProperty("details").GetString());
+        Assert.Equal(JsonValueKind.Null, unknownLogin.GetProperty("actorId").ValueKind);
+
+        var byAlice = await GetJsonAsync(_admin, "/api/admin/logs/audit?actor=ali&category=auth");
+        Assert.All(byAlice.GetProperty("items").EnumerateArray(), /* Only alice. */ e => Assert.Equal("alice", e.GetProperty("actorName").GetString()));
+        Assert.Equal(2, byAlice.GetProperty("total").GetInt64());
+
+        var search = await GetJsonAsync(_admin, "/api/admin/logs/audit?search=family");
+        Assert.True(search.GetProperty("total").GetInt64() >= 4);
+        var page2 = await GetJsonAsync(_admin, "/api/admin/logs/audit?pageSize=10&page=2");
+        Assert.Equal(2, page2.GetProperty("page").GetInt32());
+        Assert.Contains(all.GetProperty("actions").EnumerateArray(), /* Known tag. */ a => a.GetProperty("action").GetString() == "VaultDownloaded");
+
+        Assert.Equal(HttpStatusCode.Unauthorized, (await _user.GetAsync("/api/admin/logs/audit")).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await _admin.GetAsync("/api/admin/logs/audit?from=yesterday")).StatusCode);
+    }
+
+    /// <summary>
+    /// Checks the user's own sign-in list, the CSV export with formula protection, and the retention setting that
+    /// removes older entries.
+    /// </summary>
+    [Fact]
+    public async Task Audit_Log_Sign_In_List_Csv_And_Retention()
+    {
+        var adminCsrf = await SetupAdminAsync(_admin);
+        await CreateUserAsync(_admin, adminCsrf, "alice", "user");
+        using (var wrong = await _user.PostAsJsonAsync("/api/auth/login", new { username = "alice", password = "Wrong passphrase 1" }))
+        {
+            Assert.Equal(HttpStatusCode.Unauthorized, wrong.StatusCode);
+        }
+        using (var formula = await _user.PostAsJsonAsync("/api/auth/login", new { username = "=HYPERLINK(\"http://x\")", password = "Guess passphrase 1" }))
+        {
+            Assert.Equal(HttpStatusCode.Unauthorized, formula.StatusCode);
+        }
+        await LoginAsync(_user, "alice", "User passphrase 123");
+
+        var signIns = (await GetJsonAsync(_user, "/api/auth/sign-ins")).EnumerateArray().ToList();
+        Assert.Equal(2, signIns.Count);
+        Assert.True(signIns[0].GetProperty("success").GetBoolean());
+        Assert.False(signIns[1].GetProperty("success").GetBoolean());
+        Assert.Equal("Web vault", signIns[0].GetProperty("channel").GetString());
+
+        using var csv = await _admin.GetAsync("/api/admin/logs/audit.csv?category=auth");
+        csv.EnsureSuccessStatusCode();
+        Assert.Equal("text/csv", csv.Content.Headers.ContentType!.MediaType);
+        var text = await csv.Content.ReadAsStringAsync();
+        Assert.StartsWith("Time (UTC),Action,Category,Result,User", text.TrimStart('﻿'));
+        Assert.Contains("\"'=HYPERLINK(\"\"http://x\"\")\"", text);
+        Assert.DoesNotContain("UserCreated", text);
+
+        using (var invalid = await SendAsync(_admin, HttpMethod.Put, "/api/admin/settings/audit", json: new { retentionDays = 0 }, csrf: adminCsrf))
+        {
+            Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+        }
+        Assert.Equal(365, (await GetJsonAsync(_admin, "/api/admin/settings/audit")).GetProperty("retentionDays").GetInt32());
+        var db = _factory.Services.GetRequiredService<KeePortDb>();
+        db.AddAuditEntry(new AuditEntryDto(0, DateTimeOffset.UtcNow.AddDays(-40), "auth", "Logout", true, null, "old", null, null, null, null, null, null), 365);
+        Assert.Equal(1, (await GetJsonAsync(_admin, "/api/admin/logs/audit?actor=old")).GetProperty("total").GetInt64());
+        using (var shorter = await SendAsync(_admin, HttpMethod.Put, "/api/admin/settings/audit", json: new { retentionDays = 30 }, csrf: adminCsrf))
+        {
+            shorter.EnsureSuccessStatusCode();
+        }
+        Assert.Equal(0, (await GetJsonAsync(_admin, "/api/admin/logs/audit?actor=old")).GetProperty("total").GetInt64());
+        var changed = await GetJsonAsync(_admin, "/api/admin/logs/audit?action=AuditRetentionChanged");
+        Assert.Equal("365 → 30 days", changed.GetProperty("items")[0].GetProperty("details").GetString());
+    }
+
     /// <summary>Completes first-run setup and returns the administrator's CSRF token.</summary>
     /// <param name="client">The test client connected to the Admin API.</param>
     private async Task<string> SetupAdminAsync(HttpClient client)
