@@ -168,7 +168,7 @@ function ImportForm({
 
   const read = useMemo(/** Reads the items again when the user assigns the columns of a generic file. */ () => {
     if (!parsed) return { items: [], problems: [] };
-    return parsed.table ? readGeneric(parsed.table.rows, mapping) : parsed;
+    return parsed.table ? readGeneric(parsed.table.rows, mapping, parsed.table.lines) : parsed;
   }, [parsed, mapping]);
   const duplicates = useMemo(/** Finds the items that already exist in the vault. */ () => findDuplicates(read.items, existing), [read.items, existing]);
   const rows = useMemo(/** Builds the preview rows. */ () => read.items.map(/**

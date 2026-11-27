@@ -5,6 +5,8 @@ import { translate } from '../../../../shared/i18n/core.ts';
 export interface CsvTable {
   delimiter: ',' | ';' | '\t';
   rows: string[][];
+  /** The line of the file each row starts on, counting from 1; a cell with line breaks makes a row span several lines. */
+  lines: number[];
 }
 
 /**
@@ -34,6 +36,9 @@ export function parseCsv(text: string): CsvTable {
   const source = text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
   const delimiter = detectDelimiter(source);
   const rows: string[][] = [];
+  const lines: number[] = [];
+  let line = 1;
+  let rowLine = 1;
   let row: string[] = [];
   let cell = '';
   let quoted = false;
@@ -50,11 +55,16 @@ export function parseCsv(text: string): CsvTable {
     if (row.some(/**
      * Detects a cell with content.
      * @param value - One cell of the row.
-     */ (value) => value !== '')) rows.push(row);
+     */ (value) => value !== '')) {
+      rows.push(row);
+      lines.push(rowLine);
+    }
     row = [];
+    rowLine = line;
   };
   for (let index = 0; index < source.length; index += 1) {
     const char = source[index];
+    if (char === '\n' || (char === '\r' && source[index + 1] !== '\n')) line += 1;
     if (quoted) {
       if (char !== '"') cell += char;
       else if (source[index + 1] === '"') {
@@ -67,7 +77,10 @@ export function parseCsv(text: string): CsvTable {
     } else if (char === delimiter) {
       endCell();
     } else if (char === '\r' || char === '\n') {
-      if (char === '\r' && source[index + 1] === '\n') index += 1;
+      if (char === '\r' && source[index + 1] === '\n') {
+        index += 1;
+        line += 1;
+      }
       endRow();
     } else {
       cell += char;
@@ -76,7 +89,7 @@ export function parseCsv(text: string): CsvTable {
   }
   if (quoted) throw new Error(translate(messages, 'unclosedQuote'));
   if (cell !== '' || row.length) endRow();
-  return { delimiter, rows };
+  return { delimiter, rows, lines };
 }
 
 /**

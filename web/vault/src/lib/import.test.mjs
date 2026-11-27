@@ -36,9 +36,12 @@ function titles(items) {
 
 test('the CSV parser handles quotes, line breaks, separators and a byte order mark', () => {
   const text = '﻿a,b,c\r\n"x, y","multi\nline","say ""hi"""\n\n1,,3';
-  const { delimiter, rows } = parseCsv(text);
+  const { delimiter, rows, lines } = parseCsv(text);
   assert.equal(delimiter, ',');
   assert.deepEqual(rows, [['a', 'b', 'c'], ['x, y', 'multi\nline', 'say "hi"'], ['1', '', '3']]);
+  // The second row spans lines 2 and 3, line 4 is empty, so the third row starts on line 5.
+  assert.deepEqual(lines, [1, 2, 5]);
+  assert.deepEqual(parseCsv('a\r\n"b\r\nc"\r\nd\re').lines, [1, 2, 4, 5]);
   assert.deepEqual(parseCsv('name;url\r\nA;"b;c"\r\n').rows, [['name', 'url'], ['A', 'b;c']]);
   assert.deepEqual(parseCsv('name\turl\nA\tB').rows, [['name', 'url'], ['A', 'B']]);
   assert.throws(() => parseCsv('a,b\n"open,1'), /not closed/);
@@ -65,7 +68,8 @@ test('Bitwarden CSV: logins and notes with folders, TOTP, extra addresses and fi
   assert.equal(github.url, 'https://github.com');
   assert.equal(github.otp, 'JBSWY3DPEHPK3PXP');
   assert.deepEqual(github.fields.map(/** @param field - One field. */ (field) => `${field.name}=${field.value}`), ['URL 2=https://gist.github.com', 'Recovery=abc', 'PIN=1234']);
-  assert.deepEqual(parsed.problems, [{ line: 4, label: 'Visa', reason: 'unsupportedType', detail: 'card' }]);
+  // The fields cell of GitHub spans two lines, so the card starts on line 5 of the file.
+  assert.deepEqual(parsed.problems, [{ line: 5, label: 'Visa', reason: 'unsupportedType', detail: 'card' }]);
 });
 
 test('Bitwarden JSON: folders, cards, hidden fields, and refusal of encrypted exports', () => {
@@ -127,6 +131,10 @@ test('other CSV files get guessed columns that the user can change', () => {
   assert.equal(parsed.items[0].title, 'example.org');
   assert.equal(parsed.items[0].password, '');
   assert.deepEqual(parsed.problems, [{ line: 3, label: '', reason: 'noTitle' }]);
+  const multiline = parseImport('Title;Notes\n"A";"one\ntwo"\n;only notes\n');
+  assert.equal(multiline.format, 'generic');
+  assert.deepEqual(multiline.problems.map(/** @param problem - One problem. */ (problem) => problem.line), [4]);
+  assert.equal(readGeneric(multiline.table.rows, ['title', 'notes'], multiline.table.lines).problems[0].line, 4);
   const remapped = readGeneric(parsed.table.rows, ['url', 'username', 'password', 'notes']);
   assert.equal(remapped.items[0].password, 'pw');
   assert.equal(remapped.items[0].notes, 'hello');

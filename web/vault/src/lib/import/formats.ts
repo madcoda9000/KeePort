@@ -20,7 +20,7 @@ export type ImportFormat =
 
 /** An entry read from the file, before it is added to the vault. */
 export interface ImportItem {
-  /** The line of the CSV file (counting the header as line 1) or the position in a JSON file, for messages. */
+  /** The line of the CSV file the record starts on (the header is line 1) or the position in a JSON file, for messages. */
   line: number;
   title: string;
   username: string;
@@ -58,7 +58,7 @@ export interface ParsedImport {
   items: ImportItem[];
   problems: ImportProblem[];
   /** For a generic CSV file: the header and the data rows, so the user can assign the columns again. */
-  table?: { headers: string[]; rows: string[][]; mapping: ColumnTarget[] };
+  table?: { headers: string[]; rows: string[][]; lines: number[]; mapping: ColumnTarget[] };
 }
 
 /** The values of one CSV row by lower-case header name. */
@@ -417,16 +417,21 @@ export function guessMapping(headers: readonly string[]): ColumnTarget[] {
  * Reads the rows of an unknown CSV file with the columns assigned by the user.
  * @param rows - The data rows without the header.
  * @param mapping - The target of each column.
+ * @param lines - The line of the file each data row starts on; without it, rows are counted from line 2.
  */
-export function readGeneric(rows: readonly string[][], mapping: readonly ColumnTarget[]): Pick<ParsedImport, 'items' | 'problems'> {
+export function readGeneric(
+  rows: readonly string[][],
+  mapping: readonly ColumnTarget[],
+  lines: readonly number[] = []
+): Pick<ParsedImport, 'items' | 'problems'> {
   const items: ImportItem[] = [];
   const problems: ImportProblem[] = [];
   rows.forEach(/**
    * Reads one row.
    * @param row - The cells.
-   * @param index - The row's position; the header is line 1.
+   * @param index - The row's position among the data rows.
    */ (row, index) => {
-    const item = emptyItem(index + 2);
+    const item = emptyItem(lines[index] ?? index + 2);
     mapping.forEach(/**
      * Copies one assigned cell into the item.
      * @param target - What the column is used for.
@@ -450,8 +455,9 @@ export function readGeneric(rows: readonly string[][], mapping: readonly ColumnT
  * @param text - The file content.
  */
 export function parseCsvImport(text: string): ParsedImport {
-  const { rows } = parseCsv(text);
+  const { rows, lines } = parseCsv(text);
   const [header, ...data] = rows;
+  const dataLines = lines.slice(1);
   if (!header || !data.length) throw new Error(translate(messages, 'noEntries'));
   if (data.length > MAX_IMPORT_ITEMS) throw new Error(translate(messages, 'tooMany', { max: MAX_IMPORT_ITEMS }));
   const raw = header.map(/**
@@ -468,7 +474,7 @@ export function parseCsvImport(text: string): ParsedImport {
    */ (candidate) => candidate.detect(lower, raw));
   if (!format) {
     const mapping = guessMapping(raw);
-    return { format: 'generic', ...readGeneric(data, mapping), table: { headers: raw, rows: data, mapping } };
+    return { format: 'generic', ...readGeneric(data, mapping, dataLines), table: { headers: raw, rows: data, lines: dataLines, mapping } };
   }
   const columns = new Map<string, number>();
   raw.forEach(/**
@@ -483,7 +489,7 @@ export function parseCsvImport(text: string): ParsedImport {
   data.forEach(/**
    * Reads one row with the layout.
    * @param row - The cells.
-   * @param index - The row's position; the header is line 1.
+   * @param index - The row's position among the data rows.
    */ (row, index) => {
     const result = format.read(/**
      * Returns a cell by header name.
@@ -491,7 +497,7 @@ export function parseCsvImport(text: string): ParsedImport {
      */ (name) => {
       const column = columns.get(name);
       return column === undefined ? '' : row[column] ?? '';
-    }, index + 2);
+    }, dataLines[index]);
     if ('reason' in result) problems.push(result);
     else items.push(result);
   });

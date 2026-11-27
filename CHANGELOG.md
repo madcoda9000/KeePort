@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.24.1] - 2026-11-27
+
+### Fixed
+
+- Import: records that cannot be imported are now listed with the line of the file they start on. Before, KeePort counted records, so the number was too small when an earlier value (for example a note) spanned several lines.
+
 ## [0.24.0] - 2026-11-27
 
 ### Added
@@ -552,6 +558,7 @@ First beta release.
 - Login and setup share a configurable per-IP rate limit; session checks and sign-out are exempt. WebDAV has a separate configurable limit applied before authentication.
 - Admin accounts can only sign in to the Admin console; Vault and WebDAV require a separate user account. Admin sessions are scoped to the Admin API, so existing admins need to sign in again after updating.
 
+[0.24.1]: https://github.com/madcoda9000/KeePort/compare/v0.24.0...v0.24.1
 [0.24.0]: https://github.com/madcoda9000/KeePort/compare/v0.23.0...v0.24.0
 [0.23.0]: https://github.com/madcoda9000/KeePort/compare/v0.22.0...v0.23.0
 [0.22.0]: https://github.com/madcoda9000/KeePort/compare/v0.21.2...v0.22.0
