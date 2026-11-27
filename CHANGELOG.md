@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.24.0] - 2026-11-27
+
+### Added
+
+- **Import** in the web vault (**Import / Export → Import entries…**, with write permission): add entries from another password manager to the open vault.
+  - Recognized automatically: **Bitwarden** (CSV and unencrypted JSON, including organization exports), **1Password**, **Apple Passwords**, **Chrome, Edge and Brave**, **Firefox**, **KeePassXC** and **Proton Pass**.
+  - **Any other CSV file** (comma, semicolon or tab): the columns are assigned by their headers and can be changed in the dialog.
+  - A **preview** lists folder, title, username, address and status, without passwords. Records that cannot be imported (e.g. without title and address, or a Bitwarden card in CSV) are listed with their line.
+  - Entries go into a new folder "Imported YYYY-MM-DD" or the current folder. The source's folders are kept on request.
+  - **Duplicates** (same address and username as an existing entry) are skipped by default.
+  - TOTP, tags, additional addresses, custom fields, and creation and change dates are taken over. Bitwarden cards, identities and SSH keys become custom fields; hidden values stay protected.
+  - The vault is saved right away. After the import, KeePort reminds you to delete the export file.
+- **Export** in the web vault (**Import / Export → Export entries…**, also with read permission): download the whole vault or the current folder with its subfolders as a CSV file in the KeePassXC layout (Group, Title, Username, Password, URL, Notes, TOTP, Tags, Last Modified, Created), which KeePassXC, Bitwarden and KeePort can import. Recycle bin, templates, custom fields, attachments and history are not included. An option puts an apostrophe before values that a spreadsheet would run as a formula.
+
+### Security
+
+- Import and export run only in the browser after unlocking. The CSV or JSON file is never sent to the server; the server receives the encrypted vault as with every save.
+- The export dialog warns that the file is not encrypted.
+
 ## [0.23.0] - 2026-11-26
 
 ### Added
@@ -533,6 +552,7 @@ First beta release.
 - Login and setup share a configurable per-IP rate limit; session checks and sign-out are exempt. WebDAV has a separate configurable limit applied before authentication.
 - Admin accounts can only sign in to the Admin console; Vault and WebDAV require a separate user account. Admin sessions are scoped to the Admin API, so existing admins need to sign in again after updating.
 
+[0.24.0]: https://github.com/madcoda9000/KeePort/compare/v0.23.0...v0.24.0
 [0.23.0]: https://github.com/madcoda9000/KeePort/compare/v0.22.0...v0.23.0
 [0.22.0]: https://github.com/madcoda9000/KeePort/compare/v0.21.2...v0.22.0
 [0.21.2]: https://github.com/madcoda9000/KeePort/compare/v0.21.1...v0.21.2

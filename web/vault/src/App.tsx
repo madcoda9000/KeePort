@@ -35,6 +35,7 @@ import { cn } from '@/lib/utils';
 import { DEFAULT_EXPIRY_WARNING_DAYS, expiryInMonths, isExpiringSoon } from '@/lib/expiry';
 import { ACCENTS, accentFor, type Accent } from '@shared/accent';
 import {
+  ArrowDownUpIcon,
   ChevronDownIcon,
   ClockIcon,
   HardDriveIcon,
@@ -48,6 +49,8 @@ import {
   EyeIcon,
   EyeOffIcon,
   DatabaseIcon,
+  DownloadIcon,
+  FileUpIcon,
   FolderInputIcon,
   KeyRoundIcon,
   BellIcon,
@@ -74,6 +77,10 @@ import { EntryHistory } from '@/components/entry-history';
 import { EntryIcon } from '@/components/entry-icon';
 import { TagInput } from '@/components/tag-input';
 import { TagsDialog } from '@/components/tags-dialog';
+import { ImportDialog } from '@/components/import-dialog';
+import { ExportDialog } from '@/components/export-dialog';
+import { importItems, type ImportOutcome, type ImportTarget } from './lib/import/apply';
+import type { ImportItem } from './lib/import/formats';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { deleteVersion, requireEntry, restoreVersion } from './lib/history';
 import { hasTag, listTags, setEntryTags } from './lib/tags';
@@ -310,6 +317,7 @@ export default function App() {
   const [folderRequest, setFolderRequest] = useState<FolderNameRequest | null>(null);
   const [folderToDelete, setFolderToDelete] = useState<FolderNode | null>(null);
   const [moving, setMoving] = useState(false);
+  const [transfer, setTransfer] = useState<'import' | 'export' | null>(null);
   const [showAllFields, setShowAllFields] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [dateView, setDateView] = useState<'expired' | 'expiring' | null>(null);
@@ -456,14 +464,12 @@ export default function App() {
    * Keeps regular entries expiring soon.
    * @param entry - One entry of the vault.
    */ (entry) => !entry.hidden && isExpiringSoon(entry, expiryWarningDays)).length, [entries, expiryWarningDays]);
-  const vaultTags = useMemo(/** Lists the tags of regular entries with their counts. */ () => listTags(entries.filter(/**
+  const regularEntries = useMemo(/** Keeps the entries that are neither templates nor in the recycle bin. */ () => entries.filter(/**
    * Keeps regular entries.
    * @param entry - One entry of the vault.
-   */ (entry) => !entry.hidden)), [entries]);
-  const visibleCount = useMemo(/** Counts the regular entries. */ () => entries.filter(/**
-   * Counts entries that are neither templates nor in the recycle bin.
-   * @param entry - One entry of the vault.
-   */ (entry) => !entry.hidden).length, [entries]);
+   */ (entry) => !entry.hidden), [entries]);
+  const vaultTags = useMemo(/** Lists the tags of regular entries with their counts. */ () => listTags(regularEntries), [regularEntries]);
+  const visibleCount = regularEntries.length;
   const selectedFolderIds = useMemo(/** Collects the folders that contain the selected entries. */ () => new Set(entries.filter(/**
    * Keeps the selected entries.
    * @param entry - One entry of the vault.
@@ -529,6 +535,7 @@ export default function App() {
     }
     clearVaultCredentials(db);
     resetFolderState();
+    setTransfer(null);
     setDb(null);
     setEntries([]);
     setSelectedEntry(null);
@@ -1090,6 +1097,34 @@ export default function App() {
       return tMsg('moved', { count: moved, folder: target?.name ?? tMsg('folderFallback') });
     });
     if (!ok) setMoving(false);
+  }
+
+  /**
+   * Adds imported entries to the vault, saves it and shows the folder they went into. On failure the dialog closes,
+   * so the error message of the save is visible.
+   * @param items - The entries to add.
+   * @param target - A new folder or an existing folder.
+   * @param keepFolders - Whether the source's folders are recreated.
+   */
+  async function importEntries(items: ImportItem[], target: ImportTarget, keepFolders: boolean): Promise<ImportOutcome | null> {
+    let outcome: ImportOutcome | null = null;
+    const ok = await runVaultChange(/**
+     * Adds the entries.
+     * @param vault - The vault to change.
+     */ (vault) => importItems(vault, items, target, keepFolders), /**
+     * Selects the folder of the imported entries and describes the import.
+     * @param result - What the import changed.
+     */ (result) => {
+      outcome = result;
+      setFolderId(result.folderId);
+      setDateView(null);
+      setTagView(null);
+      setSecurityView(false);
+      setSelection(new Set());
+      return tMsg('imported', { count: result.imported });
+    });
+    if (!ok) setTransfer(null);
+    return outcome;
   }
 
   /**
@@ -2118,6 +2153,23 @@ export default function App() {
                           <Trash2Icon /> {t('emptyBin')}
                         </Button>
                       )}
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="outline" size="sm" disabled={busy !== null}>
+                            <ArrowDownUpIcon /> {t('transfer')} <ChevronDownIcon />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-52">
+                          {canWrite && (
+                            <DropdownMenuItem onSelect={/** Opens the import dialog. */ () => setTransfer('import')}>
+                              <FileUpIcon /> {t('importEntries')}
+                            </DropdownMenuItem>
+                          )}
+                          <DropdownMenuItem onSelect={/** Opens the export dialog. */ () => setTransfer('export')}>
+                            <DownloadIcon /> {t('exportEntries')}
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                       <Button variant="outline" size="sm" disabled={busy === 'save' || busy === 'reload'} onClick={/** Locks the vault and notifies the user. */ () => lockVault(true)}>
                         <LockKeyholeIcon /> {t('lockVault')}
                       </Button>
@@ -2815,6 +2867,29 @@ export default function App() {
                  * @param folder - The empty folder to delete.
                  */ (folder) => void confirmDeleteFolder(folder)}
                 onClose={/** Closes the delete confirmation. */ () => setFolderToDelete(null)}
+              />
+              <ImportDialog
+                open={transfer === 'import' && canWrite}
+                existing={regularEntries}
+                currentFolder={currentFolder}
+                busy={busy === 'save'}
+                onImport={importEntries}
+                onClose={/** Closes the import dialog. */ () => setTransfer(null)}
+              />
+              <ExportDialog
+                open={transfer === 'export'}
+                db={db}
+                vaultName={selectedFile.name}
+                currentFolder={currentFolder}
+                onExported={/**
+                 * Closes the dialog and reports the download.
+                 * @param count - The number of exported entries.
+                 * @param file - The suggested file name.
+                 */ (count, file) => {
+                  setTransfer(null);
+                  setMessage({ kind: 'notice', text: tMsg('exported', { count, file }) });
+                }}
+                onClose={/** Closes the export dialog. */ () => setTransfer(null)}
               />
               <MoveEntriesDialog
                 open={moving}
