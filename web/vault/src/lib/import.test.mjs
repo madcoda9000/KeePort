@@ -201,5 +201,5 @@ test('the export lists regular entries as KeePassXC CSV and reads back the same'
   assert.equal(neutralizeFormula('@x'), "'@x");
   assert.equal(neutralizeFormula('plain'), 'plain');
   assert.equal(exportCsv(db, { folderId: web.uuid.id, neutralizeFormulas: false }).count, 1);
-  assert.equal(exportFileName('Family.kdbx', new Date(2026, 10, 7)), 'Family-export-2026-11-07.csv');
+  assert.equal(exportFileName('Family.kdbx', new Date(2026, 10, 7)), 'keeport-Family-2026-11-07.csv');
 });

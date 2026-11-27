@@ -108,7 +108,7 @@ export function exportCsv(db: kdbxweb.Kdbx, options: { folderId?: string; neutra
 }
 
 /**
- * Builds the file name of an export: the vault name without ".kdbx", "-export-" and the date.
+ * Builds the file name of an export: "keeport-", the vault name without ".kdbx" and the date.
  * @param vaultName - The vault's file name.
  * @param date - The export date.
  */
@@ -118,7 +118,7 @@ export function exportFileName(vaultName: string, date: Date): string {
    * Pads a date part to two digits.
    * @param value - The number.
    */ (value: number) => String(value).padStart(2, '0');
-  return `${base}-export-${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}.csv`;
+  return `keeport-${base}-${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}.csv`;
 }
 
 /**
