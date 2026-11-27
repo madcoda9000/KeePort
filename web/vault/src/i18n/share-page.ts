@@ -45,7 +45,8 @@ export default defineMessages({
     field_totp: 'TOTP secret',
     switchToDark: 'Switch to dark mode',
     switchToLight: 'Switch to light mode',
-    footer: 'Shared with KeePort, the self-hosted KeePass server.'
+    footer: 'Shared with {link}, the self-hosted KeePass server.',
+    projectLink: 'KeePort on GitHub (opens in a new tab)'
   },
   de: {
     pageTitle: 'Geteiltes Secret',
@@ -90,7 +91,8 @@ export default defineMessages({
     field_totp: 'TOTP-Geheimnis',
     switchToDark: 'Zum dunklen Modus wechseln',
     switchToLight: 'Zum hellen Modus wechseln',
-    footer: 'Geteilt mit KeePort, dem selbst gehosteten KeePass-Server.'
+    footer: 'Geteilt mit {link}, dem selbst gehosteten KeePass-Server.',
+    projectLink: 'KeePort auf GitHub (öffnet in einem neuen Tab)'
   },
   fr: {
     pageTitle: 'Secret partagé',
@@ -135,6 +137,7 @@ export default defineMessages({
     field_totp: 'Secret TOTP',
     switchToDark: 'Passer en mode sombre',
     switchToLight: 'Passer en mode clair',
-    footer: 'Partagé avec KeePort, le serveur KeePass auto-hébergé.'
+    footer: 'Partagé avec {link}, le serveur KeePass auto-hébergé.',
+    projectLink: 'KeePort sur GitHub (s’ouvre dans un nouvel onglet)'
   }
 });

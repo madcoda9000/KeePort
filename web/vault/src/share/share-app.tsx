@@ -16,6 +16,9 @@ import { LanguageMenu } from '@shared/i18n/language-select';
 import { useT } from '@shared/i18n/react';
 import { hasBrowserCrypto } from '@shared/secure-context';
 
+/** The project page linked in the footer. */
+const PROJECT_URL = 'https://github.com/madcoda9000/KeePort';
+
 /** What the page shows: loading, an end state, the form before revealing, or the revealed secret. */
 type View =
   | { kind: 'loading' }
@@ -96,7 +99,22 @@ export function ShareApp() {
           {view.kind === 'revealed' && <Revealed payload={view.payload} viewsLeft={view.viewsLeft} />}
         </Card>
         <p className="flex items-center justify-center gap-1.5 text-center text-xs text-muted-foreground">
-          <ShieldCheckIcon className="size-3.5" /> {t('footer')}
+          <ShieldCheckIcon className="size-3.5" />
+          <span>
+            {t.rich('footer', {
+              link: (
+                <a
+                  href={PROJECT_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title={t('projectLink')}
+                  className="font-medium text-foreground underline-offset-4 hover:underline"
+                >
+                  KeePort
+                </a>
+              )
+            })}
+          </span>
         </p>
       </div>
     </main>
