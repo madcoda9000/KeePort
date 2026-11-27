@@ -37,6 +37,7 @@ import { DashboardPanel } from '@/components/dashboard';
 import { DataStorageBanner, DataStoragePanel } from '@/components/data-storage';
 import { RateLimitSettingsPanel } from '@/components/rate-limit-settings';
 import { EmailSettingsPanel } from '@/components/email-settings';
+import { SharingSettingsPanel } from '@/components/sharing-settings';
 import { MfaSettingsPanel } from '@/components/mfa-settings';
 import { WebDavLogsPanel } from '@/components/webdav-logs';
 import { EmailLogsPanel } from '@/components/email-logs';
@@ -1459,6 +1460,7 @@ export default function App() {
             <>
               <EmailSettingsPanel />
               <MfaSettingsPanel />
+              <SharingSettingsPanel />
               <RateLimitSettingsPanel />
               <VersionSettingsPanel />
               <AuditSettingsPanel />

@@ -114,11 +114,14 @@ public static class ApiSecurityExtensions
         });
     }
 
-    /// <summary>Identifies the setup, login (both steps) and password-link routes that can run without a CSRF token.</summary>
+    /// <summary>Identifies the setup, login (both steps), password-link and share-recipient routes that can run without a CSRF token.</summary>
     /// <param name="path">The API request path to check against the exemption list.</param>
     private static bool IsCsrfExempt(string path)
     {
-        return path.Equals("/api/auth/login", StringComparison.OrdinalIgnoreCase) ||
+        // The recipient routes of shared secrets never act for the signed-in account, so a session cookie of the
+        // recipient's own KeePort account must not make them fail.
+        return path.StartsWith(KeePort.Api.Endpoints.ShareEndpoints.PublicApiPath + "/", StringComparison.OrdinalIgnoreCase) ||
+               path.Equals("/api/auth/login", StringComparison.OrdinalIgnoreCase) ||
                path.Equals("/api/auth/password-reset", StringComparison.OrdinalIgnoreCase) ||
                path.Equals("/api/auth/token", StringComparison.OrdinalIgnoreCase) ||
                path.Equals("/api/auth/set-password", StringComparison.OrdinalIgnoreCase) ||

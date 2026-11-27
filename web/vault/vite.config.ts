@@ -18,5 +18,14 @@ export default defineConfig({
     },
     dedupe: ['react', 'react-dom', 'lucide-react', 'uqr']
   },
+  // Two pages: the web vault, and the small page that opens shared secrets (/s/<id>) without the vault's code.
+  build: {
+    rollupOptions: {
+      input: {
+        main: fileURLToPath(new URL('./index.html', import.meta.url)),
+        share: fileURLToPath(new URL('./share.html', import.meta.url))
+      }
+    }
+  },
   server: { fs: { allow: [fileURLToPath(new URL('.', import.meta.url)), fileURLToPath(new URL('../shared', import.meta.url))] } },
 })

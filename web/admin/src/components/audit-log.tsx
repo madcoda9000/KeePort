@@ -36,7 +36,8 @@ const CATEGORIES: Record<AuditCategory, { label: keyof typeof messages.en; accen
   user: { label: 'categoryUser', accent: ACCENTS.amber },
   vault: { label: 'categoryVault', accent: ACCENTS.emerald },
   webdav: { label: 'categoryWebdav', accent: ACCENTS.orange },
-  settings: { label: 'categorySettings', accent: ACCENTS.fuchsia }
+  settings: { label: 'categorySettings', accent: ACCENTS.fuchsia },
+  share: { label: 'categoryShare', accent: ACCENTS.rose }
 };
 
 const PAGE_SIZES = [25, 50, 100] as const;

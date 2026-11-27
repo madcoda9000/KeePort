@@ -37,6 +37,8 @@ public static class EmailTemplates
         public const string MfaEnabled = "mfaEnabled";
         public const string MfaDisabled = "mfaDisabled";
         public const string MfaReset = "mfaReset";
+        public const string ShareLink = "shareLink";
+        public const string ShareCode = "shareCode";
     }
 
     private const string NotYou = "notYou";
@@ -79,6 +81,13 @@ public static class EmailTemplates
             ["mfaCode.subject"] = "Your KeePort sign-in code",
             ["mfaCode.body"] = "Enter this code to finish signing in to KeePort. It is valid for 10 minutes and works once.",
             ["mfaCode.notYou"] = "If you are not signing in right now, someone knows your account password. Change it right away and tell your administrator.",
+            ["shareLink.subject"] = "{sender} shared a secret with you",
+            ["shareLink.body"] = "{sender} shared a secret with you via KeePort. Open it with the button below. The link works until {expires} and can be opened {views} time(s).",
+            ["shareLink.password"] = "You also need a password, which {sender} gives you separately, for example by phone. KeePort never sends it by e-mail.",
+            ["shareLink.button"] = "Open secret",
+            ["shareCode.subject"] = "Your code for the shared secret",
+            ["shareCode.body"] = "Enter this code to open the secret {sender} shared with you. It is valid for 10 minutes.",
+            ["shareCode.ignore"] = "If you did not try to open a shared secret, you can ignore this e-mail.",
             ["mfaEnabled.subject"] = "Two-factor sign-in was turned on",
             ["mfaEnabled.body"] = "A second factor was added to your account {username}. Signing in now needs a code in addition to your password.",
             ["mfaDisabled.subject"] = "A second factor was removed",
@@ -130,6 +139,13 @@ public static class EmailTemplates
             ["mfaCode.subject"] = "Dein KeePort-Anmeldecode",
             ["mfaCode.body"] = "Gib diesen Code ein, um die Anmeldung bei KeePort abzuschließen. Er gilt 10 Minuten und nur einmal.",
             ["mfaCode.notYou"] = "Wenn du dich gerade nicht anmeldest, kennt jemand dein Konto-Passwort. Ändere es sofort und sag deinem Administrator Bescheid.",
+            ["shareLink.subject"] = "{sender} hat ein Secret mit dir geteilt",
+            ["shareLink.body"] = "{sender} hat über KeePort ein Secret mit dir geteilt. Öffne es mit dem Button unten. Der Link gilt bis {expires} und kann {views}-mal geöffnet werden.",
+            ["shareLink.password"] = "Du brauchst außerdem ein Passwort, das dir {sender} auf anderem Weg gibt, zum Beispiel am Telefon. KeePort verschickt es nie per E-Mail.",
+            ["shareLink.button"] = "Secret öffnen",
+            ["shareCode.subject"] = "Dein Code für das geteilte Secret",
+            ["shareCode.body"] = "Gib diesen Code ein, um das Secret zu öffnen, das {sender} mit dir geteilt hat. Er gilt 10 Minuten.",
+            ["shareCode.ignore"] = "Wenn du kein geteiltes Secret öffnen wolltest, kannst du diese E-Mail ignorieren.",
             ["mfaEnabled.subject"] = "Zwei-Faktor-Anmeldung wurde eingeschaltet",
             ["mfaEnabled.body"] = "Für dein Konto {username} wurde ein zweiter Faktor eingerichtet. Zur Anmeldung brauchst du jetzt zusätzlich zum Passwort einen Code.",
             ["mfaDisabled.subject"] = "Ein zweiter Faktor wurde entfernt",
@@ -181,6 +197,13 @@ public static class EmailTemplates
             ["mfaCode.subject"] = "Votre code de connexion KeePort",
             ["mfaCode.body"] = "Saisissez ce code pour terminer la connexion à KeePort. Il est valable 10 minutes et ne fonctionne qu’une fois.",
             ["mfaCode.notYou"] = "Si vous n’êtes pas en train de vous connecter, quelqu’un connaît le mot de passe de votre compte. Changez-le immédiatement et prévenez votre administrateur.",
+            ["shareLink.subject"] = "{sender} a partagé un secret avec vous",
+            ["shareLink.body"] = "{sender} a partagé un secret avec vous via KeePort. Ouvrez-le avec le bouton ci-dessous. Le lien est valable jusqu’au {expires} et peut être ouvert {views} fois.",
+            ["shareLink.password"] = "Il vous faut aussi un mot de passe, que {sender} vous communique séparément, par exemple par téléphone. KeePort ne l’envoie jamais par e-mail.",
+            ["shareLink.button"] = "Ouvrir le secret",
+            ["shareCode.subject"] = "Votre code pour le secret partagé",
+            ["shareCode.body"] = "Saisissez ce code pour ouvrir le secret que {sender} a partagé avec vous. Il est valable 10 minutes.",
+            ["shareCode.ignore"] = "Si vous n’avez pas essayé d’ouvrir un secret partagé, vous pouvez ignorer cet e-mail.",
             ["mfaEnabled.subject"] = "La connexion à deux facteurs a été activée",
             ["mfaEnabled.body"] = "Un second facteur a été ajouté à votre compte {username}. La connexion demande désormais un code en plus de votre mot de passe.",
             ["mfaDisabled.subject"] = "Un second facteur a été supprimé",
@@ -263,6 +286,8 @@ public static class EmailTemplates
         Kinds.EmailChanged => ["emailChanged.body", NotYou],
         Kinds.AppPassword => ["appPassword.body", NotYou],
         Kinds.MfaCode => ["mfaCode.body", "mfaCode.notYou"],
+        Kinds.ShareLink => ["shareLink.body", "shareLink.password"],
+        Kinds.ShareCode => ["shareCode.body", "shareCode.ignore"],
         Kinds.MfaEnabled or Kinds.MfaDisabled or Kinds.MfaReset => [kind + ".body", NotYou],
         _ => [kind + ".body"]
     };

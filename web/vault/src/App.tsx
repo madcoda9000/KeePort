@@ -41,6 +41,7 @@ import {
   HardDriveIcon,
   InfoIcon,
   KeyboardIcon,
+  Share2Icon,
   SettingsIcon,
   CircleCheckIcon,
   Columns3Icon,
@@ -176,6 +177,10 @@ import { overlayOpen, useShortcuts, type ShortcutHandler } from '@shared/use-sho
 import shortcutMessages from '@shared/i18n/messages/shortcuts';
 import shortcutsText from '@/i18n/shortcuts';
 import { CommandPalette, type PaletteAction } from '@/components/command-palette';
+import { ShareDialog } from '@/components/share-dialog';
+import { MyShares } from '@/components/my-shares';
+import shareText from '@/i18n/share-dialog';
+import { shareApi, type SharePolicy } from './lib/api';
 import { Textarea } from '@/components/ui/textarea';
 
 type Message = { kind: 'notice' | 'error'; text: string; action?: { label: string; onClick: () => void } } | null;
@@ -354,6 +359,8 @@ export default function App() {
   const [totp, setTotp] = useState<{ code: string; secondsLeft: number } | null>(null);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [palette, setPalette] = useState(false);
+  const [sharePolicy, setSharePolicy] = useState<SharePolicy | null>(null);
+  const [sharing, setSharing] = useState(false);
   /** The search box and marked row of the entry list, for keyboard shortcuts. */
   const tableController = useRef<DataTableController<EntryView>>(null);
   /** The entry form, which Ctrl+S / ⌘S submits. */
@@ -407,6 +414,7 @@ export default function App() {
   const [signInName, setSignInName] = useState('');
   const tEmail = useT(emailAccountMessages);
   const tShortcuts = useT(shortcutsText);
+  const tShare = useT(shareText);
   const tShortcutSetting = useT(shortcutMessages);
   const generalShortcuts = useGeneralShortcuts();
   const shortcutText = useShortcutText();
@@ -563,6 +571,7 @@ export default function App() {
     clearVaultCredentials(db);
     resetFolderState();
     setTransfer(null);
+    setSharing(false);
     setDb(null);
     setEntries([]);
     setSelectedEntry(null);
@@ -1327,6 +1336,7 @@ export default function App() {
     setMessage(null);
     setSelectedId(null);
     setFiles([]);
+    setSharePolicy(null);
     setUser(null);
     try {
       await api.logout();
@@ -1539,6 +1549,21 @@ export default function App() {
       cancelled = true;
     };
   }, []);
+
+  /** Loads the sharing rules of the signed-in account; without an account there are none. */
+  useEffect(() => {
+    if (!user || user.mfaSetupRequired) return;
+    let cancelled = false;
+    shareApi.policy().then(/**
+     * Stores the rules.
+     * @param policy - What the account may do when sharing.
+     */ (policy) => {
+      if (!cancelled) setSharePolicy(policy);
+    }, /** Leaves sharing hidden when the rules cannot be read. */ () => undefined);
+    return /** Ignores a late answer after signing out. */ () => {
+      cancelled = true;
+    };
+  }, [user]);
 
   /** Shows the password link page when an e-mail link is opened in a tab that already shows the vault. */
   useEffect(() => {
@@ -2100,6 +2125,7 @@ export default function App() {
                   </>
                 ) },
                 { id: 'signIns', label: tSettings('signIns'), icon: HistoryIcon, content: <RecentSignIns /> },
+                ...(sharePolicy?.enabled ? [{ id: 'shares', label: tShare('myShares'), icon: Share2Icon, content: <MyShares onMessage={setProfileMessage} /> }] : []),
                 { id: 'notifications', label: tSettings('notifications'), icon: BellIcon, content: (
                   <EmailNotifications
                     signIn={user.notifySignIn}
@@ -3027,6 +3053,19 @@ export default function App() {
                             {busy === 'save' ? tEntry('saving') : selectedEntry ? tEntry('saveEntry') : tEntry('createEntry')}
                           </Button>
                         )}
+                        {canEditEntry && selectedEntry && sharePolicy?.enabled && selectedFile && !sharePolicy.blockedVaultIds.includes(selectedFile.id) && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            disabled={busy === 'save'}
+                            onClick={/** Opens the share dialog for the open entry. */ () => {
+                              setSharing(true);
+                              void shareApi.policy().then(setSharePolicy, /** Keeps the known rules. */ () => undefined);
+                            }}
+                          >
+                            <Share2Icon /> {tShare('share')}
+                          </Button>
+                        )}
                         {canEditEntry && selectedEntry && (
                           <Button
                             type="button"
@@ -3106,6 +3145,19 @@ export default function App() {
                  */ (folder) => void confirmDeleteFolder(folder)}
                 onClose={/** Closes the delete confirmation. */ () => setFolderToDelete(null)}
               />
+              {sharePolicy && selectedFile && (
+                <ShareDialog
+                  open={sharing && selectedEntry !== null}
+                  onOpenChange={setSharing}
+                  entry={selectedEntry}
+                  vaultFileId={selectedFile.id}
+                  policy={sharePolicy}
+                  onCopy={/**
+                   * Copies the link like other values.
+                   * @param value - The link.
+                   */ (value) => copyValue(value, tShare('link'))}
+                />
+              )}
               <CommandPalette
                 open={palette}
                 onOpenChange={setPalette}

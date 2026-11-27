@@ -1589,6 +1589,320 @@ public class KeePortApiTests : IDisposable
         Assert.True((await GetJsonAsync(_user, "/api/auth/me")).GetProperty("keyboardShortcuts").GetBoolean());
     }
 
+    /// <summary>Builds the encrypted parts of a share as a browser would send them; the content is random test data.</summary>
+    /// <param name="vaultId">The vault the entry comes from.</param>
+    /// <param name="proof">The access proof, Base64url.</param>
+    /// <param name="maxViews">How often it can be opened.</param>
+    /// <param name="hours">How long it is valid.</param>
+    /// <param name="kdfParams">The Argon2 parameters, or null without password.</param>
+    /// <param name="recipientEmail">The recipient's address.</param>
+    /// <param name="requireEmailCode">Whether the recipient must confirm the address.</param>
+    private static object ShareBody(string vaultId, string proof, int maxViews = 1, int hours = 24, string? kdfParams = null, string? recipientEmail = null, bool requireEmailCode = false) => new
+    {
+        vaultFileId = vaultId,
+        entryUuid = "0a1b2c3d4e5f",
+        label = "Shared entry",
+        ciphertext = Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(48)),
+        iv = Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(12)),
+        kdfSalt = Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(16)),
+        kdfParams,
+        proof,
+        maxViews,
+        expiresInHours = hours,
+        recipientEmail,
+        requireEmailCode
+    };
+
+    /// <summary>Creates a random access proof, Base64url of 32 bytes.</summary>
+    private static string NewProof() => Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32)).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+
+    /// <summary>Changes the sharing rules as administrator.</summary>
+    /// <param name="adminCsrf">The admin's CSRF token.</param>
+    /// <param name="mode">off, all or selected.</param>
+    /// <param name="requirePassword">Whether a recipient password is required.</param>
+    /// <param name="allowEmail">Whether KeePort may e-mail links.</param>
+    /// <param name="allowEmailCode">Whether recipients may be asked for an e-mail code.</param>
+    private async Task SetSharingAsync(string adminCsrf, string mode, bool requirePassword = false, bool allowEmail = false, bool allowEmailCode = false)
+    {
+        using var response = await SendAsync(_admin, HttpMethod.Put, "/api/admin/sharing/settings",
+            json: new { mode, maxDays = 7, maxViews = 5, requirePassword, allowEmail, allowEmailCode }, csrf: adminCsrf);
+        response.EnsureSuccessStatusCode();
+    }
+
+    /// <summary>Checks who may share: off by default, all users, single users, read-only access, blocked vaults and limits.</summary>
+    [Fact]
+    public async Task Sharing_Follows_The_Admin_Rules()
+    {
+        var adminCsrf = await SetupAdminAsync(_admin);
+        var hanna = await CreateUserAsync(_admin, adminCsrf, "hanna", "user");
+        var vault = await UploadVaultAsync(_admin, adminCsrf, "team.kdbx", "v1");
+        await SetPermissionsAsync(_admin, adminCsrf, vault.Id, hanna.Id, "read-write");
+        var (csrf, _) = await LoginAsync(_user, "hanna", "User passphrase 123");
+
+        Assert.False((await GetJsonAsync(_user, "/api/shares/policy")).GetProperty("enabled").GetBoolean());
+        using (var off = await SendAsync(_user, HttpMethod.Post, "/api/shares", json: ShareBody(vault.Id, NewProof()), csrf: csrf))
+        {
+            Assert.Equal(HttpStatusCode.Forbidden, off.StatusCode);
+        }
+
+        await SetSharingAsync(adminCsrf, "all");
+        Assert.True((await GetJsonAsync(_user, "/api/shares/policy")).GetProperty("enabled").GetBoolean());
+        using (var created = await SendAsync(_user, HttpMethod.Post, "/api/shares", json: ShareBody(vault.Id, NewProof()), csrf: csrf))
+        {
+            Assert.Equal(HttpStatusCode.OK, created.StatusCode);
+            var share = await created.Content.ReadFromJsonAsync<JsonElement>();
+            Assert.Equal("active", share.GetProperty("status").GetString());
+            Assert.Equal(22, share.GetProperty("id").GetString()!.Length);
+        }
+        using (var tooMany = await SendAsync(_user, HttpMethod.Post, "/api/shares", json: ShareBody(vault.Id, NewProof(), maxViews: 6), csrf: csrf))
+        {
+            Assert.Equal(HttpStatusCode.BadRequest, tooMany.StatusCode);
+        }
+        using (var tooLong = await SendAsync(_user, HttpMethod.Post, "/api/shares", json: ShareBody(vault.Id, NewProof(), hours: 7 * 24 + 1), csrf: csrf))
+        {
+            Assert.Equal(HttpStatusCode.BadRequest, tooLong.StatusCode);
+        }
+        using (var badProof = await SendAsync(_user, HttpMethod.Post, "/api/shares", json: ShareBody(vault.Id, "short"), csrf: csrf))
+        {
+            Assert.Equal(HttpStatusCode.BadRequest, badProof.StatusCode);
+        }
+
+        await SetSharingAsync(adminCsrf, "all", requirePassword: true);
+        using (var noPassword = await SendAsync(_user, HttpMethod.Post, "/api/shares", json: ShareBody(vault.Id, NewProof()), csrf: csrf))
+        {
+            Assert.Equal(HttpStatusCode.BadRequest, noPassword.StatusCode);
+        }
+        using (var withPassword = await SendAsync(_user, HttpMethod.Post, "/api/shares", json: ShareBody(vault.Id, NewProof(), kdfParams: "argon2id:m=65536,t=3,p=1"), csrf: csrf))
+        {
+            Assert.Equal(HttpStatusCode.OK, withPassword.StatusCode);
+        }
+        using (var badParams = await SendAsync(_user, HttpMethod.Post, "/api/shares", json: ShareBody(vault.Id, NewProof(), kdfParams: "argon2id:m=1,t=1,p=1"), csrf: csrf))
+        {
+            Assert.Equal(HttpStatusCode.BadRequest, badParams.StatusCode);
+        }
+        await SetSharingAsync(adminCsrf, "all");
+
+        using (var blockUser = await SendAsync(_admin, HttpMethod.Put, $"/api/admin/sharing/users/{hanna.Id}", json: new { mode = "blocked" }, csrf: adminCsrf))
+        {
+            blockUser.EnsureSuccessStatusCode();
+        }
+        using (var blocked = await SendAsync(_user, HttpMethod.Post, "/api/shares", json: ShareBody(vault.Id, NewProof()), csrf: csrf))
+        {
+            Assert.Equal(HttpStatusCode.Forbidden, blocked.StatusCode);
+        }
+        await SetSharingAsync(adminCsrf, "selected");
+        using (var allowUser = await SendAsync(_admin, HttpMethod.Put, $"/api/admin/sharing/users/{hanna.Id}", json: new { mode = "allowed" }, csrf: adminCsrf))
+        {
+            allowUser.EnsureSuccessStatusCode();
+        }
+        Assert.True((await GetJsonAsync(_user, "/api/shares/policy")).GetProperty("enabled").GetBoolean());
+
+        using (var blockVault = await SendAsync(_admin, HttpMethod.Put, $"/api/admin/sharing/vaults/{vault.Id}", json: new { allowed = false }, csrf: adminCsrf))
+        {
+            blockVault.EnsureSuccessStatusCode();
+        }
+        Assert.Equal(vault.Id, (await GetJsonAsync(_user, "/api/shares/policy")).GetProperty("blockedVaultIds")[0].GetString());
+        using (var vaultBlocked = await SendAsync(_user, HttpMethod.Post, "/api/shares", json: ShareBody(vault.Id, NewProof()), csrf: csrf))
+        {
+            Assert.Equal(HttpStatusCode.Forbidden, vaultBlocked.StatusCode);
+        }
+        using (var allowVault = await SendAsync(_admin, HttpMethod.Put, $"/api/admin/sharing/vaults/{vault.Id}", json: new { allowed = true }, csrf: adminCsrf))
+        {
+            allowVault.EnsureSuccessStatusCode();
+        }
+
+        await SetPermissionsAsync(_admin, adminCsrf, vault.Id, hanna.Id, "read");
+        using (var readOnly = await SendAsync(_user, HttpMethod.Post, "/api/shares", json: ShareBody(vault.Id, NewProof()), csrf: csrf))
+        {
+            Assert.Equal(HttpStatusCode.Forbidden, readOnly.StatusCode);
+            Assert.Equal("sharing_needs_write", (await readOnly.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("error").GetString());
+        }
+
+        var admin = await GetJsonAsync(_admin, "/api/admin/sharing");
+        Assert.Equal("selected", admin.GetProperty("settings").GetProperty("mode").GetString());
+        Assert.Equal(2, admin.GetProperty("shares").GetArrayLength());
+        Assert.Equal("allowed", admin.GetProperty("users").EnumerateArray().Single(/* Hanna. */ u => u.GetProperty("username").GetString() == "hanna").GetProperty("mode").GetString());
+    }
+
+    /// <summary>
+    /// Checks the recipient routes: the metadata does not count a view, a wrong proof does not either, each reveal counts
+    /// one, the last one deletes the ciphertext, ten wrong proofs lock a share, and revoked or expired shares are gone.
+    /// </summary>
+    [Fact]
+    public async Task Shares_Count_Views_And_Delete_The_Secret()
+    {
+        var adminCsrf = await SetupAdminAsync(_admin);
+        var ines = await CreateUserAsync(_admin, adminCsrf, "ines", "user");
+        var vault = await UploadVaultAsync(_admin, adminCsrf, "home.kdbx", "v1");
+        await SetPermissionsAsync(_admin, adminCsrf, vault.Id, ines.Id, "read-write");
+        await SetSharingAsync(adminCsrf, "all");
+        var (csrf, _) = await LoginAsync(_user, "ines", "User passphrase 123");
+        using var recipient = _factory.CreateClient();
+        var db = _factory.Services.GetRequiredService<KeePortDb>();
+
+        var proof = NewProof();
+        string id;
+        using (var created = await SendAsync(_user, HttpMethod.Post, "/api/shares", json: ShareBody(vault.Id, proof, maxViews: 2), csrf: csrf))
+        {
+            id = (await created.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetString()!;
+        }
+
+        var meta = await GetJsonAsync(recipient, $"/api/share/{id}");
+        Assert.Equal("ines", meta.GetProperty("senderName").GetString());
+        Assert.Equal(2, meta.GetProperty("viewsLeft").GetInt32());
+        Assert.False(meta.GetProperty("hasPassword").GetBoolean());
+        Assert.Equal(2, (await GetJsonAsync(recipient, $"/api/share/{id}")).GetProperty("viewsLeft").GetInt32());
+
+        using (var wrong = await SendAsync(recipient, HttpMethod.Post, $"/api/share/{id}/reveal", json: new { proof = NewProof() }))
+        {
+            Assert.Equal(HttpStatusCode.Forbidden, wrong.StatusCode);
+        }
+        using (var first = await SendAsync(recipient, HttpMethod.Post, $"/api/share/{id}/reveal", json: new { proof }))
+        {
+            Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+            Assert.Equal(1, (await first.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("viewsLeft").GetInt32());
+        }
+        // A recipient who is signed in to their own KeePort account needs no CSRF token.
+        using (var second = await SendAsync(_user, HttpMethod.Post, $"/api/share/{id}/reveal", json: new { proof }))
+        {
+            Assert.Equal(HttpStatusCode.OK, second.StatusCode);
+            Assert.Equal(0, (await second.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("viewsLeft").GetInt32());
+        }
+        using (var third = await SendAsync(recipient, HttpMethod.Post, $"/api/share/{id}/reveal", json: new { proof }))
+        {
+            Assert.Equal(HttpStatusCode.NotFound, third.StatusCode);
+        }
+        Assert.Null(db.GetShare(id)!.Ciphertext);
+        Assert.Equal("used", (await GetJsonAsync(_user, "/api/shares")).EnumerateArray().Single().GetProperty("status").GetString());
+
+        var lockedProof = NewProof();
+        string lockedId;
+        using (var created = await SendAsync(_user, HttpMethod.Post, "/api/shares", json: ShareBody(vault.Id, lockedProof), csrf: csrf))
+        {
+            lockedId = (await created.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetString()!;
+        }
+        for (var i = 0; i < ShareService.MaxFailedAttempts; i++)
+        {
+            using var attempt = await SendAsync(recipient, HttpMethod.Post, $"/api/share/{lockedId}/reveal", json: new { proof = NewProof() });
+        }
+        using (var afterLock = await SendAsync(recipient, HttpMethod.Post, $"/api/share/{lockedId}/reveal", json: new { proof = lockedProof }))
+        {
+            Assert.Equal(HttpStatusCode.NotFound, afterLock.StatusCode);
+        }
+        Assert.Null(db.GetShare(lockedId)!.Ciphertext);
+
+        var revokedProof = NewProof();
+        string revokedId;
+        using (var created = await SendAsync(_user, HttpMethod.Post, "/api/shares", json: ShareBody(vault.Id, revokedProof), csrf: csrf))
+        {
+            revokedId = (await created.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetString()!;
+        }
+        using (var revoke = await SendAsync(_user, HttpMethod.Delete, $"/api/shares/{revokedId}", csrf: csrf))
+        {
+            Assert.Equal(HttpStatusCode.NoContent, revoke.StatusCode);
+        }
+        Assert.Equal(HttpStatusCode.NotFound, (await recipient.GetAsync($"/api/share/{revokedId}")).StatusCode);
+
+        string expiringId;
+        using (var created = await SendAsync(_user, HttpMethod.Post, "/api/shares", json: ShareBody(vault.Id, NewProof(), hours: 1), csrf: csrf))
+        {
+            expiringId = (await created.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetString()!;
+        }
+        Assert.Equal(1, db.CleanUpShares(DateTimeOffset.UtcNow.AddHours(2), ShareService.KeepEndedDays));
+        Assert.Null(db.GetShare(expiringId)!.Ciphertext);
+        db.CleanUpShares(DateTimeOffset.UtcNow.AddDays(40), ShareService.KeepEndedDays);
+        Assert.Null(db.GetShare(expiringId));
+
+        var audit = (await GetJsonAsync(_admin, "/api/admin/logs/audit?action=ShareViewed&pageSize=200")).GetProperty("items");
+        Assert.Contains(audit.EnumerateArray(), /* A view. */ entry => entry.GetProperty("action").GetString() == "ShareViewed" && entry.GetProperty("success").GetBoolean());
+        Assert.Contains(audit.EnumerateArray(), /* A failed attempt. */ entry => entry.GetProperty("action").GetString() == "ShareViewed" && !entry.GetProperty("success").GetBoolean());
+    }
+
+    /// <summary>
+    /// Checks the e-mail ways: a code for the recipient (C) with wait time and wrong codes, and the link sent by KeePort
+    /// (B), which needs a recipient password and a link to the same share.
+    /// </summary>
+    [Fact]
+    public async Task Shares_By_Email_Need_Code_Or_Password()
+    {
+        var adminCsrf = await SetupAdminAsync(_admin);
+        await ConfigureEmailAsync(adminCsrf);
+        var jonas = await CreateUserAsync(_admin, adminCsrf, "jonas", "user");
+        var vault = await UploadVaultAsync(_admin, adminCsrf, "office.kdbx", "v1");
+        await SetPermissionsAsync(_admin, adminCsrf, vault.Id, jonas.Id, "read-write");
+        var (csrf, _) = await LoginAsync(_user, "jonas", "User passphrase 123");
+        using var recipient = _factory.CreateClient();
+
+        await SetSharingAsync(adminCsrf, "all");
+        using (var notAllowed = await SendAsync(_user, HttpMethod.Post, "/api/shares", json: ShareBody(vault.Id, NewProof(), recipientEmail: "guest@example.test", requireEmailCode: true), csrf: csrf))
+        {
+            Assert.Equal(HttpStatusCode.BadRequest, notAllowed.StatusCode);
+        }
+        await SetSharingAsync(adminCsrf, "all", allowEmail: true, allowEmailCode: true);
+        var policy = await GetJsonAsync(_user, "/api/shares/policy");
+        Assert.True(policy.GetProperty("allowEmail").GetBoolean());
+        Assert.True(policy.GetProperty("allowEmailCode").GetBoolean());
+
+        var proof = NewProof();
+        string id;
+        using (var created = await SendAsync(_user, HttpMethod.Post, "/api/shares", json: ShareBody(vault.Id, proof, recipientEmail: "guest@example.test", requireEmailCode: true), csrf: csrf))
+        {
+            Assert.Equal(HttpStatusCode.OK, created.StatusCode);
+            id = (await created.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetString()!;
+        }
+        Assert.Equal("g***@example.test", (await GetJsonAsync(recipient, $"/api/share/{id}")).GetProperty("emailHint").GetString());
+        using (var noCode = await SendAsync(recipient, HttpMethod.Post, $"/api/share/{id}/reveal", json: new { proof }))
+        {
+            Assert.Equal(HttpStatusCode.BadRequest, noCode.StatusCode);
+        }
+        using (var sendCode = await SendAsync(recipient, HttpMethod.Post, $"/api/share/{id}/code"))
+        {
+            Assert.Equal(HttpStatusCode.NoContent, sendCode.StatusCode);
+        }
+        using (var tooSoon = await SendAsync(recipient, HttpMethod.Post, $"/api/share/{id}/code"))
+        {
+            Assert.Equal(HttpStatusCode.TooManyRequests, tooSoon.StatusCode);
+        }
+        var mail = OutboxMail("guest@example.test", "shareCode");
+        var code = System.Text.RegularExpressions.Regex.Match(mail.TextBody, @"\b(\d{6})\b").Groups[1].Value;
+        Assert.Contains("jonas", mail.TextBody, StringComparison.Ordinal);
+        using (var wrongCode = await SendAsync(recipient, HttpMethod.Post, $"/api/share/{id}/reveal", json: new { proof, code = code == "000000" ? "111111" : "000000" }))
+        {
+            Assert.Equal(HttpStatusCode.Forbidden, wrongCode.StatusCode);
+        }
+        using (var revealed = await SendAsync(recipient, HttpMethod.Post, $"/api/share/{id}/reveal", json: new { proof, code }))
+        {
+            Assert.Equal(HttpStatusCode.OK, revealed.StatusCode);
+        }
+
+        string plainId;
+        using (var created = await SendAsync(_user, HttpMethod.Post, "/api/shares", json: ShareBody(vault.Id, NewProof(), recipientEmail: "guest@example.test"), csrf: csrf))
+        {
+            plainId = (await created.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetString()!;
+        }
+        var linkKey = NewProof();
+        using (var noPassword = await SendAsync(_user, HttpMethod.Post, $"/api/shares/{plainId}/send", json: new { key = linkKey }, csrf: csrf))
+        {
+            Assert.Equal(HttpStatusCode.BadRequest, noPassword.StatusCode);
+        }
+        string protectedId;
+        using (var created = await SendAsync(_user, HttpMethod.Post, "/api/shares", json: ShareBody(vault.Id, NewProof(), kdfParams: "argon2id:m=65536,t=3,p=1", recipientEmail: "guest@example.test"), csrf: csrf))
+        {
+            protectedId = (await created.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetString()!;
+        }
+        using (var badKey = await SendAsync(_user, HttpMethod.Post, $"/api/shares/{protectedId}/send", json: new { key = "short" }, csrf: csrf))
+        {
+            Assert.Equal(HttpStatusCode.BadRequest, badKey.StatusCode);
+        }
+        using (var sent = await SendAsync(_user, HttpMethod.Post, $"/api/shares/{protectedId}/send", json: new { key = linkKey }, csrf: csrf))
+        {
+            Assert.Equal(HttpStatusCode.OK, sent.StatusCode);
+            Assert.True((await sent.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("sentByEmail").GetBoolean());
+        }
+        var linkMail = OutboxMail("guest@example.test", "shareLink");
+        Assert.Contains($"https://vault.example.test/s/{protectedId}#{linkKey}", linkMail.TextBody, StringComparison.Ordinal);
+    }
+
     /// <summary>Stores SMTP settings that point at a closed local port, so e-mails are queued but never delivered.</summary>
     /// <param name="adminCsrf">The admin's CSRF token.</param>
     /// <param name="password">An SMTP password to store, or null to keep the stored one.</param>

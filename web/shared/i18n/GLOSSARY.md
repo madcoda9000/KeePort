@@ -52,6 +52,8 @@ Use these terms everywhere. German addresses the user with **du** (informal, low
 | passkey | Passkey | clé d’accès |
 | keyboard shortcut | Tastenkürzel | raccourci clavier |
 | command palette | Befehlspalette | palette de commandes |
+| share (a link to a secret) | Freigabe | partage |
+| shared secret | geteiltes Secret | secret partagé |
 
 Keep as they are in every language: KeePort, KeePass, KeePassXC, KeePass2Android, KeePassium, WebDAV, TOTP, KDBX,
 ETag, CSRF, URL, HTTPS, Have I Been Pwned, the action tags of the audit log (e.g. `LoginFailed`), file names and

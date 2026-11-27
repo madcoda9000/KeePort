@@ -19,6 +19,12 @@ public static class ContentSecurity
     /// </summary>
     public const string Vault = "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https://api.pwnedpasswords.com; font-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'";
 
+    /// <summary>
+    /// The policy for the page that opens a shared secret: only KeePort's own scripts, styles and API, no outside images
+    /// or connections, so nothing on the page can send the decrypted secret anywhere.
+    /// </summary>
+    public const string Share = "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'";
+
     /// <summary>Returns the Content-Security-Policy for a request path.</summary>
     /// <param name="path">The request path, e.g. /, /admin/ or /api/vault/files.</param>
     public static string For(string? path)
@@ -28,8 +34,20 @@ public static class ContentSecurity
         {
             return Api;
         }
+        if (IsSharePage(value))
+        {
+            return Share;
+        }
         return value.Equals("/admin", StringComparison.OrdinalIgnoreCase) || value.StartsWith("/admin/", StringComparison.OrdinalIgnoreCase)
             ? Admin
             : Vault;
+    }
+
+    /// <summary>Tells whether a path is the page that opens a shared secret (/s/&lt;id&gt; or its HTML file).</summary>
+    /// <param name="path">The request path.</param>
+    public static bool IsSharePage(string? path)
+    {
+        var value = path ?? string.Empty;
+        return value.StartsWith("/s/", StringComparison.OrdinalIgnoreCase) || value.Equals("/share.html", StringComparison.OrdinalIgnoreCase);
     }
 }

@@ -54,6 +54,12 @@ public static class AuditActions
     public const string PasskeyAdded = nameof(PasskeyAdded);
     public const string PasskeyRemoved = nameof(PasskeyRemoved);
 
+    public const string ShareCreated = nameof(ShareCreated);
+    public const string ShareSent = nameof(ShareSent);
+    public const string ShareViewed = nameof(ShareViewed);
+    public const string ShareRevoked = nameof(ShareRevoked);
+    public const string ShareSettingsChanged = nameof(ShareSettingsChanged);
+
     /// <summary>Every known tag with its category, in the order shown in the admin console's filter.</summary>
     public static readonly IReadOnlyList<AuditActionDto> All =
     [
@@ -69,7 +75,8 @@ public static class AuditActions
         new(VaultVersionRestored, "vault"),
         new(AppPasswordCreated, "webdav"), new(AppPasswordRevoked, "webdav"),
         new(RateLimitsChanged, "settings"), new(AuditRetentionChanged, "settings"), new(VersionSettingsChanged, "settings"),
-        new(EmailSettingsChanged, "settings"), new(TestEmailSent, "settings"), new(MfaSettingsChanged, "settings")
+        new(EmailSettingsChanged, "settings"), new(TestEmailSent, "settings"), new(MfaSettingsChanged, "settings"),
+        new(ShareCreated, "share"), new(ShareSent, "share"), new(ShareViewed, "share"), new(ShareRevoked, "share"), new(ShareSettingsChanged, "share")
     ];
 
     private static readonly Dictionary<string, string> Categories = All.ToDictionary(/* Tag. */ a => a.Action, /* Category. */ a => a.Category);

@@ -324,3 +324,123 @@ export const api = {
     });
   }
 };
+
+/** What the signed-in user may do when sharing. */
+export interface SharePolicy {
+  enabled: boolean;
+  maxDays: number;
+  maxViews: number;
+  requirePassword: boolean;
+  /** Whether KeePort can e-mail the link to the recipient. */
+  allowEmail: boolean;
+  /** Whether the recipient can be asked to confirm the address with a code. */
+  allowEmailCode: boolean;
+  /** The user's vaults that may not be shared from. */
+  blockedVaultIds: string[];
+}
+
+/** A share in the user's list: metadata only. */
+export interface ShareInfo {
+  id: string;
+  label: string;
+  ownerName: string;
+  vaultName: string | null;
+  createdAt: string;
+  expiresAt: string;
+  maxViews: number;
+  viewCount: number;
+  status: 'active' | 'used' | 'expired' | 'revoked' | 'locked';
+  hasPassword: boolean;
+  recipientEmail: string | null;
+  requireEmailCode: boolean;
+  sentByEmail: boolean;
+  lastViewedAt: string | null;
+}
+
+/** A new share as sent to the server: encrypted data and settings, never the key. */
+export interface NewShareRequest {
+  vaultFileId: string;
+  entryUuid: string;
+  label: string;
+  ciphertext: string;
+  iv: string;
+  kdfSalt: string;
+  kdfParams: string | null;
+  proof: string;
+  maxViews: number;
+  expiresInHours: number;
+  recipientEmail: string | null;
+  requireEmailCode: boolean;
+}
+
+/** Calls of the sharing feature: the sender's routes and the recipient page's public routes. */
+export const shareApi = {
+  /** Reads what the signed-in user may do when sharing. */
+  policy() {
+    return request<SharePolicy>('/api/shares/policy');
+  },
+  /** Lists the signed-in user's shares. */
+  list() {
+    return request<ShareInfo[]>('/api/shares');
+  },
+  /**
+   * Stores a new share.
+   * @param share - The encrypted secret and its settings.
+   */
+  create(share: NewShareRequest) {
+    return request<ShareInfo>('/api/shares', { method: 'POST', body: JSON.stringify(share) });
+  },
+  /**
+   * Lets KeePort e-mail the link to the recipient; KeePort builds it from its web vault address, the ID and the key.
+   * @param id - The share's ID.
+   * @param key - The link key.
+   */
+  send(id: string, key: string) {
+    return request<ShareInfo>(`/api/shares/${encodeURIComponent(id)}/send`, { method: 'POST', body: JSON.stringify({ key }) });
+  },
+  /**
+   * Revokes a share.
+   * @param id - The share's ID.
+   */
+  revoke(id: string) {
+    return request<void>(`/api/shares/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  },
+  /**
+   * Reads what the recipient page shows before revealing.
+   * @param id - The share's ID.
+   */
+  meta(id: string) {
+    return request<ShareMeta>(`/api/share/${encodeURIComponent(id)}`);
+  },
+  /**
+   * Asks KeePort to e-mail a code to the recipient.
+   * @param id - The share's ID.
+   */
+  requestCode(id: string) {
+    return request<void>(`/api/share/${encodeURIComponent(id)}/code`, { method: 'POST' });
+  },
+  /**
+   * Gets the ciphertext with the access proof and the optional code; counts one view.
+   * @param id - The share's ID.
+   * @param proof - The proof derived from the key and the password.
+   * @param code - The code from the e-mail, if needed.
+   */
+  reveal(id: string, proof: string, code: string | null) {
+    return request<{ ciphertext: string; iv: string; viewsLeft: number }>(`/api/share/${encodeURIComponent(id)}/reveal`, {
+      method: 'POST',
+      body: JSON.stringify({ proof, code })
+    });
+  }
+};
+
+/** What the recipient page shows before revealing a secret. */
+export interface ShareMeta {
+  senderName: string;
+  expiresAt: string;
+  viewsLeft: number;
+  hasPassword: boolean;
+  kdfSalt: string;
+  kdfParams: string | null;
+  requiresEmailCode: boolean;
+  emailHint: string | null;
+}

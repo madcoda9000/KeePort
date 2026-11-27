@@ -24,6 +24,43 @@ export interface User {
   keyboardShortcuts: boolean;
 }
 
+/** The administrator's sharing rules. */
+export interface ShareSettings {
+  mode: 'off' | 'all' | 'selected';
+  maxDays: number;
+  maxViews: number;
+  requirePassword: boolean;
+  allowEmail: boolean;
+  allowEmailCode: boolean;
+}
+
+/** A share as the admin console lists it: metadata only. */
+export interface AdminShare {
+  id: string;
+  label: string;
+  ownerName: string;
+  vaultName: string | null;
+  createdAt: string;
+  expiresAt: string;
+  maxViews: number;
+  viewCount: number;
+  status: 'active' | 'used' | 'expired' | 'revoked' | 'locked';
+  hasPassword: boolean;
+  recipientEmail: string | null;
+  requireEmailCode: boolean;
+  sentByEmail: boolean;
+  lastViewedAt: string | null;
+}
+
+/** Everything the admin console shows about sharing. */
+export interface AdminSharing {
+  settings: ShareSettings;
+  emailConfigured: boolean;
+  users: { id: string; username: string; mode: 'default' | 'allowed' | 'blocked'; mayShare: boolean }[];
+  vaults: { id: string; name: string; allowed: boolean }[];
+  shares: AdminShare[];
+}
+
 /** The administrator's two-factor rules. */
 export interface MfaSettings {
   requireForAdmins: boolean;
@@ -192,7 +229,7 @@ export interface VersionSettings {
 }
 
 /** The area an audit log entry belongs to. */
-export type AuditCategory = 'auth' | 'account' | 'user' | 'vault' | 'webdav' | 'settings';
+export type AuditCategory = 'auth' | 'account' | 'user' | 'vault' | 'webdav' | 'settings' | 'share';
 
 /** One audit log entry: who did what, to which object, with which result. */
 export interface AuditEntry {
@@ -445,6 +482,43 @@ export const api = {
     return request<{ sentTo: string }>(`${EMAIL_SETTINGS_PATH}/test`, { method: 'POST' });
   },
 
+  /**
+   * Loads the sharing rules, the users and vaults with their switches, and all shares.
+   * @param signal - Aborts the request.
+   */
+  async getSharing(signal?: AbortSignal) {
+    return request<AdminSharing>('/api/admin/sharing', { signal });
+  },
+  /**
+   * Stores new sharing rules.
+   * @param settings - The rules.
+   */
+  async updateShareSettings(settings: ShareSettings) {
+    return request<AdminSharing>('/api/admin/sharing/settings', { method: 'PUT', body: JSON.stringify(settings) });
+  },
+  /**
+   * Sets one user's sharing mode.
+   * @param userId - The account's ID.
+   * @param mode - default, allowed or blocked.
+   */
+  async setShareUserMode(userId: string, mode: 'default' | 'allowed' | 'blocked') {
+    return request<AdminSharing>(`/api/admin/sharing/users/${encodeURIComponent(userId)}`, { method: 'PUT', body: JSON.stringify({ mode }) });
+  },
+  /**
+   * Allows or forbids sharing from one vault.
+   * @param fileId - The vault's ID.
+   * @param allowed - Whether its entries may be shared.
+   */
+  async setShareVaultAllowed(fileId: string, allowed: boolean) {
+    return request<AdminSharing>(`/api/admin/sharing/vaults/${encodeURIComponent(fileId)}`, { method: 'PUT', body: JSON.stringify({ allowed }) });
+  },
+  /**
+   * Revokes any share.
+   * @param shareId - The share's ID.
+   */
+  async revokeShare(shareId: string) {
+    return request<AdminSharing>(`/api/admin/sharing/shares/${encodeURIComponent(shareId)}`, { method: 'DELETE' });
+  },
   /**
    * Loads the two-factor rules.
    * @param signal - An optional signal for aborting the request.

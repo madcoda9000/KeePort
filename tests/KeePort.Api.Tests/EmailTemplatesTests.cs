@@ -9,7 +9,7 @@ public class EmailTemplatesTests
         ["username"] = "anna", ["code"] = "123456", ["url"] = "https://vault.example.test/#token=abc", ["inviter"] = "admin",
         ["site"] = "https://vault.example.test", ["time"] = "2026-11-26 10:00 UTC", ["device"] = "Firefox 120 (Linux)", ["ip"] = "192.0.2.1",
         ["email"] = "anna@example.test", ["label"] = "Pixel 8", ["count"] = "12", ["minutes"] = "15", ["date"] = "2026-12-01", ["days"] = "5",
-        ["free"] = "0.8 GB", ["total"] = "100.0 GB"
+        ["free"] = "0.8 GB", ["total"] = "100.0 GB", ["sender"] = "anna", ["expires"] = "2026-12-01 10:00 UTC", ["views"] = "1"
     };
 
     /// <summary>Checks that every template renders in every language without missing texts or unfilled placeholders.</summary>
@@ -17,7 +17,7 @@ public class EmailTemplatesTests
     public void Every_Template_Renders_In_Every_Language()
     {
         var kinds = typeof(EmailTemplates.Kinds).GetFields().Select(/* Template name. */ f => (string)f.GetValue(null)!).ToList();
-        Assert.Equal(18, kinds.Count);
+        Assert.Equal(20, kinds.Count);
         foreach (var language in new[] { "en", "de", "fr" })
         {
             foreach (var kind in kinds)

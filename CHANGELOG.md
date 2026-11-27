@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.26.0] - 2026-11-27
+
+### Added
+
+- **Share secrets** with people without a KeePort account: **Share…** in an open entry creates a link (`/s/<id>#<key>`) for the chosen fields, an optional message, a validity and a number of views.
+  - The entry is encrypted in the browser (AES-256-GCM, keys from HKDF-SHA-256); the key is in the part of the link after `#`, which never reaches the server. KeePort stores only ciphertext and deletes it after the last view, on expiry or on revocation.
+  - Optional **password for the recipient** (Argon2id). The server checks a proof derived from key and password before it hands out the ciphertext, so a wrong password does not use up a view; ten wrong attempts lock the link.
+  - Optional **e-mail ways**: KeePort e-mails the link (a recipient password is then required), and/or the recipient confirms the address with a six-digit code.
+  - **Recipient page** without the web vault's code, with its own strict Content-Security-Policy, `no-store` and `noindex`. Opening counts as a view only after **Open secret**, so link previews do not use it up.
+  - **Shares** in the account settings lists your links with status and views; active links can be revoked.
+  - **Admin → Settings → Sharing secrets**: off by default; for all users or only selected users, per-user allow/block, per-vault switch, longest validity (default 7 days), most views (default 5), required recipient password, and the two e-mail ways. Lists all shares (metadata only) and can revoke them. Links of a forbidden vault or user stop working.
+  - Sharing needs read-write access to the vault.
+  - Audit log category **Sharing** (`ShareCreated`, `ShareSent`, `ShareViewed`, `ShareRevoked`, `ShareSettingsChanged`); e-mail kinds `shareLink` and `shareCode`.
+  - Expired secrets are deleted every hour; ended shares are listed for 30 days.
+
 ## [0.25.0] - 2026-11-27
 
 ### Added
@@ -576,6 +591,7 @@ First beta release.
 - Login and setup share a configurable per-IP rate limit; session checks and sign-out are exempt. WebDAV has a separate configurable limit applied before authentication.
 - Admin accounts can only sign in to the Admin console; Vault and WebDAV require a separate user account. Admin sessions are scoped to the Admin API, so existing admins need to sign in again after updating.
 
+[0.26.0]: https://github.com/madcoda9000/KeePort/compare/v0.25.0...v0.26.0
 [0.25.0]: https://github.com/madcoda9000/KeePort/compare/v0.24.2...v0.25.0
 [0.24.2]: https://github.com/madcoda9000/KeePort/compare/v0.24.1...v0.24.2
 [0.24.1]: https://github.com/madcoda9000/KeePort/compare/v0.24.0...v0.24.1

@@ -41,7 +41,9 @@ export default defineMessages({
     kind_mfaCode: 'Sign-in code',
     kind_mfaEnabled: 'Two-factor sign-in on',
     kind_mfaDisabled: 'Two-factor sign-in off',
-    kind_mfaReset: 'Two-factor sign-in reset'
+    kind_mfaReset: 'Two-factor sign-in reset',
+    kind_shareLink: 'Link to a shared secret',
+    kind_shareCode: 'Code for a shared secret'
   },
   de: {
     title: 'E-Mail-Log',
@@ -82,7 +84,9 @@ export default defineMessages({
     kind_mfaCode: 'Anmeldecode',
     kind_mfaEnabled: 'Zwei-Faktor-Anmeldung an',
     kind_mfaDisabled: 'Zwei-Faktor-Anmeldung aus',
-    kind_mfaReset: 'Zwei-Faktor-Anmeldung zurückgesetzt'
+    kind_mfaReset: 'Zwei-Faktor-Anmeldung zurückgesetzt',
+    kind_shareLink: 'Link zu einem geteilten Secret',
+    kind_shareCode: 'Code für ein geteiltes Secret'
   },
   fr: {
     title: 'Journal des e-mails',
@@ -123,6 +127,8 @@ export default defineMessages({
     kind_mfaCode: 'Code de connexion',
     kind_mfaEnabled: 'Connexion à deux facteurs activée',
     kind_mfaDisabled: 'Connexion à deux facteurs désactivée',
-    kind_mfaReset: 'Connexion à deux facteurs réinitialisée'
+    kind_mfaReset: 'Connexion à deux facteurs réinitialisée',
+    kind_shareLink: 'Lien vers un secret partagé',
+    kind_shareCode: 'Code pour un secret partagé'
   }
 });

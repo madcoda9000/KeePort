@@ -63,6 +63,8 @@ builder.Services.AddSingleton<SecurityNotifier>();
 builder.Services.AddHostedService<EmailWorker>();
 builder.Services.AddHostedService<AdminWarningService>();
 builder.Services.AddHostedService<VersionCleanupService>();
+builder.Services.AddSingleton<ShareService>();
+builder.Services.AddHostedService<ShareCleanupService>();
 builder.Services.AddSingleton<IFaviconFetcher, FaviconFetcher>();
 
 // Registers the credential and WebDAV limits and their rejection response.
@@ -80,6 +82,9 @@ builder.Services.AddRateLimiter(options =>
     // Limits website icon downloads to 30 per minute and client, so the server cannot be used to scan sites.
     // <param name="context">The current HTTP request and response context.</param>
     options.AddPolicy(VaultEndpoints.FaviconRateLimitPolicy, context => PerIpLimit(context, 30, 0));
+    // Limits the public routes of shared secrets to 30 requests per minute and client, against guessing.
+    // <param name="context">The current HTTP request and response context.</param>
+    options.AddPolicy(ShareEndpoints.PublicRateLimitPolicy, context => PerIpLimit(context, 30, 0));
    // Applies the WebDAV quota only to requests under the WebDAV path.
     // <param name="context">The current HTTP request and response context.</param>
     options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, (string, long)>(context =>
@@ -227,6 +232,12 @@ app.Use(async (context, next) =>
     context.Response.Headers["X-Frame-Options"] = "DENY";
     context.Response.Headers["Referrer-Policy"] = "no-referrer";
     context.Response.Headers.ContentSecurityPolicy = ContentSecurity.For(path);
+    if (ContentSecurity.IsSharePage(path) || path.StartsWith(ShareEndpoints.PublicApiPath + "/", StringComparison.OrdinalIgnoreCase))
+    {
+        // Shared secrets must not be cached, indexed or linked to from search results.
+        context.Response.Headers.CacheControl = "no-store";
+        context.Response.Headers["X-Robots-Tag"] = "noindex, nofollow";
+    }
     await next();
 });
 
@@ -293,6 +304,7 @@ app.MapAdminEndpoints();
 app.MapEmailEndpoints();
 app.MapMfaEndpoints();
 app.MapPasskeyEndpoints();
+app.MapShareEndpoints();
 app.MapWebDavEndpoints();
 
 app.UseDefaultFiles();
@@ -317,8 +329,11 @@ app.Use(async (context, next) =>
     }
 
     var isAdmin = path.Equals("/admin", StringComparison.OrdinalIgnoreCase) || path.StartsWith("/admin/", StringComparison.OrdinalIgnoreCase);
+    var isShare = ContentSecurity.IsSharePage(path);
     var indexPath = isAdmin
         ? Path.Combine(app.Environment.ContentRootPath, "wwwroot", "admin", "index.html")
+        : isShare
+        ? Path.Combine(app.Environment.ContentRootPath, "wwwroot", "share.html")
         : Path.Combine(app.Environment.ContentRootPath, "wwwroot", "index.html");
     if (!File.Exists(indexPath))
     {
@@ -327,7 +342,7 @@ app.Use(async (context, next) =>
 
     context.Response.StatusCode = StatusCodes.Status200OK;
     context.Response.ContentType = "text/html; charset=utf-8";
-    context.Response.Headers.CacheControl = StaticFileCaching.Revalidate;
+    context.Response.Headers.CacheControl = isShare ? "no-store" : StaticFileCaching.Revalidate;
     context.Response.ContentLength = new FileInfo(indexPath).Length;
     await context.Response.SendFileAsync(indexPath, context.RequestAborted);
 });

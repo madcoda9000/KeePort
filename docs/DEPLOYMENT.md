@@ -471,6 +471,19 @@ sudo docker exec keeport keeport-admin reset-mfa <username>
 
 The account is signed out everywhere and can sign in with the password alone; the reset appears in the audit log. Set up a second factor again right away.
 
+## 🔗 Sharing secrets (optional)
+
+Users can share an entry with someone without a KeePort account through a link (*since 0.26*). It is **off** until an administrator turns it on under **Admin → Settings → Sharing secrets**: for all users or only selected ones, with the longest validity (default 7 days), the most views per link (default 5), an optional password requirement, and the two e-mail ways below. Single vaults can be excluded; sharing always needs read-write access.
+
+The entry is encrypted in the sender's browser (AES-256-GCM). The key is the part of the link after `#`, which browsers never send to the server or a reverse proxy. KeePort stores only the ciphertext and deletes it after the last view, on expiry or when the link is revoked. A recipient password is stretched with Argon2id; a wrong password does not use up a view, and ten wrong attempts lock the link.
+
+The recipient opens `https://<vault host>/s/<id>#<key>`. This page and its API (`/s/…`, `/api/share/…`) are part of the **web vault**, so the reverse proxy rule for the web vault already covers them; nothing else needs to be published. The page has a strict Content-Security-Policy and is never cached or indexed.
+
+With [e-mail](#-e-mail-optional) set up, two options can be allowed:
+
+- **KeePort e-mails the link.** The server then sees the key for a moment, as does the mail provider, so a recipient password is required and never sent by KeePort. The e-mail body is deleted from the database once it is sent.
+- **The recipient confirms the address.** Before the secret is released, KeePort sends a six-digit code to the recipient's address, so a forwarded link alone is not enough.
+
 ## 📱 Connect KeePass apps
 
 | Setting | Value |
@@ -664,3 +677,4 @@ Limits apply per client address. Behind a reverse proxy, [trust the proxy](#-tru
 | File names, sizes, revisions, timestamps | Entry titles, usernames, passwords |
 | Users, permissions, WebDAV app password hashes | URLs, notes, TOTP secrets, attachments |
 | WebDAV request metadata (see logs) | Anything inside the vault — decryption happens only in the browser or the KeePass app |
+| Shared secrets: label, owner, vault, validity, views, recipient address | The content of a shared secret and the key in its link (unless KeePort e-mails the link; a recipient password is then required) |
