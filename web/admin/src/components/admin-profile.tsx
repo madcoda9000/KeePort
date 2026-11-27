@@ -15,6 +15,8 @@ import emailAccountMessages from '@shared/i18n/messages/email-account';
 import languageMessages from '@shared/i18n/messages/language';
 import { applyPreference, type LanguagePreference } from '@shared/i18n/core';
 import { LanguageSetting } from '@shared/i18n/language-select';
+import shortcutMessages from '@shared/i18n/messages/shortcuts';
+import { ShortcutSetting } from '@shared/shortcut-help';
 import { useT } from '@shared/i18n/react';
 import { TwoFactorSettings } from '@shared/two-factor';
 import { SettingsDialogContent } from '@shared/settings-dialog';
@@ -27,10 +29,11 @@ type ProfileMessage = { kind: 'notice' | 'error'; text: string };
  * @param props - The signed-in administrator and the callback that receives the updated account after a profile change.
  */
 export function AdminProfile({ user, onUpdate }: { user: User; onUpdate: (user: User) => void }) {
-  const [busy, setBusy] = useState<'email' | 'password' | 'language' | null>(null);
+  const [busy, setBusy] = useState<'email' | 'password' | 'language' | 'shortcuts' | null>(null);
   const [message, setMessage] = useState<ProfileMessage | null>(null);
   const t = useT(messages);
   const tLanguage = useT(languageMessages);
+  const tShortcuts = useT(shortcutMessages);
   const tEmail = useT(emailAccountMessages);
   const tSettings = useT(settingsDialogText);
 
@@ -102,6 +105,23 @@ export function AdminProfile({ user, onUpdate }: { user: User; onUpdate: (user: 
       setMessage({ kind: 'notice', text: t('passwordChanged') });
     } catch (error) {
       setMessage({ kind: 'error', text: error instanceof Error ? error.message : t('passwordFailed') });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  /**
+   * Turns the keyboard shortcuts on or off for the account.
+   * @param enabled - Whether the shortcuts are on.
+   */
+  async function handleShortcuts(enabled: boolean) {
+    setBusy('shortcuts');
+    setMessage(null);
+    try {
+      onUpdate(await api.updateShortcuts(enabled));
+      setMessage({ kind: 'notice', text: tShortcuts('saved', { state: tShortcuts(enabled ? 'on' : 'off') }) });
+    } catch (error) {
+      setMessage({ kind: 'error', text: error instanceof Error ? error.message : tShortcuts('failed') });
     } finally {
       setBusy(null);
     }
@@ -189,6 +209,10 @@ export function AdminProfile({ user, onUpdate }: { user: User; onUpdate: (user: 
                      */ (language) => void handleLanguage(language)} />
                     <FieldDescription id="account-language-help">{tLanguage('help')}</FieldDescription>
                   </Field>
+                  <ShortcutSetting enabled={user.keyboardShortcuts !== false} disabled={busy !== null} onSave={/**
+                   * Saves the shortcut choice.
+                   * @param enabled - Whether the shortcuts are on.
+                   */ (enabled) => void handleShortcuts(enabled)} />
                   </>
                 ) },
                 { id: 'password', label: tSettings('password'), icon: KeyRoundIcon, content: (

@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.25.0] - 2026-11-27
+
+### Added
+
+- **Keyboard shortcuts** in the web vault and the admin console. Press **?** for an overview. Single keys only work while the cursor is not in an input field; on a Mac, ⌘ replaces Ctrl.
+  - Web vault: **/** search, **Esc** empties the search, then the selection, then the mark; **↓ ↑** (or **J K**) move the mark through the list across pages, **Enter** opens the marked entry, **Space** selects it, **N** new entry, **Del** moves the selected or marked entries to the recycle bin after a confirmation; **U**, **P**, **T** copy username, password or TOTP code and **O** opens the website of the marked or open entry; **Ctrl+S** saves the open entry; **Shift+L** locks the vault.
+  - **Command palette** in the web vault (**Ctrl+K**): find entries, folders and actions (new entry, security report, reload, import, export, lock, settings, theme) by typing. It searches only in the browser.
+  - Admin console: **/** search, **Esc** empties the search, **G** then **D**, **V**, **U**, **W**, **S** or **L** opens Dashboard, Vault files, Users, WebDAV credentials, Settings or Audit log.
+  - Copy buttons in the list show their key in the tooltip; the sidebar shows "Press ? for keyboard shortcuts".
+  - New account setting **Keyboard shortcuts** (on by default) under **Account**, stored on the account for the web vault and the admin console (`PUT /api/auth/shortcuts`, `PUT /api/admin/auth/shortcuts`).
+- New dependency `cmdk` 1.1.1 (MIT) for the command palette, added with the shadcn/ui components Command, Input Group and Kbd.
+
 ## [0.24.2] - 2026-11-27
 
 ### Changed
@@ -564,6 +576,7 @@ First beta release.
 - Login and setup share a configurable per-IP rate limit; session checks and sign-out are exempt. WebDAV has a separate configurable limit applied before authentication.
 - Admin accounts can only sign in to the Admin console; Vault and WebDAV require a separate user account. Admin sessions are scoped to the Admin API, so existing admins need to sign in again after updating.
 
+[0.25.0]: https://github.com/madcoda9000/KeePort/compare/v0.24.2...v0.25.0
 [0.24.2]: https://github.com/madcoda9000/KeePort/compare/v0.24.1...v0.24.2
 [0.24.1]: https://github.com/madcoda9000/KeePort/compare/v0.24.0...v0.24.1
 [0.24.0]: https://github.com/madcoda9000/KeePort/compare/v0.23.0...v0.24.0

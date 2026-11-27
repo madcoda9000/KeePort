@@ -20,6 +20,8 @@ export interface User {
   twoFactor: boolean;
   /** Whether the administrator requires a second factor that is not set up yet; only the setup works until then. */
   mfaSetupRequired: boolean;
+  /** Whether the admin console reacts to keyboard shortcuts (on by default). */
+  keyboardShortcuts: boolean;
 }
 
 /** The administrator's two-factor rules. */
@@ -394,6 +396,13 @@ export const api = {
    */
   async updateLanguage(language: 'de' | 'en' | 'fr' | null) {
     return request<User>(`${AUTH_PATH}/language`, { method: 'PUT', body: JSON.stringify({ language }) });
+  },
+  /**
+   * Turns the keyboard shortcuts of the signed-in admin on or off.
+   * @param enabled - Whether the shortcuts are on.
+   */
+  async updateShortcuts(enabled: boolean) {
+    return request<User>(`${AUTH_PATH}/shortcuts`, { method: 'PUT', body: JSON.stringify({ enabled }) });
   },
   async updateEmail(email: string) {
     return request<User>(`${AUTH_PATH}/email`, { method: 'PUT', body: JSON.stringify({ email }) });

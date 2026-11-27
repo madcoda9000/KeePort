@@ -26,6 +26,8 @@ export interface User {
   checkBreaches: boolean;
   /** Days before expiry that entries count as expiring soon; null for the default (30), 0 for off. */
   expiryWarningDays: number | null;
+  /** Whether the web vault reacts to keyboard shortcuts (on by default). */
+  keyboardShortcuts: boolean;
   /** The interface language stored on the account, or null to follow the browser. */
   language: 'de' | 'en' | 'fr' | null;
   /** Whether the account's e-mail address has been confirmed with a code or a link. */
@@ -215,6 +217,13 @@ export const api = {
    */
   async updateLanguage(language: 'de' | 'en' | 'fr' | null) {
     return request<User>('/api/auth/language', { method: 'PUT', body: JSON.stringify({ language }) });
+  },
+  /**
+   * Turns the keyboard shortcuts of the account on or off.
+   * @param enabled - Whether the shortcuts are on.
+   */
+  async updateShortcuts(enabled: boolean) {
+    return request<User>('/api/auth/shortcuts', { method: 'PUT', body: JSON.stringify({ enabled }) });
   },
   async updateEmail(email: string) {
     return request<User>('/api/auth/email', { method: 'PUT', body: JSON.stringify({ email }) });

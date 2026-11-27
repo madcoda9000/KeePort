@@ -52,6 +52,8 @@ public sealed class UserRecord
     public DateTimeOffset? MfaEmailEnabledAt { get; init; }
     /// <summary>Days before expiry that the web vault marks entries as expiring soon; null for the default, 0 for off.</summary>
     public int? ExpiryWarningDays { get; init; }
+    /// <summary>Whether the web vault and the admin console react to keyboard shortcuts (on by default).</summary>
+    public bool KeyboardShortcuts { get; init; } = true;
 }
 
 public sealed record SessionRecord
@@ -127,6 +129,7 @@ public sealed class WebDavCredentialRecord
 /// <param name="TwoFactor">Whether the account has a usable second factor for signing in.</param>
 /// <param name="ExpiryWarningDays">Days before expiry that entries count as expiring soon; null for the default, 0 for off.</param>
 /// <param name="MfaSetupRequired">Whether two-factor sign-in is required for the account but not set up yet; until it is, only the setup works.</param>
+/// <param name="KeyboardShortcuts">Whether the web vault and the admin console react to keyboard shortcuts.</param>
 public sealed record UserDto(
     string Id,
     string Username,
@@ -145,7 +148,8 @@ public sealed record UserDto(
     bool NotifyAppPassword = true,
     bool TwoFactor = false,
     bool MfaSetupRequired = false,
-    int? ExpiryWarningDays = null);
+    int? ExpiryWarningDays = null,
+    bool KeyboardShortcuts = true);
 
 /// <summary>Represents vault file metadata without the encrypted file contents.</summary>
 /// <param name="Id">The stable identifier for this resource.</param>
@@ -195,6 +199,10 @@ public sealed record ChangePasswordRequest(string CurrentPassword, string NewPas
 /// <param name="CheckBreaches">Whether to check passwords against "Have I Been Pwned", or null to leave it unchanged.</param>
 /// <param name="ExpiryWarningDays">Days before expiry that entries count as expiring soon (0 = off), or null to leave it unchanged.</param>
 public sealed record UpdateSettingsRequest(int? AutoLockMinutes, bool? ShowFavicons = null, int? ClipboardClearSeconds = null, bool? CheckBreaches = null, int? ExpiryWarningDays = null);
+
+/// <summary>Turns the keyboard shortcuts of the signed-in account on or off.</summary>
+/// <param name="Enabled">Whether the shortcuts are on.</param>
+public sealed record UpdateShortcutsRequest(bool Enabled);
 
 /// <summary>Carries a replacement email address for the signed-in account.</summary>
 /// <param name="Email">The account's contact email address.</param>

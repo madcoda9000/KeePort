@@ -282,6 +282,27 @@ public static class AuthEndpoints
             return Results.Ok(ToDto(db.GetUserById(user.Id)!));
         });
 
+        // Turns the keyboard shortcuts of the signed-in account on or off.
+        // <param name="request">Whether the shortcuts are on.</param>
+        // <param name="context">The current HTTP request and response context.</param>
+        // <param name="db">The SQLite store for KeePort metadata.</param>
+        // <param name="audit">The audit log that records the change.</param>
+        group.MapPut("/shortcuts", (UpdateShortcutsRequest request, HttpContext context, KeePortDb db, AuditLog audit) =>
+        {
+            if (ApiAuth.RequireAuthenticated(context) is { } unauthorized)
+            {
+                return unauthorized;
+            }
+            var user = ApiAuth.GetUser(context)!;
+            db.UpdateUserKeyboardShortcuts(user.Id, request.Enabled);
+            if (user.KeyboardShortcuts != request.Enabled)
+            {
+                audit.Record(context, AuditActions.SettingsChanged, targetType: "user", targetId: user.Id, targetName: user.Username,
+                    details: $"Keyboard shortcuts {(request.Enabled ? "on" : "off")}");
+            }
+            return Results.Ok(ToDto(db.GetUserById(user.Id)!));
+        });
+
         // Lists the latest sign-in attempts on the signed-in account, so its owner can spot sign-ins that were not theirs.
         // <param name="context">The current HTTP request and response context.</param>
         // <param name="db">The SQLite store for KeePort metadata.</param>
@@ -410,7 +431,7 @@ public static class AuthEndpoints
     internal static UserDto ToDto(UserRecord user)
     {
         return new UserDto(user.Id, user.Username, user.Role.ToString().ToLowerInvariant(), user.Disabled, user.CreatedAt, user.LastLoginAt, user.AutoLockMinutes, user.Email, user.ShowFavicons, user.ClipboardClearSeconds, user.CheckBreaches, user.Language,
-            user.EmailVerifiedAt is not null, user.NotifySignIn, user.NotifyAppPassword, ExpiryWarningDays: user.ExpiryWarningDays);
+            user.EmailVerifiedAt is not null, user.NotifySignIn, user.NotifyAppPassword, ExpiryWarningDays: user.ExpiryWarningDays, KeyboardShortcuts: user.KeyboardShortcuts);
     }
 
     /// <summary>

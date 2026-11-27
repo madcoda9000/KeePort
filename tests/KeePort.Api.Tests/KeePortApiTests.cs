@@ -1564,6 +1564,31 @@ public class KeePortApiTests : IDisposable
         Assert.Equal(0, (await GetJsonAsync(_user, "/api/auth/me")).GetProperty("expiryWarningDays").GetInt32());
     }
 
+    /// <summary>Checks the keyboard shortcut setting: on by default, can be turned off for vault users and admins.</summary>
+    [Fact]
+    public async Task Keyboard_Shortcut_Setting_Is_Stored()
+    {
+        var adminCsrf = await SetupAdminAsync(_admin);
+        await CreateUserAsync(_admin, adminCsrf, "greta", "user");
+        var (csrf, _) = await LoginAsync(_user, "greta", "User passphrase 123");
+        Assert.True((await GetJsonAsync(_user, "/api/auth/me")).GetProperty("keyboardShortcuts").GetBoolean());
+        using (var off = await SendAsync(_user, HttpMethod.Put, "/api/auth/shortcuts", json: new { enabled = false }, csrf: csrf))
+        {
+            Assert.False((await off.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("keyboardShortcuts").GetBoolean());
+        }
+        Assert.False((await GetJsonAsync(_user, "/api/auth/me")).GetProperty("keyboardShortcuts").GetBoolean());
+        using (var adminOff = await SendAsync(_admin, HttpMethod.Put, "/api/admin/auth/shortcuts", json: new { enabled = false }, csrf: adminCsrf))
+        {
+            adminOff.EnsureSuccessStatusCode();
+        }
+        Assert.False((await GetJsonAsync(_admin, "/api/admin/auth/me")).GetProperty("keyboardShortcuts").GetBoolean());
+        using (var on = await SendAsync(_user, HttpMethod.Put, "/api/auth/shortcuts", json: new { enabled = true }, csrf: csrf))
+        {
+            on.EnsureSuccessStatusCode();
+        }
+        Assert.True((await GetJsonAsync(_user, "/api/auth/me")).GetProperty("keyboardShortcuts").GetBoolean());
+    }
+
     /// <summary>Stores SMTP settings that point at a closed local port, so e-mails are queued but never delivered.</summary>
     /// <param name="adminCsrf">The admin's CSRF token.</param>
     /// <param name="password">An SMTP password to store, or null to keep the stored one.</param>

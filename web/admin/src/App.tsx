@@ -107,6 +107,9 @@ import { ACCENTS } from '@shared/accent';
 import { cn } from '@/lib/utils';
 import { InsecureContextAlert, hasBrowserCrypto } from '@shared/secure-context';
 import { DataTable, type TableColumn } from '@shared/data-table';
+import { ShortcutHelp, ShortcutHint, useGeneralShortcuts, type ShortcutGroup } from '@shared/shortcut-help';
+import { clearSearchField, overlayOpen, useShortcuts, type ShortcutHandler } from '@shared/use-shortcuts';
+import shortcutsText from '@/i18n/shortcuts';
 import { matchesTableSearch, timestampSortValue } from '@shared/table-data';
 
 type Message = { kind: 'notice' | 'error'; text: string } | null;
@@ -124,6 +127,16 @@ const ADMIN_SECTIONS = {
   'webdav-logs': { title: 'webdavLogs', description: 'webdavLogsDescription', icon: NetworkIcon },
   'email-logs': { title: 'emailLogs', description: 'emailLogsDescription', icon: MailIcon }
 } as const;
+
+/** The second key of the "g" shortcuts that open a section, for example "g d" for the dashboard. */
+const SECTION_KEYS: readonly (readonly [string, Tab])[] = [
+  ['d', 'dashboard'],
+  ['v', 'vaults'],
+  ['u', 'users'],
+  ['w', 'webdav'],
+  ['s', 'settings'],
+  ['l', 'audit-log']
+];
 
 /** Sections listed directly under "Manage" in the navigation. */
 const MANAGE_TABS: readonly Tab[] = ['dashboard', 'vaults', 'users', 'webdav', 'settings'];
@@ -861,7 +874,10 @@ export default function App() {
   const [message, setMessage] = useState<Message>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [theme, setTheme] = useState(getTheme);
+  const [showShortcuts, setShowShortcuts] = useState(false);
   const t = useT(sidebarText);
+  const tShortcuts = useT(shortcutsText);
+  const generalShortcuts = useGeneralShortcuts();
   const ta = useT(authText);
   const tc = useT(commonText);
   const tv = useT(vaultsText);
@@ -1222,6 +1238,51 @@ export default function App() {
     </Button>
   );
 
+  /**
+   * Opens an admin section and clears the previous selection and message.
+   * @param next - The section to open.
+   */
+  function openSection(next: Tab) {
+    setTab(next);
+    setPermFile(null);
+    setMessage(null);
+  }
+
+  const shortcutHandlers: Record<string, ShortcutHandler> = {
+    '?': /** Opens the shortcut overview. */ () => {
+      if (overlayOpen()) return false;
+      setShowShortcuts(true);
+    },
+    '/': /** Puts the cursor into the search box of the page. */ () => {
+      const search = document.querySelector<HTMLInputElement>('main input[type="search"]');
+      if (overlayOpen() || !search) return false;
+      search.focus();
+      search.select();
+    },
+    escape: /** Empties the search box of the page. */ () => {
+      const search = document.querySelector<HTMLInputElement>('main input[type="search"]');
+      if (overlayOpen() || !search?.value) return false;
+      clearSearchField(search);
+    }
+  };
+  for (const [key, section] of SECTION_KEYS) {
+    shortcutHandlers[`g ${key}`] = /** Opens the section. */ () => {
+      if (overlayOpen()) return false;
+      openSection(section);
+    };
+  }
+  useShortcuts(shortcutHandlers, Boolean(user && !mfaSetup && user.keyboardShortcuts !== false));
+  const shortcutGroups: ShortcutGroup[] = [
+    generalShortcuts,
+    {
+      title: tShortcuts('navigation'),
+      items: SECTION_KEYS.map(/**
+       * Describes the shortcut of one section.
+       * @param entry - The second key and the section.
+       */ ([key, section]) => ({ keys: [`g ${key}`], label: tShortcuts('goTo', { section: t(ADMIN_SECTIONS[section].title) }) }))
+    }
+  ];
+
   if (challenge && !user) {
     return (
       <AuthLayout area="Admin" themeAction={themeAction}>
@@ -1350,15 +1411,10 @@ export default function App() {
         tab={tab}
         user={user}
         onProfileUpdate={handleProfileUpdate}
-        onSelect={/**
-         * Switches admin sections and clears the previous selection and message.
-         * @param next - The section selected in the administration navigation.
-         */ (next) => {
-          setTab(next);
-          setPermFile(null);
-          setMessage(null);
-        }}
+        onSelect={openSection}
+        onShowShortcuts={user.keyboardShortcuts !== false ? /** Opens the shortcut overview. */ () => setShowShortcuts(true) : undefined}
       />
+      <ShortcutHelp open={showShortcuts} onOpenChange={setShowShortcuts} groups={shortcutGroups} />
       <SidebarInset className="min-w-0">
         <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center gap-3 border-b bg-background/95 px-4 backdrop-blur sm:px-6">
           <SidebarTrigger />
@@ -1859,11 +1915,13 @@ export default function App() {
  * Shows the admin sections and closes the mobile navigation drawer after selection.
  * @param props - The active section, signed-in administrator, and callbacks for profile updates and section changes.
  */
-function AdminNavigation({ tab, user, onProfileUpdate, onSelect }: {
+function AdminNavigation({ tab, user, onProfileUpdate, onSelect, onShowShortcuts }: {
   tab: Tab;
   user: User;
   onProfileUpdate: (user: User) => void;
   onSelect: (tab: Tab) => void;
+  /** Opens the shortcut overview; without it the hint is hidden. */
+  onShowShortcuts?: () => void;
 }) {
   const { setOpenMobile } = useSidebar();
   const t = useT(sidebarText);
@@ -1947,6 +2005,11 @@ function AdminNavigation({ tab, user, onProfileUpdate, onSelect }: {
           </SidebarMenu>
         </SidebarGroup>
       </SidebarContent>
+      {onShowShortcuts && (
+        <div className="px-3 pb-1">
+          <ShortcutHint onOpen={onShowShortcuts} />
+        </div>
+      )}
       <AdminProfile user={user} onUpdate={onProfileUpdate} />
     </Sidebar>
   );

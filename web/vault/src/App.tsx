@@ -40,6 +40,8 @@ import {
   ClockIcon,
   HardDriveIcon,
   InfoIcon,
+  KeyboardIcon,
+  SettingsIcon,
   CircleCheckIcon,
   Columns3Icon,
   ImageDownIcon,
@@ -168,7 +170,12 @@ import {
 import { TableCell, TableRow } from '@/components/ui/table';
 import { VersionBadge } from '@shared/app-version';
 import { InsecureContextAlert, hasBrowserCrypto } from '@shared/secure-context';
-import { DataTable, type DataTableView, type TableColumn } from '@shared/data-table';
+import { DataTable, type DataTableController, type DataTableView, type TableColumn } from '@shared/data-table';
+import { ShortcutHelp, ShortcutHint, ShortcutSetting, useGeneralShortcuts, useShortcutText, type ShortcutGroup } from '@shared/shortcut-help';
+import { overlayOpen, useShortcuts, type ShortcutHandler } from '@shared/use-shortcuts';
+import shortcutMessages from '@shared/i18n/messages/shortcuts';
+import shortcutsText from '@/i18n/shortcuts';
+import { CommandPalette, type PaletteAction } from '@/components/command-palette';
 import { Textarea } from '@/components/ui/textarea';
 
 type Message = { kind: 'notice' | 'error'; text: string; action?: { label: string; onClick: () => void } } | null;
@@ -294,6 +301,14 @@ function entryDraft(entry: EntryView | null, template: TemplateInfo | null = nul
   };
 }
 
+/**
+ * Returns the ID of an entry, for the list's keyboard navigation.
+ * @param entry - One entry.
+ */
+function entryRowId(entry: EntryView) {
+  return entry.id;
+}
+
 /** Manages the vault session, client-side unlocking, and entry editing. */
 export default function App() {
   const [authChecked, setAuthChecked] = useState(false);
@@ -337,6 +352,14 @@ export default function App() {
   const [deleteRequest, setDeleteRequest] = useState<{ ids: string[]; permanent: boolean; fromSheet: boolean } | null>(null);
   const [confirmEmptyBin, setConfirmEmptyBin] = useState(false);
   const [totp, setTotp] = useState<{ code: string; secondsLeft: number } | null>(null);
+  const [showShortcuts, setShowShortcuts] = useState(false);
+  const [palette, setPalette] = useState(false);
+  /** The search box and marked row of the entry list, for keyboard shortcuts. */
+  const tableController = useRef<DataTableController<EntryView>>(null);
+  /** The entry form, which Ctrl+S / ⌘S submits. */
+  const entryForm = useRef<HTMLFormElement>(null);
+  /** The entry sheet; while only it is open, the entry shortcuts work. */
+  const entrySheet = useRef<HTMLDivElement>(null);
 
   /** Starts periodic TOTP updates while the current draft has a usable secret. */
   useEffect(() => {
@@ -383,6 +406,10 @@ export default function App() {
   const [mfaSetup, setMfaSetup] = useState(false);
   const [signInName, setSignInName] = useState('');
   const tEmail = useT(emailAccountMessages);
+  const tShortcuts = useT(shortcutsText);
+  const tShortcutSetting = useT(shortcutMessages);
+  const generalShortcuts = useGeneralShortcuts();
+  const shortcutText = useShortcutText();
 
   const selectedFile = useMemo(/** Resolves the selected vault against the available file metadata. */ () => files.find(/**
    * Matches the selected vault by ID.
@@ -1355,6 +1382,23 @@ export default function App() {
   }
 
   /**
+   * Turns the keyboard shortcuts on or off for the account.
+   * @param enabled - Whether the shortcuts are on.
+   */
+  async function handleSaveShortcuts(enabled: boolean) {
+    setBusy('shortcuts');
+    setProfileMessage(null);
+    try {
+      setUser(await api.updateShortcuts(enabled));
+      setProfileMessage({ kind: 'notice', text: tShortcutSetting('saved', { state: tShortcutSetting(enabled ? 'on' : 'off') }) });
+    } catch (error) {
+      setProfileMessage({ kind: 'error', text: errorText(error, tShortcutSetting('failed')) });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  /**
    * Saves the contact address entered in the profile.
    * @param event - The submission event from the contact email form.
    */
@@ -1568,6 +1612,181 @@ export default function App() {
     return true;
   }
 
+  const shortcutsOn = Boolean(user && user.keyboardShortcuts !== false && !mfaSetup && !linkToken);
+  /** The entry the list has marked, if it is still shown. */
+  const focusedEntry = focusedId ? tableEntries.find(/**
+   * Finds the marked entry.
+   * @param entry - One entry of the list.
+   */ (entry) => entry.id === focusedId) ?? null : null;
+
+  /** Whether the entry list is in front: a vault is open and no dialog, sheet or menu covers it. */
+  function listInFront() {
+    return unlocked && edits === null && !overlayOpen();
+  }
+
+  /** Whether the entry sheet is open and nothing covers it. */
+  function sheetInFront() {
+    return edits !== null && !overlayOpen(entrySheet.current);
+  }
+
+  /**
+   * Copies a value of the open entry, or of the marked entry in the list, like its copy button.
+   * @param kind - Which value to copy.
+   */
+  function copyByShortcut(kind: 'username' | 'password' | 'totp'): boolean {
+    const source = sheetInFront() ? edits : listInFront() ? focusedEntry : null;
+    if (!source) return false;
+    const label = tMsg(kind === 'username' ? 'labelUsername' : kind === 'password' ? 'labelPassword' : 'labelTotpCode');
+    if (kind === 'totp') {
+      const config = source.otp ? parseOtpSecret(source.otp) : null;
+      if (!config) {
+        setMessage({ kind: 'error', text: tShortcuts('nothingToCopy', { label }) });
+        return true;
+      }
+      void totpCode(config).then(/**
+       * Copies the current code.
+       * @param result - The code and its remaining seconds.
+       */ (result) => copyValue(result.code, label));
+      return true;
+    }
+    const value = kind === 'username' ? source.username : source.password;
+    if (!value) setMessage({ kind: 'error', text: tShortcuts('nothingToCopy', { label }) });
+    else void copyValue(value, label);
+    return true;
+  }
+
+  /**
+   * Moves the marked row of the list.
+   * @param delta - 1 for the next row, -1 for the previous one.
+   */
+  function moveMark(delta: number): boolean {
+    if (!listInFront()) return false;
+    const row = tableController.current?.move(delta);
+    if (row) setFocusedId(row.id);
+    return true;
+  }
+
+  /**
+   * Shows a folder from the command palette.
+   * @param id - The folder.
+   */
+  function openFolderView(id: string | null) {
+    folderActions.onSelect(id);
+  }
+
+  /** Shows the security report, as its entry in the sidebar does. */
+  function openSecurityReport() {
+    setFolderId(null);
+    setDateView(null);
+    setTagView(null);
+    setSecurityView(true);
+    setSecurityIssue(null);
+    setSelection(new Set());
+    void runBreachCheck();
+  }
+
+  const shortcutHandlers: Record<string, ShortcutHandler> = {
+    '?': /** Opens the shortcut overview. */ () => {
+      if (overlayOpen()) return false;
+      setShowShortcuts(true);
+    },
+    '/': /** Puts the cursor into the search box of the list. */ () => {
+      if (!listInFront()) return false;
+      tableController.current?.focusSearch();
+    },
+    'mod+k': /** Opens or closes the command palette. */ () => {
+      if (!unlocked || (!palette && overlayOpen())) return false;
+      setPalette(!palette);
+    },
+    escape: /** Empties the search, then the selection, then the mark. */ () => {
+      if (!listInFront()) return false;
+      if (tableController.current?.clearSearch()) return;
+      if (selection.size) setSelection(new Set());
+      else if (focusedId) setFocusedId(null);
+      else return false;
+    },
+    arrowdown: /** Marks the next entry. */ () => moveMark(1),
+    j: /** Marks the next entry. */ () => moveMark(1),
+    arrowup: /** Marks the previous entry. */ () => moveMark(-1),
+    k: /** Marks the previous entry. */ () => moveMark(-1),
+    enter: /** Opens the marked entry. */ () => {
+      if (!listInFront() || !focusedEntry) return false;
+      openEntry(focusedEntry);
+    },
+    space: /** Selects or deselects the marked entry. */ () => {
+      if (!listInFront() || !focusedEntry || !canWrite || busy !== null) return false;
+      setSelected([focusedEntry.id], !selection.has(focusedEntry.id));
+    },
+    u: /** Copies the username. */ () => copyByShortcut('username'),
+    p: /** Copies the password. */ () => copyByShortcut('password'),
+    t: /** Copies the current TOTP code. */ () => copyByShortcut('totp'),
+    o: /** Opens the website of the entry in a new tab. */ () => {
+      const source = sheetInFront() ? edits : listInFront() ? focusedEntry : null;
+      if (!source) return false;
+      const url = openableUrl(source.url);
+      if (url) window.open(url, '_blank', 'noopener,noreferrer');
+      else setMessage({ kind: 'error', text: tShortcuts('noWebsite') });
+    },
+    n: /** Starts a new entry. */ () => {
+      if (!listInFront() || !canWrite || busy !== null) return false;
+      startNewEntry();
+    },
+    delete: /** Asks to delete the selected entries, or the marked one. */ () => {
+      if (!listInFront() || !canWrite || busy !== null) return false;
+      const ids = selection.size ? [...selection] : focusedEntry ? [focusedEntry.id] : [];
+      if (!ids.length) return false;
+      requestDelete(ids, false);
+    },
+    'mod+s': /** Saves the open entry. */ () => {
+      if (!sheetInFront()) return false;
+      if (canEditEntry && busy === null) entryForm.current?.requestSubmit();
+    },
+    'shift+l': /** Locks the vault. */ () => {
+      if (!unlocked || overlayOpen() || busy === 'save' || busy === 'reload') return false;
+      lockVault(true);
+    }
+  };
+  useShortcuts(shortcutHandlers, shortcutsOn);
+
+  const shortcutGroups: ShortcutGroup[] = [
+    { ...generalShortcuts, items: [...generalShortcuts.items, { keys: ['mod+k'], label: tShortcuts('palette') }] },
+    {
+      title: tShortcuts('list'),
+      items: [
+        { keys: ['arrowdown', 'j'], label: tShortcuts('next') },
+        { keys: ['arrowup', 'k'], label: tShortcuts('previous') },
+        { keys: ['enter'], label: tShortcuts('open') },
+        { keys: ['space'], label: tShortcuts('select') },
+        { keys: ['n'], label: tShortcuts('newEntry') },
+        { keys: ['delete'], label: tShortcuts('delete') }
+      ]
+    },
+    {
+      title: tShortcuts('entry'),
+      items: [
+        { keys: ['u'], label: tShortcuts('copyUsername') },
+        { keys: ['p'], label: tShortcuts('copyPassword') },
+        { keys: ['t'], label: tShortcuts('copyTotp') },
+        { keys: ['o'], label: tShortcuts('openWebsite') },
+        { keys: ['mod+s'], label: tShortcuts('save') }
+      ]
+    },
+    { title: tShortcuts('vault'), items: [{ keys: ['shift+l'], label: tShortcuts('lock') }] }
+  ];
+
+  const paletteActions: PaletteAction[] = [
+    ...(canWrite ? [{ id: 'new', label: tShortcuts('newEntry'), icon: PlusIcon, shortcut: 'n', run: /** Starts a new entry. */ () => startNewEntry() }] : []),
+    { id: 'all', label: tShortcuts('allEntries'), icon: DatabaseIcon, run: /** Shows all entries. */ () => openFolderView(null) },
+    { id: 'security', label: tShortcuts('securityReport'), icon: ShieldCheckIcon, run: openSecurityReport },
+    { id: 'reload', label: tShortcuts('reload'), icon: RefreshCwIcon, run: /** Reloads the vault. */ () => void handleReload() },
+    ...(canWrite ? [{ id: 'import', label: tShortcuts('importEntries'), icon: FileUpIcon, run: /** Opens the import. */ () => setTransfer('import') }] : []),
+    { id: 'export', label: tShortcuts('exportEntries'), icon: DownloadIcon, run: /** Opens the export. */ () => setTransfer('export') },
+    { id: 'lock', label: tShortcuts('lock'), icon: LockKeyholeIcon, shortcut: 'shift+l', run: /** Locks the vault. */ () => lockVault(true) },
+    { id: 'settings', label: tShortcuts('settings'), icon: SettingsIcon, run: /** Opens the account settings. */ () => setShowProfile(true) },
+    { id: 'shortcuts', label: tShortcuts('shortcuts'), icon: KeyboardIcon, shortcut: '?', run: /** Opens the shortcut overview. */ () => setShowShortcuts(true) },
+    { id: 'theme', label: tShortcuts('toggleTheme'), icon: theme === 'dark' ? SunIcon : MoonIcon, run: /** Switches the color theme. */ () => setTheme(toggleTheme()) }
+  ];
+
   const themeAction = (
     <Button
       type="button"
@@ -1711,7 +1930,9 @@ export default function App() {
 
   return (
     <SidebarProvider>
+      <ShortcutHelp open={showShortcuts} onOpenChange={setShowShortcuts} groups={shortcutGroups} />
       <VaultNavigation
+        shortcutHint={shortcutsOn ? <ShortcutHint onOpen={/** Opens the shortcut overview. */ () => setShowShortcuts(true)} /> : null}
         files={files}
         selectedId={selectedId}
         openId={unlocked ? selectedId : null}
@@ -1819,6 +2040,10 @@ export default function App() {
                      */ (language) => void handleSaveLanguage(language)} />
                     <FieldDescription id="account-language-help">{tLanguage('help')}</FieldDescription>
                   </Field>
+                  <ShortcutSetting enabled={user.keyboardShortcuts !== false} disabled={busy !== null} onSave={/**
+                   * Saves the shortcut choice.
+                   * @param enabled - Whether the shortcuts are on.
+                   */ (enabled) => void handleSaveShortcuts(enabled)} />
                   </>
                 ) },
                 { id: 'password', label: tSettings('password'), icon: KeyRoundIcon, content: (
@@ -2170,7 +2395,13 @@ export default function App() {
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
-                      <Button variant="outline" size="sm" disabled={busy === 'save' || busy === 'reload'} onClick={/** Locks the vault and notifies the user. */ () => lockVault(true)}>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        title={shortcutsOn ? `${t('lockVault')} (${shortcutText('shift+l')})` : undefined}
+                        disabled={busy === 'save' || busy === 'reload'}
+                        onClick={/** Locks the vault and notifies the user. */ () => lockVault(true)}
+                      >
                         <LockKeyholeIcon /> {t('lockVault')}
                       </Button>
                       {canWrite && (
@@ -2178,6 +2409,7 @@ export default function App() {
                           <Button
                             size="sm"
                             className={templates.length ? 'rounded-e-none' : undefined}
+                            title={shortcutsOn ? `${t('addEntry')} (${shortcutText('n')})` : undefined}
                             disabled={busy === 'save' || busy === 'reload'}
                             onClick={/** Opens an empty entry draft. */ () => startNewEntry()}
                           >
@@ -2272,6 +2504,9 @@ export default function App() {
                   }
                   searchLabel={t('search')}
                   matches={entryMatches}
+                  controller={tableController}
+                  rowId={entryRowId}
+                  activeRowId={focusedId}
                   emptyMessage={securityView ? t('emptySecurity') : tagView ? t('emptyTag') : expiredView ? t('emptyExpired') : expiringView ? t('emptyExpiring') : currentFolder ? t('emptyFolder') : t('emptyVault')}
                   browseFilter={browseFilter}
                   leadingHeader={canWrite ? renderSelectAll : undefined}
@@ -2365,6 +2600,7 @@ export default function App() {
                               <CopyButton
                                 label={t('copyUsernameOf', { title: entry.title })}
                                 tooltip={t('copyUsername')}
+                                shortcut={shortcutsOn ? 'u' : undefined}
                                 getValue={/** Returns the username. */ () => entry.username}
                                 onCopy={/**
                                  * Copies the username.
@@ -2383,6 +2619,7 @@ export default function App() {
                               <CopyButton
                                 label={t('copyPasswordOf', { title: entry.title })}
                                 tooltip={t('copyPassword')}
+                                shortcut={shortcutsOn ? 'p' : undefined}
                                 getValue={/** Returns the password. */ () => entry.password}
                                 onCopy={/**
                                  * Copies the password.
@@ -2411,6 +2648,7 @@ export default function App() {
                               <CopyButton
                                 label={t('copyTotpOf', { title: entry.title })}
                                 tooltip={t('copyTotp')}
+                                shortcut={shortcutsOn ? 't' : undefined}
                                 getValue={/** Calculates the current TOTP code at the moment of copying. */ async () => {
                                   const config = parseOtpSecret(entry.otp);
                                   if (!config) throw new Error(t('invalidTotp'));
@@ -2477,7 +2715,7 @@ export default function App() {
                 }}
               >
                 {edits && (
-                  <SheetContent className="w-full gap-0 overflow-y-auto sm:max-w-xl">
+                  <SheetContent ref={entrySheet} className="w-full gap-0 overflow-y-auto sm:max-w-xl">
                     <SheetHeader className="border-b p-6 pe-12">
                       <SheetTitle className="flex items-center gap-2 wrap-break-word">
                         {selectedEntry && <EntryIcon iconUrl={selectedEntry.iconUrl} url={selectedEntry.url} showFavicons={showFavicons} className="size-5" />}
@@ -2519,7 +2757,7 @@ export default function App() {
                       </TabsList>
                     )}
                     <TabsContent value="details">
-                    <form className="grid gap-5 p-6" onSubmit={handleSave}>
+                    <form ref={entryForm} className="grid gap-5 p-6" onSubmit={handleSave}>
                       <FieldGroup className="gap-4">
                         <Field>
                           <FieldLabel htmlFor="entry-title">{tEntry('title')}</FieldLabel>
@@ -2868,6 +3106,19 @@ export default function App() {
                  */ (folder) => void confirmDeleteFolder(folder)}
                 onClose={/** Closes the delete confirmation. */ () => setFolderToDelete(null)}
               />
+              <CommandPalette
+                open={palette}
+                onOpenChange={setPalette}
+                entries={regularEntries}
+                folders={folders}
+                actions={paletteActions}
+                showFavicons={showFavicons}
+                onOpenEntry={/**
+                 * Opens the chosen entry and marks it in the list.
+                 * @param entry - The entry.
+                 */ (entry) => openEntry(entry)}
+                onOpenFolder={openFolderView}
+              />
               <ImportDialog
                 open={transfer === 'import' && canWrite}
                 existing={regularEntries}
@@ -3000,9 +3251,10 @@ export default function App() {
 
 /**
  * Renders vault navigation, the open vault's folder tree and the signed-in account's profile action.
- * @param props - The available files, active and unlocked file IDs, disabled state, selection callback, folder tree, signed-in account, and profile control.
+ * @param props - The shortcut hint, the available files, active and unlocked file IDs, disabled state, selection callback, folder tree, signed-in account, and profile control.
  */
 function VaultNavigation({
+  shortcutHint,
   files,
   selectedId,
   openId,
@@ -3012,6 +3264,8 @@ function VaultNavigation({
   user,
   profile
 }: {
+  /** The hint that opens the shortcut overview, or null when the shortcuts are off. */
+  shortcutHint: ReactNode;
   files: VaultFile[];
   selectedId: string | null;
   /** The vault that is currently unlocked; it is highlighted in green with an open lock. */
@@ -3080,6 +3334,7 @@ function VaultNavigation({
           </>
         )}
       </SidebarContent>
+      {shortcutHint && <div className="px-3 pb-1">{shortcutHint}</div>}
       <SidebarFooter className="gap-3 border-t px-4 py-4">
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <ShieldCheckIcon className="size-4 shrink-0" /> {tSidebar('decryptionLocal')}

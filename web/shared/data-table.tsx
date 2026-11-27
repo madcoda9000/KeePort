@@ -1,4 +1,4 @@
-import { useId, useMemo, useState, type ReactNode } from 'react';
+import { useId, useImperativeHandle, useMemo, useRef, useState, type ReactNode, type Ref } from 'react';
 import { ArrowDownIcon, ArrowUpDownIcon, ArrowUpIcon, ChevronLeftIcon, ChevronRightIcon, SearchIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -14,6 +14,19 @@ export interface TableColumn<T> {
   label: string;
   sortValue?: (row: T) => SortValue;
   className?: string;
+}
+
+/** Lets keyboard shortcuts reach into a table: its search box and the marked row. */
+export interface DataTableController<T> {
+  /** Puts the cursor into the search box. */
+  focusSearch: () => void;
+  /** Empties the search box; returns false when it was empty already. */
+  clearSearch: () => boolean;
+  /**
+   * Moves the marked row up or down among all matching rows, turning the page when needed, and returns the newly
+   * marked row (null when there are no rows).
+   */
+  move: (delta: number) => T | null;
 }
 
 /** The rows a table currently shows, handed to the optional leading header and toolbar. */
@@ -40,6 +53,12 @@ interface DataTableProps<T> {
   toolbar?: (view: DataTableView<T>) => ReactNode;
   /** Controls shown to the right of the search box, e.g. a column chooser. */
   searchActions?: ReactNode;
+  /** Receives the functions keyboard shortcuts use; needs rowId and activeRowId for moving the marked row. */
+  controller?: Ref<DataTableController<T>>;
+  /** The ID of a row, used to find the marked row. */
+  rowId?: (row: T) => string;
+  /** The ID of the marked row; the row renderer must show it (and set aria-current="true"). */
+  activeRowId?: string | null;
 }
 
 /**
@@ -57,7 +76,10 @@ export function DataTable<T>({
   browseFilter,
   leadingHeader,
   toolbar,
-  searchActions
+  searchActions,
+  controller,
+  rowId,
+  activeRowId
 }: DataTableProps<T>) {
   const pageSizeId = useId();
   const t = useT(messages);
@@ -79,6 +101,40 @@ export function DataTable<T>({
     setPageIndex(page.pageIndex);
   }
   const view: DataTableView<T> = { pageRows: page.rows, results };
+  const searchRef = useRef<HTMLInputElement>(null);
+  const tableRef = useRef<HTMLTableElement>(null);
+
+  useImperativeHandle(controller, /** Builds the functions for keyboard shortcuts from the current rows. */ () => ({
+    focusSearch: /** Focuses and selects the search text. */ () => {
+      searchRef.current?.focus();
+      searchRef.current?.select();
+    },
+    clearSearch: /** Empties the search box. */ () => {
+      if (!query) return false;
+      setQuery('');
+      setPageIndex(0);
+      return true;
+    },
+    move: /**
+     * Moves the marked row and shows the page it is on.
+     * @param delta - How many rows to move; negative moves up.
+     */ (delta) => {
+      if (!results.length) return null;
+      const current = rowId && activeRowId ? results.findIndex(/**
+       * Finds the marked row.
+       * @param row - One matching row.
+       */ (row) => rowId(row) === activeRowId) : -1;
+      const pageStart = page.pageIndex * pageSize;
+      const next = current < 0
+        ? (delta > 0 ? Math.min(pageStart, results.length - 1) : Math.min(pageStart + pageSize, results.length) - 1)
+        : Math.min(Math.max(current + delta, 0), results.length - 1);
+      setPageIndex(Math.floor(next / pageSize));
+      requestAnimationFrame(/** Scrolls the marked row into view after the render. */ () => {
+        tableRef.current?.querySelector('[aria-current="true"]')?.scrollIntoView({ block: 'nearest' });
+      });
+      return results[next];
+    }
+  }), [query, results, rowId, activeRowId, page.pageIndex, pageSize]);
 
   /**
    * Toggles the direction of a column, starting on the first page.
@@ -102,6 +158,7 @@ export function DataTable<T>({
         <div className="relative w-full sm:max-w-sm">
           <SearchIcon aria-hidden="true" className="pointer-events-none absolute start-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
+            ref={searchRef}
             className="ps-9"
             type="search"
             aria-label={searchLabel}
@@ -119,7 +176,7 @@ export function DataTable<T>({
         {searchActions}
       </div>
       {toolbar?.(view)}
-      <Table aria-label={label}>
+      <Table ref={tableRef} aria-label={label}>
         <TableHeader className="bg-muted/45">
           <TableRow>
             {leadingHeader && <TableHead scope="col" className="w-10 ps-6 pe-0">{leadingHeader(view)}</TableHead>}
