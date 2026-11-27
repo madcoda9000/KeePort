@@ -23,7 +23,7 @@
 </div>
 
 > [!NOTE]
-> KeePort is in **beta** (`v0.24.0`). Keep regular backups of your `.kdbx` files and of the `/data` volume.
+> KeePort is in **beta** (`v0.24.1`). Keep regular backups of your `.kdbx` files and of the `/data` volume.
 >
 > The **[user manual](https://github.com/madcoda9000/KeePort/wiki)** in the wiki explains every page of the admin console and the web vault step by step.
 
@@ -142,7 +142,7 @@ KeePass files are great: open format, strong encryption, dozens of apps. Keeping
 
 ```bash
 # Check out the latest release (not the development branch)
-git clone --branch v0.24.0 https://github.com/madcoda9000/KeePort.git
+git clone --branch v0.24.1 https://github.com/madcoda9000/KeePort.git
 cd KeePort
 
 cp .env.example .env
@@ -173,7 +173,7 @@ Open the admin console with **`https://`**. Your browser warns once about the se
 ```bash
 cd KeePort
 git fetch --tags
-git checkout v0.24.0          # the release you want, see the Releases page
+git checkout v0.24.1          # the release you want, see the Releases page
 docker compose up -d --build
 ```
 
