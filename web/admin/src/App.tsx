@@ -16,6 +16,10 @@ import {
   MailIcon,
   MailWarningIcon,
   ScrollTextIcon,
+  Share2Icon,
+  GaugeIcon,
+  HistoryIcon,
+  HardDriveIcon,
   SendIcon,
   EllipsisIcon,
   PencilIcon,
@@ -111,6 +115,8 @@ import { DataTable, type TableColumn } from '@shared/data-table';
 import { ShortcutHelp, ShortcutHint, useGeneralShortcuts, type ShortcutGroup } from '@shared/shortcut-help';
 import { clearSearchField, overlayOpen, useShortcuts, type ShortcutHandler } from '@shared/use-shortcuts';
 import shortcutsText from '@/i18n/shortcuts';
+import settingsSectionsText from '@/i18n/settings-sections';
+import { SettingsLayout } from '@/components/settings-layout';
 import { matchesTableSearch, timestampSortValue } from '@shared/table-data';
 
 type Message = { kind: 'notice' | 'error'; text: string } | null;
@@ -876,8 +882,10 @@ export default function App() {
   const [busy, setBusy] = useState<string | null>(null);
   const [theme, setTheme] = useState(getTheme);
   const [showShortcuts, setShowShortcuts] = useState(false);
+  const [settingsArea, setSettingsArea] = useState('email');
   const t = useT(sidebarText);
   const tShortcuts = useT(shortcutsText);
+  const tSettings = useT(settingsSectionsText);
   const generalShortcuts = useGeneralShortcuts();
   const ta = useT(authText);
   const tc = useT(commonText);
@@ -1445,6 +1453,7 @@ export default function App() {
               storage={storage}
               onOpenSettings={/** Opens the settings page with the storage details. */ () => {
                 setTab('settings');
+                setSettingsArea('storage');
                 setPermFile(null);
                 setMessage(null);
               }}
@@ -1457,15 +1466,19 @@ export default function App() {
           )}
 
           {tab === 'settings' && (
-            <>
-              <EmailSettingsPanel />
-              <MfaSettingsPanel />
-              <SharingSettingsPanel />
-              <RateLimitSettingsPanel />
-              <VersionSettingsPanel />
-              <AuditSettingsPanel />
-              <DataStoragePanel storage={storage} />
-            </>
+            <SettingsLayout
+              activeId={settingsArea}
+              onSelect={setSettingsArea}
+              areas={[
+                { id: 'email', label: tSettings('email'), icon: MailIcon, content: <EmailSettingsPanel /> },
+                { id: 'two-factor', label: tSettings('twoFactor'), icon: ShieldCheckIcon, content: <MfaSettingsPanel /> },
+                { id: 'sharing', label: tSettings('sharing'), icon: Share2Icon, content: <SharingSettingsPanel /> },
+                { id: 'rate-limits', label: tSettings('rateLimits'), icon: GaugeIcon, content: <RateLimitSettingsPanel /> },
+                { id: 'versions', label: tSettings('versions'), icon: HistoryIcon, content: <VersionSettingsPanel /> },
+                { id: 'audit', label: tSettings('audit'), icon: ScrollTextIcon, content: <AuditSettingsPanel /> },
+                { id: 'storage', label: tSettings('storage'), icon: HardDriveIcon, content: <DataStoragePanel storage={storage} /> }
+              ]}
+            />
           )}
 
           {tab === 'audit-log' && <AuditLogPanel />}
