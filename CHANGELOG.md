@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.27.2] - 2026-11-28
+
+### Security
+
+- Web vault and admin console development tools: the shadcn CLI is updated to 4.23.1, which brings minimatch 11.0.9 and fixes a denial of service through crafted glob patterns (GHSA-g3hv-75wg-m249). Only the CLI used to add components during development was affected; the built app and the Docker image never contained minimatch.
+
 ## [0.27.1] - 2026-11-28
 
 ### Fixed
@@ -619,6 +625,7 @@ First beta release.
 - Login and setup share a configurable per-IP rate limit; session checks and sign-out are exempt. WebDAV has a separate configurable limit applied before authentication.
 - Admin accounts can only sign in to the Admin console; Vault and WebDAV require a separate user account. Admin sessions are scoped to the Admin API, so existing admins need to sign in again after updating.
 
+[0.27.2]: https://github.com/madcoda9000/KeePort/compare/v0.27.1...v0.27.2
 [0.27.1]: https://github.com/madcoda9000/KeePort/compare/v0.27.0...v0.27.1
 [0.27.0]: https://github.com/madcoda9000/KeePort/compare/v0.26.1...v0.27.0
 [0.26.1]: https://github.com/madcoda9000/KeePort/compare/v0.26.0...v0.26.1
