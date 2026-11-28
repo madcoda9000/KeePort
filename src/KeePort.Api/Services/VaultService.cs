@@ -333,8 +333,13 @@ public sealed class VaultService
         try
         {
             var file = Get(fileId);
-            var path = GetVersionPath(fileId, revision);
-            if (file is null || revision >= file.Revision || !File.Exists(path))
+            if (file is null || revision < 1 || revision >= file.Revision)
+            {
+                return null;
+            }
+            // The path is built from the stored ID, so only a vault that exists can name a folder.
+            var path = GetVersionPath(file.Id, revision);
+            if (!File.Exists(path))
             {
                 return null;
             }

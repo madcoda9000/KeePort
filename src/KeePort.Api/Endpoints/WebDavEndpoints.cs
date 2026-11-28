@@ -93,14 +93,14 @@ public static class WebDavEndpoints
 
         logger.LogInformation(
             "WebDAV {Method} {Path} -> {Status} (credential: {Credential}, If-Match: {IfMatch}, Depth: {Depth}, Destination: {Destination}, Overwrite: {Overwrite}, Length: {Length}, {DurationMs} ms)",
-            entry.Method,
-            entry.Path,
+            LogText.Clean(entry.Method),
+            LogText.Clean(entry.Path),
             entry.Status,
-            entry.Credential ?? "-",
+            LogText.Clean(entry.Credential) ?? "-",
             entry.IfMatch ? "yes" : "no",
-            entry.Depth ?? "-",
-            entry.Destination ?? "-",
-            entry.Overwrite ?? "-",
+            LogText.Clean(entry.Depth) ?? "-",
+            LogText.Clean(entry.Destination) ?? "-",
+            LogText.Clean(entry.Overwrite) ?? "-",
             entry.ContentLength?.ToString(CultureInfo.InvariantCulture) ?? "-",
             entry.DurationMs);
 

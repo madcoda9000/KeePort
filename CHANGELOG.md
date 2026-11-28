@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.27.3] - 2026-11-28
+
+### Security
+
+- WebDAV request lines in the console log: line breaks and other control characters from the client (in the path or in the `Depth`, `Destination` and `Overwrite` headers) are written as escapes such as `\n`, so a request cannot add forged lines to the log or send escape sequences to a terminal. The request log in the admin console was not affected.
+
+### Changed
+
+- Restoring a vault version builds the file path from the stored vault ID and only after the vault was found; behaviour is unchanged.
+
 ## [0.27.2] - 2026-11-28
 
 ### Security
@@ -625,6 +635,7 @@ First beta release.
 - Login and setup share a configurable per-IP rate limit; session checks and sign-out are exempt. WebDAV has a separate configurable limit applied before authentication.
 - Admin accounts can only sign in to the Admin console; Vault and WebDAV require a separate user account. Admin sessions are scoped to the Admin API, so existing admins need to sign in again after updating.
 
+[0.27.3]: https://github.com/madcoda9000/KeePort/compare/v0.27.2...v0.27.3
 [0.27.2]: https://github.com/madcoda9000/KeePort/compare/v0.27.1...v0.27.2
 [0.27.1]: https://github.com/madcoda9000/KeePort/compare/v0.27.0...v0.27.1
 [0.27.0]: https://github.com/madcoda9000/KeePort/compare/v0.26.1...v0.27.0
