@@ -1,0 +1,70 @@
+name: Bug report
+description: Something in KeePort does not work as expected.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! **Security problems do not belong here** — please use the [private report](https://github.com/madcoda9000/KeePort/security/advisories/new) instead.
+        Never paste real passwords, vault files or personal data; use a test vault.
+  - type: input
+    id: version
+    attributes:
+      label: KeePort version
+      description: Shown at the top of the sidebar in the web vault and on **Admin → Dashboard**.
+      placeholder: "0.27.3"
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: Installation
+      options:
+        - Docker Compose
+        - Synology / other NAS
+        - Built from source
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Where does it happen?
+      multiple: true
+      options:
+        - Web vault
+        - Admin console
+        - WebDAV / KeePass app
+        - E-mail
+        - Installation or update
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: client
+    attributes:
+      label: Browser or KeePass app
+      description: Name and version, for example "Firefox 140" or "KeePass2Android 1.12".
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open …
+        2. Click …
+        3. See …
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Relevant lines from `docker compose logs keeport` or **Admin → Logs**. Remove host names or user names you do not want to share.
+      render: text

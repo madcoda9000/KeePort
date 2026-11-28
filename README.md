@@ -302,7 +302,7 @@ docs/                     Deployment guide and images
 
 - **Browser extension** — the backend already supports extra CORS origins via `KeePort:CorsOrigins`; a token-based sign-in for extensions is planned on top of the existing sessions.
 
-Ideas and bug reports are welcome in the [issue tracker](https://github.com/madcoda9000/KeePort/issues).
+Ideas and bug reports are welcome in the [issue tracker](https://github.com/madcoda9000/KeePort/issues); how to help with code and translations is described in [CONTRIBUTING.md](CONTRIBUTING.md). Please report security problems privately as described in [SECURITY.md](SECURITY.md), never in a public issue.
 
 ## 📄 License
 

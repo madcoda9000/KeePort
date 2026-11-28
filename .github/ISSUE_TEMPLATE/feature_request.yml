@@ -1,0 +1,32 @@
+name: Feature request
+description: Suggest an idea or an improvement for KeePort.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for the idea! Please check the roadmap in the [README](https://github.com/madcoda9000/KeePort#readme) and the existing issues first.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What would you like to do?
+      description: Describe the situation or the problem, not only the solution.
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: How could KeePort help?
+      description: How you imagine it — in the web vault, the admin console or for KeePass apps.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives
+      description: Other ways you tried or considered, for example in a KeePass app.
+  - type: checkboxes
+    id: contribute
+    attributes:
+      label: Contribution
+      options:
+        - label: I would like to work on this myself (see [CONTRIBUTING.md](https://github.com/madcoda9000/KeePort/blob/main/CONTRIBUTING.md)).

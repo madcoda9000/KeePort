@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/madcoda9000/KeePort/security/advisories/new
+    about: Please report security problems privately, never in a public issue.
+  - name: Installation and user guide
+    url: https://github.com/madcoda9000/KeePort/wiki
+    about: Setup, KeePass apps and every feature explained step by step.
