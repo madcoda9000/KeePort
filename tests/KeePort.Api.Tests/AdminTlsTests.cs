@@ -79,4 +79,38 @@ public class AdminTlsTests : IDisposable
         Assert.True(created);
         Assert.True(certificate.HasPrivateKey);
     }
+
+    /// <summary>A certificate file as KeePort 0.26.1 on .NET 8 wrote it (self-signed, created for this test only; valid 2026-11-19 to 2031-11-19).</summary>
+    private const string Net8CertificatePfx =
+        "MIID8wIBAzCCA68GCSqGSIb3DQEHAaCCA6AEggOcMIIDmDCB+gYJKoZIhvcNAQcBoIHsBIHpMIHmMIHjBgsqhkiG9w0BDAoBAqCB"
+        + "vDCBuTAkBgoqhkiG9w0BDAEDMBYEEPa4b7iGHxFyCORRGJ3L5TsCAgfQBIGQgenNnpmEp7FASKPTw583bfg8I8vbgANVLSPDjLOs"
+        + "cSXpeF1l1z5EWLts1nWW4FO+fDLdY8MxOR94P7YoIUxK6jaHtzFeNhGDDd696kgHUH942LFmU+rcIObSKPFB1pQfen5gBaQeXiqZ"
+        + "VAXzXT3L7GJ20nKiRMgHAuY8TYxyzp5G46t/iRiRUz6/qX4W0R9RMRUwEwYJKoZIhvcNAQkVMQYEBAAAAAAwggKXBgkqhkiG9w0B"
+        + "BwagggKIMIIChAIBADCCAn0GCSqGSIb3DQEHATAkBgoqhkiG9w0BDAEDMBYEEKjar2Y0s2exiMpsZScPKSUCAgfQgIICSHw0fhqd"
+        + "nkvBJmSAZ/rqSy4ur+NLpESPaB8R146meDDxZ/J5dtGR385Wx+8iLBSC4kkF1gb0I3x5Io2yaYZ4pH6rK/osgnOzJezdqFl5o8zm"
+        + "5nTVfUSztpE/KKkulVaTqYw+mVF+oEkgX7fEqF4HAYyaMSiKbWyg1Sjo29uzkvl8zVnpE+x4tP1dbWnFMkQK4uBmNnwz3cp7txrd"
+        + "/ES5oxgs2VEnW9xEczvoFE5S0xwGKx6CTeS/ppRRTKNNWfpub4I2jlTbFc2ePYOgv6+O8YkNW+NXpCqoBHyX/tj/VyMXcXkYw5e/"
+        + "8E4CULHEVq59hc2rrLcHuCmeoD87KNSF4AFP18NyFZ4Fyfr6iAlcAu2tyH2f/uF+YApFclBwqzZfrTcBNyYdT8ECNvvVWByYB+9g"
+        + "hSbJXst3C1RTTeXrJnxWczuOOd0b7zsu8YuWEXuUnfyF+p30kINQVT1ASS7gys4YCO0Q39mXO5urVNt5ijMePJ2ilGmtF75BitUp"
+        + "fHLSsk16kLOLFLzglQNdn9n6m+3x5p5sa2rEC2wHcX0UN+xy1Nz5nxJNxNsmcsDRdqqeGPBUIZPbyvZp+YsOMNmFyTMbOXexlucq"
+        + "SstuBKRK6AQlxVj+PrHxz4FEAf7DnZRAq6hu5nPO+PQfKMOnGrqisA3r5vfauAUf9Et/qgHMwq8hZQ1cDnyRbtUeUlPiGHTLv8+n"
+        + "pdbyhGGBRFLWOdkMVa02Os+lyMqS0n+5RsjY/vJYVRIa0P2f/Z66qBXqUK/yzsX8vcmZLgQiMDswHzAHBgUrDgMCGgQUlJox5mLB"
+        + "oPC0hLLCzeO7T+AhbM8EFM+QCD+sePcY128RXeLiAk7molYzAgIH0A==";
+
+    /// <summary>The SHA-256 fingerprint of <see cref="Net8CertificatePfx"/> as the admin console shows it.</summary>
+    private const string Net8CertificateFingerprint = "1A:CA:88:4E:5D:5A:03:00:98:9A:B3:A1:AE:6F:A1:F4:8D:8A:CD:95:B3:5D:18:89:C6:87:41:11:13:2D:3A:7E";
+
+    /// <summary>Verifies that a certificate written by the .NET 8 builds is still loaded and kept, so its fingerprint does not change on update.</summary>
+    [Fact]
+    public void Keeps_A_Certificate_Written_By_Net8_Builds()
+    {
+        var path = Path.Combine(_dataDir, AdminTls.RelativePath);
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllBytes(path, Convert.FromBase64String(Net8CertificatePfx));
+
+        var (certificate, created) = AdminTls.LoadOrCreate(_dataDir, [], new DateTimeOffset(2026, 11, 28, 12, 0, 0, TimeSpan.Zero));
+        Assert.False(created);
+        Assert.True(certificate.HasPrivateKey);
+        Assert.Equal(Net8CertificateFingerprint, AdminTls.Fingerprint(certificate));
+    }
 }

@@ -130,7 +130,7 @@ public static partial class AdminTls
     /// <summary>Loads a PFX with its private key.</summary>
     /// <param name="pfx">The PFX bytes without password.</param>
     private static X509Certificate2 Load(byte[] pfx)
-        => new(pfx, (string?)null, X509KeyStorageFlags.Exportable);
+        => X509CertificateLoader.LoadPkcs12(pfx, null, X509KeyStorageFlags.Exportable);
 
     /// <summary>Checks that the certificate names every host in its subject alternative names.</summary>
     /// <param name="certificate">The existing certificate.</param>

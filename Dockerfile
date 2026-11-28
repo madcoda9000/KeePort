@@ -15,16 +15,16 @@ RUN mkdir -p /out/vault /out/admin \
     && cp -r web/vault/dist/. /out/vault/ \
     && cp -r web/admin/dist/. /out/admin/
 
-FROM mcr.microsoft.com/dotnet/sdk:8.0-alpine AS api-build
+FROM mcr.microsoft.com/dotnet/sdk:10.0-alpine AS api-build
 WORKDIR /src
-COPY KeePort.sln ./
+COPY KeePort.sln global.json ./
 COPY src/KeePort.Api ./src/KeePort.Api
 RUN dotnet restore src/KeePort.Api/KeePort.Api.csproj
 COPY --from=web-build /out/vault ./src/KeePort.Api/wwwroot
 COPY --from=web-build /out/admin ./src/KeePort.Api/wwwroot/admin
 RUN dotnet publish src/KeePort.Api/KeePort.Api.csproj -c Release -o /app/publish --no-restore
 
-FROM mcr.microsoft.com/dotnet/aspnet:8.0-alpine AS runtime
+FROM mcr.microsoft.com/dotnet/aspnet:10.0-alpine AS runtime
 WORKDIR /app
 COPY --from=api-build /app/publish ./
 RUN addgroup -S keeport -g 1000 \

@@ -17,7 +17,7 @@ public class TrustedProxyListTests
          */ p => p.ToString()));
         Assert.Equal(new[] { "10.20.0.0/16", "2001:db8::/32" }, list.Networks.Select(/* Formats a parsed network in CIDR notation.
          * <param name="n">The parsed proxy network.</param>
-         */ n => $"{n.Prefix}/{n.PrefixLength}"));
+         */ n => n.ToString()));
         Assert.Equal("loopback, 172.18.0.1, fd00::1, 192.168.1.10, 10.20.0.0/16, 2001:db8::/32", list.Describe());
     }
 
@@ -57,14 +57,14 @@ public class TrustedProxyListTests
     {
         var options = new ForwardedHeadersOptions();
         var defaultProxies = options.KnownProxies.Count;
-        var defaultNetworks = options.KnownNetworks.Count;
+        var defaultNetworks = options.KnownIPNetworks.Count;
 
         TrustedProxyList.Parse("172.18.0.1, 10.20.0.0/16").ApplyTo(options);
 
         Assert.Equal(defaultProxies + 1, options.KnownProxies.Count);
-        Assert.Equal(defaultNetworks + 1, options.KnownNetworks.Count);
+        Assert.Equal(defaultNetworks + 1, options.KnownIPNetworks.Count);
         Assert.Contains(IPAddress.Parse("172.18.0.1"), options.KnownProxies);
-        Assert.Contains(options.KnownNetworks, /* Finds the loopback network that ASP.NET Core trusts by default.
+        Assert.Contains(options.KnownIPNetworks, /* Finds the loopback network that ASP.NET Core trusts by default.
          * <param name="n">A known network.</param>
          */ n => n.Contains(IPAddress.Loopback));
     }

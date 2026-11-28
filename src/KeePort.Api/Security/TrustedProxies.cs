@@ -3,7 +3,7 @@ using System.Net;
 using System.Net.Sockets;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.HttpOverrides;
-using ProxyNetwork = Microsoft.AspNetCore.HttpOverrides.IPNetwork;
+using ProxyNetwork = System.Net.IPNetwork;
 
 namespace KeePort.Api.Security;
 
@@ -82,7 +82,7 @@ public sealed record TrustedProxyList(IReadOnlyList<IPAddress> Proxies, IReadOnl
         }
         foreach (var network in Networks)
         {
-            options.KnownNetworks.Add(network);
+            options.KnownIPNetworks.Add(network);
         }
     }
 
@@ -94,7 +94,7 @@ public sealed record TrustedProxyList(IReadOnlyList<IPAddress> Proxies, IReadOnl
          */ p => Gateway is not null && p.Equals(Gateway) ? $"{p} (gateway)" : p.ToString())
             .Concat(Networks.Select(/* Formats a trusted network in CIDR notation.
              * <param name="n">The trusted proxy network.</param>
-             */ n => $"{n.Prefix}/{n.PrefixLength}"))
+             */ n => n.ToString()))
             .ToArray();
         return entries.Length == 0 ? "loopback only" : $"loopback, {string.Join(", ", entries)}";
     }

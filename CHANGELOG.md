@@ -5,11 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.26.2] - 2026-11-27
+## [0.27.0] - 2026-11-28
 
 ### Changed
 
+- **Backend on .NET 10 (LTS).** Support for .NET 8 ended on 10 November 2026; .NET 10 receives security updates until November 2028. Features, data and settings are unchanged, and an update needs nothing but the new image.
+  - Docker image based on `mcr.microsoft.com/dotnet/aspnet:10.0-alpine` (built with `sdk:10.0-alpine`); Microsoft.Data.Sqlite 10.0.15.
+  - The admin console keeps its stored self-signed certificate, so the fingerprint does not change and browsers do not warn again. A test with a certificate written by the .NET 8 builds guards this.
+  - **Admin → Dashboard** shows the new runtime (".NET 10.0.x").
+  - Trusted reverse proxies use the networks API of .NET 10 (`System.Net.IPNetwork`, `KnownIPNetworks`), and certificates are loaded with `X509CertificateLoader`; behaviour is unchanged.
+  - Development needs the .NET 10 SDK; `global.json` pins it.
 - Page for shared secrets: "KeePort" in the line at the bottom links to the project on GitHub (opens in a new tab).
+
+### Security
+
+- The server runtime (ASP.NET Core, Kestrel, cryptography) receives security fixes again.
 
 ## [0.26.1] - 2026-11-27
 
@@ -603,7 +613,7 @@ First beta release.
 - Login and setup share a configurable per-IP rate limit; session checks and sign-out are exempt. WebDAV has a separate configurable limit applied before authentication.
 - Admin accounts can only sign in to the Admin console; Vault and WebDAV require a separate user account. Admin sessions are scoped to the Admin API, so existing admins need to sign in again after updating.
 
-[0.26.2]: https://github.com/madcoda9000/KeePort/compare/v0.26.1...v0.26.2
+[0.27.0]: https://github.com/madcoda9000/KeePort/compare/v0.26.1...v0.27.0
 [0.26.1]: https://github.com/madcoda9000/KeePort/compare/v0.26.0...v0.26.1
 [0.26.0]: https://github.com/madcoda9000/KeePort/compare/v0.25.0...v0.26.0
 [0.25.0]: https://github.com/madcoda9000/KeePort/compare/v0.24.2...v0.25.0

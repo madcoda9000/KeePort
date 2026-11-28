@@ -6,7 +6,7 @@
 
 [![Release](https://img.shields.io/github/v/release/madcoda9000/KeePort?include_prereleases&label=release&color=2ea44f)](https://github.com/madcoda9000/KeePort/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![.NET 8](https://img.shields.io/badge/.NET-8.0-512BD4?logo=dotnet&logoColor=white)](https://dotnet.microsoft.com/)
+[![.NET 10](https://img.shields.io/badge/.NET-10.0-512BD4?logo=dotnet&logoColor=white)](https://dotnet.microsoft.com/)
 [![React 19](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)](https://react.dev/)
 [![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white)](#-quickstart)
 [![KDBX 3.1 / 4](https://img.shields.io/badge/KDBX-3.1%20%2F%204-6c757d)](#-compatibility)
@@ -264,6 +264,8 @@ Copy `.env.example` to `.env` and adjust as needed:
 Sign-in and WebDAV rate limits are changed at runtime in **Admin → Settings**. Everything else — NAS setup, backups, reverse proxy examples, troubleshooting — is in the [deployment guide](docs/DEPLOYMENT.md).
 
 ## 🛠️ Development
+
+Requires the [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0) (pinned in `global.json`) and Node.js 22.
 
 ```bash
 # Backend with a local data directory (the default /data is meant for the container)
