@@ -57,7 +57,7 @@ export function SettingsDialogContent({
                 type="button"
                 variant="ghost"
                 aria-current={current ? 'page' : undefined}
-                className={cn('shrink-0 justify-start gap-2', current && 'bg-accent text-accent-foreground')}
+                className={cn('shrink-0 justify-start gap-2 md:h-auto md:min-h-8 md:py-1.5 md:text-start md:whitespace-normal', current && 'bg-accent text-accent-foreground')}
                 onClick={/** Shows this area. */ () => setActiveId(section.id)}
               >
                 <Icon className={cn(current && 'text-primary')} /> {section.label}

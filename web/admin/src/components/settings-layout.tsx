@@ -42,7 +42,7 @@ export function SettingsLayout({ areas, activeId, onSelect }: { areas: SettingsA
               type="button"
               variant="ghost"
               aria-current={current ? 'page' : undefined}
-              className={cn('shrink-0 justify-start gap-2', current && 'bg-accent text-accent-foreground')}
+              className={cn('shrink-0 justify-start gap-2 lg:h-auto lg:min-h-8 lg:py-1.5 lg:text-start lg:whitespace-normal', current && 'bg-accent text-accent-foreground')}
               onClick={/** Shows this area. */ () => onSelect(area.id)}
             >
               <Icon className={cn(current && 'text-primary')} /> {area.label}
