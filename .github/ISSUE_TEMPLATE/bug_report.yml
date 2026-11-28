@@ -12,7 +12,7 @@ body:
     attributes:
       label: KeePort version
       description: Shown at the top of the sidebar in the web vault and on **Admin → Dashboard**.
-      placeholder: "0.27.3"
+      placeholder: "0.x.y"
     validations:
       required: true
   - type: dropdown

@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.27.5] - 2026-11-28
+
+### Added
+
+- `ACCESSIBILITY.md`: the accessibility goal (WCAG 2.2 AA, not yet audited), what is in place, known limitations and how to report a barrier.
+
+### Changed
+
+- Bug report form: the example version reads "0.x.y" instead of a version that goes out of date with every release.
+
 ## [0.27.4] - 2026-11-28
 
 ### Added
@@ -641,6 +651,7 @@ First beta release.
 - Login and setup share a configurable per-IP rate limit; session checks and sign-out are exempt. WebDAV has a separate configurable limit applied before authentication.
 - Admin accounts can only sign in to the Admin console; Vault and WebDAV require a separate user account. Admin sessions are scoped to the Admin API, so existing admins need to sign in again after updating.
 
+[0.27.5]: https://github.com/madcoda9000/KeePort/compare/v0.27.4...v0.27.5
 [0.27.4]: https://github.com/madcoda9000/KeePort/compare/v0.27.3...v0.27.4
 [0.27.3]: https://github.com/madcoda9000/KeePort/compare/v0.27.2...v0.27.3
 [0.27.2]: https://github.com/madcoda9000/KeePort/compare/v0.27.1...v0.27.2
